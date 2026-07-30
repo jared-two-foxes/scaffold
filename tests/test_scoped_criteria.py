@@ -18,14 +18,8 @@ of the 11 listed test files."
 Same render-stub + temp-git-repo pattern as tests/test_grounding.py.
 """
 
-import sys
-import types
 import unittest
 from pathlib import Path
-
-render_stub = types.ModuleType("ticket_pipeline.lib.render")
-render_stub.render_markdown = lambda _text: None
-sys.modules.setdefault("ticket_pipeline.lib.render", render_stub)
 
 from ticket_pipeline.lib import pipeline_lib as lib
 

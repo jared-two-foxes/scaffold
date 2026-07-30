@@ -1,14 +1,8 @@
 import io
 import subprocess
 import sys
-import types
 import unittest
 from unittest import mock
-
-render_stub = types.ModuleType("ticket_pipeline.lib.render")
-render_stub.render_markdown = lambda _text: None
-render_stub.print_line = lambda _text="": None
-sys.modules.setdefault("ticket_pipeline.lib.render", render_stub)
 
 from ticket_pipeline import cli, next_step, status
 from ticket_pipeline.lib import pipeline_lib as lib

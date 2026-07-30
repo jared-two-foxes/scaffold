@@ -10,9 +10,7 @@ name = "ticket-pipeline"
 version = "0.1.0"
 description = "Linear-ticket-driven TDD pipeline: fetch/plan/narrow, per-criterion test-write/implement/gate, ticket quality review, and an interactive context-explorer session."
 requires-python = ">=3.11"
-dependencies = [
-    "rich",
-]
+dependencies = ["rich"]
 
 [project.scripts]
 scaffold = "ticket_pipeline.cli:main"
@@ -34,3 +32,4 @@ include = ["ticket_pipeline", "ticket_pipeline.*"]
 
 [tool.setuptools.package-data]
 "ticket_pipeline.lib" = ["model-pricing.toml"]
+"ticket_pipeline.prompts" = ["prompts/*.md"]

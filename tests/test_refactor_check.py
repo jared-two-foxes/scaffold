@@ -17,27 +17,15 @@ through a render-stubbed import of next_step with its lib calls mocked.
 """
 
 import os
-import sys
 import tempfile
-import types
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
 from unittest import mock
 
-# Same render stub trick tests/test_grounding.py uses - keeps this test
-# independent of whether `rich` is installed and avoids a real console
-# setup as a side effect of importing pipeline_lib/next_step. next_step
-# uses render.print_line (not just render_markdown), so the stub
-# provides both.
-render_stub = types.ModuleType("ticket_pipeline.lib.render")
-render_stub.render_markdown = lambda _text: None
-render_stub.print_line = lambda *a, **k: None
-sys.modules.setdefault("ticket_pipeline.lib.render", render_stub)
-
-from ticket_pipeline.lib import pipeline_lib as lib  # noqa: E402
-from ticket_pipeline.lib.ai_client import AIError, AIResult  # noqa: E402
-from ticket_pipeline import next_step  # noqa: E402
+from ticket_pipeline.lib import pipeline_lib as lib
+from ticket_pipeline.lib.ai_client import AIError, AIResult
+from ticket_pipeline import next_step
 
 # The three SA-529 invoices.rs criteria - the concrete case this whole
 # mechanism was built for (the refactor landed before the pipeline run,

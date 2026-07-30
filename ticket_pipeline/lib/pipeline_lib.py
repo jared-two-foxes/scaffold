@@ -46,6 +46,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
+from importlib.resources import files
 
 from . import ai_client
 from .ai_client import AIError, run_with_tools
@@ -64,8 +65,7 @@ log = verbosity.get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-# Two levels up: this module lives in ticket-pipeline/ticket_pipeline/lib/,
-PROMPTS_DIR = SCRIPT_DIR.parent.parent / "prompts"
+PROMPTS_DIR = files("ticket_pipeline") / "prompts"
 TICKET_FILE = Path(".ticket.md")
 PLAN_FILE = Path(".tdd-plan.md")
 UPDATED_PLAN_FILE = Path(".updated-plan.md")

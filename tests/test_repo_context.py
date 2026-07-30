@@ -1,19 +1,6 @@
-import sys
 import tempfile
-import types
 import unittest
 from pathlib import Path
-
-# Stubbed under its fully-qualified name so pipeline_lib's `from .render
-# import render_markdown` picks this up instead of the real module -
-# keeps this test independent of whether `rich` (render.py's real
-# dependency) is installed, and avoids a real console setup as a side
-# effect of importing pipeline_lib. Must be registered before
-# ticket_pipeline.lib.pipeline_lib is imported below.
-render_stub = types.ModuleType("ticket_pipeline.lib.render")
-render_stub.render_markdown = lambda _text: None
-render_stub.print_line = lambda *a, **k: None
-sys.modules.setdefault("ticket_pipeline.lib.render", render_stub)
 
 from ticket_pipeline.lib import pipeline_lib
 from ticket_pipeline.lib import repo_context

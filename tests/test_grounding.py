@@ -1,15 +1,6 @@
 import subprocess
-import sys
-import types
 import unittest
 from pathlib import Path
-
-# Same render stub trick test_repo_context.py uses - keeps this test
-# independent of whether `rich` is installed and avoids a real console
-# setup as a side effect of importing pipeline_lib.
-render_stub = types.ModuleType("ticket_pipeline.lib.render")
-render_stub.render_markdown = lambda _text: None
-sys.modules.setdefault("ticket_pipeline.lib.render", render_stub)
 
 from ticket_pipeline.lib import pipeline_lib as lib
 
