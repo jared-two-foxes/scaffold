@@ -1,0 +1,8 @@
+{
+  "criterion": "- [ ] `WEBHOOK_RETRY_RATE_LIMIT` env var parsed into `RateLimitConfig.webhook_retry_rate_limit`",
+  "target_file": "libs/virtual_assistant_api/src/infra/rate_limit_config.rs",
+  "qualified_test_name": "infra::rate_limit_config::tests::parses_webhook_retry_rate_limit_value",
+  "source": "captured from a gpt-5.4-mini test-criterion trial (compiles, fails red against unfixed code) - see BENCHMARKS.md",
+  "usage": "For implement-criterion benchmarking: copy test-webhook-retry-rate-limit.rs over target_file in the worktree before running the block, so the worktree starts in the same state run_test_for_criterion would have left it in. qualified_test_name is the --test-file-equivalent green-check target; target_file is also the protected_paths entry run_implement_for_criterion needs.",
+  "note": "This trial used the accessor-only scaffolding allowance (test-criterion.prompt.md) since the field webhook_retry_rate_limit doesn't exist on RateLimitConfig yet: the model added a pub fn webhook_retry_rate_limit(&self) -> u32 stub returning DEFAULT_WEBHOOK_RETRY_RATE_LIMIT (line ~33), then wrote the test against that accessor. implement-criterion's job against this fixture is to make the accessor actually parse/store the env var correctly, not just add the field - this is a structurally different starting point than SA-452's fixture, which targeted a pre-existing struct/method."
+}

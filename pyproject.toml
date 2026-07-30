@@ -1,0 +1,36 @@
+# Editable-install only (`pip install -e .`). Runtime path resolution
+# in this project depends on the live repository layout (folders and
+# data files colocated with this pyproject.toml, outside the installed
+# package directory). Keeping the source tree in place preserves those
+# paths; a regular `pip install .` copies code into site-packages and
+# can break lookups after folder-structure changes. This project is a
+# local dev pipeline for a checked-out repo, not a distributable wheel.
+[project]
+name = "ticket-pipeline"
+version = "0.1.0"
+description = "Linear-ticket-driven TDD pipeline: fetch/plan/narrow, per-criterion test-write/implement/gate, ticket quality review, and an interactive context-explorer session."
+requires-python = ">=3.11"
+dependencies = [
+    "rich",
+]
+
+[project.scripts]
+scaffold = "ticket_pipeline.cli:main"
+
+# Every script (push_ticket, review-ticket, next_step, ..., plus
+# bench/bench_block) is reachable as `scaffold <name>` via cli.py's
+# dispatcher rather than its own console-script entry - one command to
+# remember instead of fourteen. bench/bench_block are grouped under
+# `scaffold`'s "Advanced" section since they're situational benchmarking
+# tools, not everyday ticket workflow; still directly runnable via
+# `python -m ticket_pipeline.bench` / `...bench_block` if preferred.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["ticket_pipeline", "ticket_pipeline.*"]
+
+[tool.setuptools.package-data]
+"ticket_pipeline.lib" = ["model-pricing.toml"]

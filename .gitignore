@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Linter cache
+.ruff_cache/
+
+# Pipeline runtime state files
+.pipeline-log.jsonl
+.criteria-stack.json
+.tdd-plan.md
+.gap-plan.md
+.declined-criteria.json
+.dev-pipeline.toml
+.pipeline-git-state.json
+.ticket.md
+.updated-plan.md
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+desktop.ini

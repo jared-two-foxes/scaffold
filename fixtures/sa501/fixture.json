@@ -1,0 +1,6 @@
+{
+  "base_ref": "1737072afce89e118a3b4aee5c3a8419718ee8b1",
+  "repo": "VirtualAssistant",
+  "pinned_on": "2026-06-25",
+  "note": "Commit the ticket.md/plan-good.md fixtures here were authored and validated against - email_config.rs's exact shape (EmailConfig with a hand-written Debug impl, no postmark_signing_secret field yet) is what plan-good.md and the grader assume. The trap: Debug is NOT #[derive(Debug)] here, so a plan that adds the field without explicitly naming the Debug impl update would leak the secret in cleartext - the grader checks for that omission specifically. Re-pin only after re-validating - see BENCHMARKS.md's fixture-pinning section."
+}

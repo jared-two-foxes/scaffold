@@ -1,0 +1,7 @@
+{
+  "criterion": "- [ ] `Debug` output redacts the secret values",
+  "target_file": "libs/virtual_assistant_api/src/infra/accounting_webhooks.rs",
+  "qualified_test_name": "infra::accounting_webhooks::tests::debug_output_redacts_webhook_secrets",
+  "source": "captured from a gpt-5.4-mini test-criterion trial (compiles, fails red against unfixed code) - see BENCHMARKS.md",
+  "usage": "For implement-criterion benchmarking: copy test-debug-redaction.rs over target_file in the worktree before running the block, so the worktree starts in the same state run_test_for_criterion would have left it in. qualified_test_name is the --test-file-equivalent green-check target; target_file is also the protected_paths entry run_implement_for_criterion needs."
+}
