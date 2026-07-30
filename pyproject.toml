@@ -33,3 +33,13 @@ include = ["ticket_pipeline", "ticket_pipeline.*"]
 [tool.setuptools.package-data]
 "ticket_pipeline.lib" = ["model-pricing.toml"]
 "ticket_pipeline.prompts" = ["prompts/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100 # or whatever your current norm is
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

@@ -50,6 +50,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
+from importlib.resources import files
 
 from . import verbosity
 
@@ -172,7 +173,7 @@ class UsageTracker:
 # run_prompt/run_with_tools call site for this.
 usage = UsageTracker()
 
-PRICING_FILE = Path(__file__).resolve().parent / "model-pricing.toml"
+PRICING_FILE = files("ticket_pipeline.lib") / "model-pricing.toml"
 _pricing_cache: dict | None = None
 
 
