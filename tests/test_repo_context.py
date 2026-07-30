@@ -12,6 +12,7 @@ from pathlib import Path
 # ticket_pipeline.lib.pipeline_lib is imported below.
 render_stub = types.ModuleType("ticket_pipeline.lib.render")
 render_stub.render_markdown = lambda _text: None
+render_stub.print_line = lambda *a, **k: None
 sys.modules.setdefault("ticket_pipeline.lib.render", render_stub)
 
 from ticket_pipeline.lib import pipeline_lib
@@ -58,7 +59,7 @@ class TicketEvidenceSeedTests(unittest.TestCase):
                 "struct RateLimitConfig {\n"
                 "    webhook_retry_rate_limit: u32,\n"
                 "}\n"
-                "const WEBHOOK_RETRY_RATE_LIMIT: &str = \"WEBHOOK_RETRY_RATE_LIMIT\";\n",
+                'const WEBHOOK_RETRY_RATE_LIMIT: &str = "WEBHOOK_RETRY_RATE_LIMIT";\n',
                 encoding="utf-8",
             )
             (root / "target" / "ignored.rs").write_text(
@@ -114,7 +115,9 @@ class PlanNarrowPromptTests(unittest.TestCase):
         prompt = pipeline_lib.build_plan_narrow_prompt(ticket)
 
         seed_pos = prompt.index("## Ticket Evidence Seed")
-        guidance_pos = prompt.index("Use read_file/list_dir/search_files for anything else")
+        guidance_pos = prompt.index(
+            "Use read_file/list_dir/search_files for anything else"
+        )
         self.assertLess(seed_pos, guidance_pos)
         self.assertIn("preliminary host-side search results", prompt)
 

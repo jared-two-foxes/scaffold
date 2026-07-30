@@ -181,8 +181,8 @@ class GitHelperTests(unittest.TestCase):
         lib.git_create_branch("ticket/SA-1")
         self.assertTrue(lib.git_branch_exists("ticket/SA-1"))
         self.assertEqual(lib.git_current_branch(), "ticket/SA-1")
-        lib.git_checkout("master")
-        self.assertEqual(lib.git_current_branch(), "master")
+        lib.git_checkout("main")
+        self.assertEqual(lib.git_current_branch(), "main")
 
     def test_commit_returns_none_on_empty_stage(self):
         sha = lib.git_commit("nothing to stage")
