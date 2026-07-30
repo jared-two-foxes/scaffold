@@ -15,11 +15,13 @@ class _chdir:
 
     def __enter__(self):
         import os
+
         self.prev = os.getcwd()
         os.chdir(self.path)
 
     def __exit__(self, *exc):
         import os
+
         os.chdir(self.prev)
 
 
@@ -39,7 +41,9 @@ class ResolveFeedbackTargetTests(unittest.TestCase):
     def test_test_refactor_defaults_to_tester(self):
         self.assertEqual(
             lib.FEEDBACK_TARGET_TESTER,
-            lib.resolve_feedback_target(self._frame(verification="test-refactor"), "auto"),
+            lib.resolve_feedback_target(
+                self._frame(verification="test-refactor"), "auto"
+            ),
         )
 
     def test_refactor_defaults_to_implementor(self):
@@ -123,10 +127,14 @@ class FeedbackRetryTests(unittest.TestCase):
         frame = self._tester_frame()
         stack = [frame]
         git_cfg = lib.GitConfig(git_workflow=True)
-        with mock.patch.object(lib, "git_changed_files", return_value=["tests/test_example.py"]), \
-             mock.patch.object(lib, "git_reset_hard") as reset_hard, \
-             mock.patch.object(lib, "save_stack"), \
-             mock.patch.object(next_step, "do_write_test") as do_write_test:
+        with (
+            mock.patch.object(
+                lib, "git_changed_files", return_value=["tests/test_example.py"]
+            ),
+            mock.patch.object(lib, "git_reset_hard") as reset_hard,
+            mock.patch.object(lib, "save_stack"),
+            mock.patch.object(next_step, "do_write_test") as do_write_test,
+        ):
             next_step._run_feedback_retry(
                 stack,
                 frame,
@@ -152,10 +160,16 @@ class FeedbackRetryTests(unittest.TestCase):
     def test_implementor_feedback_uses_refine_path(self):
         frame = self._implementor_frame()
         stack = [frame]
-        with mock.patch.object(lib, "git_changed_files", return_value=["src/example.py"]), \
-             mock.patch.object(lib, "save_stack"), \
-             mock.patch("ticket_pipeline.implement_step.run_implement_with_refine") as run_refine, \
-             mock.patch.object(next_step, "recheck_test_frame") as recheck:
+        with (
+            mock.patch.object(
+                lib, "git_changed_files", return_value=["src/example.py"]
+            ),
+            mock.patch.object(lib, "save_stack"),
+            mock.patch(
+                "ticket_pipeline.implement_step.run_implement_with_refine"
+            ) as run_refine,
+            mock.patch.object(next_step, "recheck_test_frame") as recheck,
+        ):
             next_step._run_feedback_retry(
                 stack,
                 frame,
@@ -168,7 +182,9 @@ class FeedbackRetryTests(unittest.TestCase):
                 git_cfg=None,
             )
         run_refine.assert_called_once()
-        self.assertEqual("fix only the failing branch", run_refine.call_args.kwargs["feedback"])
+        self.assertEqual(
+            "fix only the failing branch", run_refine.call_args.kwargs["feedback"]
+        )
         self.assertEqual(
             ["src/example.py"], run_refine.call_args.kwargs["previous_changed_files"]
         )

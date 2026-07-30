@@ -18,7 +18,9 @@ SA454_CRITERION = (
 
 def init_git_repo(root: Path) -> None:
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=root, check=True
+    )
     subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
 
 
@@ -47,7 +49,9 @@ class ExtractGroundingCandidatesTests(unittest.TestCase):
         self.assertNotIn("Cancelled", candidates)
 
     def test_dedupes_preserving_order(self):
-        candidates = lib.extract_grounding_candidates("First `Alpha` then `Beta` then `Alpha` again.")
+        candidates = lib.extract_grounding_candidates(
+            "First `Alpha` then `Beta` then `Alpha` again."
+        )
 
         self.assertEqual(["Alpha", "Beta"], candidates)
 
@@ -55,14 +59,18 @@ class ExtractGroundingCandidatesTests(unittest.TestCase):
         original = lib.GROUNDING_STOPLIST
         lib.GROUNDING_STOPLIST = frozenset({"Gadget"})
         try:
-            candidates = lib.extract_grounding_candidates("Something maps to `Widget` and `Gadget`.")
+            candidates = lib.extract_grounding_candidates(
+                "Something maps to `Widget` and `Gadget`."
+            )
         finally:
             lib.GROUNDING_STOPLIST = original
 
         self.assertEqual(["Widget"], candidates)
 
     def test_no_candidates_returns_empty_list(self):
-        self.assertEqual([], lib.extract_grounding_candidates("(ticket validation pending)"))
+        self.assertEqual(
+            [], lib.extract_grounding_candidates("(ticket validation pending)")
+        )
 
 
 class CheckSymbolGroundingTests(unittest.TestCase):
@@ -80,7 +88,9 @@ class CheckSymbolGroundingTests(unittest.TestCase):
             (root / "scratch.md").write_text("Outstanding\n", encoding="utf-8")
 
             with _cwd(root):
-                ungrounded = lib.check_symbol_grounding(["Approved", "Paid", "Outstanding"])
+                ungrounded = lib.check_symbol_grounding(
+                    ["Approved", "Paid", "Outstanding"]
+                )
 
         self.assertEqual(["Outstanding"], ungrounded)
 
@@ -98,7 +108,9 @@ class VerifyExistingTestRefsResolveTests(unittest.TestCase):
             )
             with _cwd(root):
                 reasons = lib.verify_existing_test_refs_resolve(
-                    ["tests.rs::quickbooks_invoice_balance_statuses_follow_remote_balance"]
+                    [
+                        "tests.rs::quickbooks_invoice_balance_statuses_follow_remote_balance"
+                    ]
                 )
         self.assertEqual([], reasons)
 
@@ -110,9 +122,13 @@ class VerifyExistingTestRefsResolveTests(unittest.TestCase):
 
     def test_missing_function_in_existing_file_is_flagged(self):
         with _TempGitRepo() as root:
-            (root / "tests.rs").write_text("fn some_other_test() {}\n", encoding="utf-8")
+            (root / "tests.rs").write_text(
+                "fn some_other_test() {}\n", encoding="utf-8"
+            )
             with _cwd(root):
-                reasons = lib.verify_existing_test_refs_resolve(["tests.rs::missing_test"])
+                reasons = lib.verify_existing_test_refs_resolve(
+                    ["tests.rs::missing_test"]
+                )
         self.assertEqual(1, len(reasons))
         self.assertIn("no symbol named", reasons[0])
 
@@ -136,7 +152,7 @@ class VerifyCriterionGroundingIntegrationTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (root / "src" / "quickbooks_webhooks.rs").write_text(
-                "// remote QuickBooks API field is named \"Balance\"\n"
+                '// remote QuickBooks API field is named "Balance"\n'
                 "fn quickbooks_invoice_balance_statuses_follow_remote_balance() {}\n",
                 encoding="utf-8",
             )
@@ -158,7 +174,9 @@ class VerifyCriterionGroundingIntegrationTests(unittest.TestCase):
                 encoding="utf-8",
             )
             git_add(root, "src/types.rs")
-            criterion = "- [ ] Maps zero balance to `Paid` and nonzero balance to `Approved`."
+            criterion = (
+                "- [ ] Maps zero balance to `Paid` and nonzero balance to `Approved`."
+            )
             with _cwd(root):
                 reasons = lib.verify_criterion_grounding(criterion, [])
         self.assertEqual([], reasons)
@@ -169,7 +187,12 @@ class DeclinedLedgerTests(unittest.TestCase):
         with _TempGitRepo() as root, _cwd(root):
             self.assertFalse(lib.is_declined("SA-454", SA454_CRITERION))
 
-            lib.record_declined("SA-454", SA454_CRITERION, "validate-missed", ["claims `Outstanding`..."])
+            lib.record_declined(
+                "SA-454",
+                SA454_CRITERION,
+                "validate-missed",
+                ["claims `Outstanding`..."],
+            )
 
             self.assertTrue(lib.is_declined("SA-454", SA454_CRITERION))
             self.assertFalse(lib.is_declined("SA-454", "some other criterion"))
@@ -193,7 +216,9 @@ class DeclinedLedgerTests(unittest.TestCase):
 
 
 class FilterGroundedFramesTests(unittest.TestCase):
-    def _frame(self, criterion: str, origin: str = "ticket", existing_test_refs=None) -> "lib.CriterionFrame":
+    def _frame(
+        self, criterion: str, origin: str = "ticket", existing_test_refs=None
+    ) -> "lib.CriterionFrame":
         return lib.CriterionFrame(
             ticket="SA-454",
             criterion=criterion,
@@ -218,7 +243,9 @@ class FilterGroundedFramesTests(unittest.TestCase):
             bad = self._frame(SA454_CRITERION)
 
             with _cwd(root):
-                to_push, newly_declined, skipped = lib.filter_grounded_frames([good, bad])
+                to_push, newly_declined, skipped = lib.filter_grounded_frames(
+                    [good, bad]
+                )
 
         self.assertEqual([good], to_push)
         self.assertEqual(1, len(newly_declined))
@@ -245,7 +272,9 @@ class FilterGroundedFramesTests(unittest.TestCase):
     def test_already_declined_frame_is_skipped_not_rechecked(self):
         with _TempGitRepo() as root, _cwd(root):
             frame = self._frame(SA454_CRITERION)
-            lib.record_declined("SA-454", SA454_CRITERION, "ticket", ["some prior reason"])
+            lib.record_declined(
+                "SA-454", SA454_CRITERION, "ticket", ["some prior reason"]
+            )
 
             to_push, newly_declined, skipped = lib.filter_grounded_frames([frame])
 
@@ -265,6 +294,7 @@ class _TempGitRepo:
 
     def __enter__(self) -> Path:
         import tempfile
+
         self._tmp = tempfile.TemporaryDirectory()
         root = Path(self._tmp.name)
         init_git_repo(root)
@@ -284,11 +314,13 @@ class _cwd:
 
     def __enter__(self) -> None:
         import os
+
         self._prev = os.getcwd()
         os.chdir(self._path)
 
     def __exit__(self, *exc) -> None:
         import os
+
         os.chdir(self._prev)
 
 

@@ -50,7 +50,7 @@ SA529_C2 = (
 SA529_C3 = (
     "- [ ] `libs/virtual_assistant/src/integration/xero/invoices.rs` test "
     "still acquires the shared env lock and still uses "
-    "`EnvVarGuard::unset(\"XERO_API_BASE_URL\")` for the missing-base-url "
+    '`EnvVarGuard::unset("XERO_API_BASE_URL")` for the missing-base-url '
     "case <!-- why: ...; verify: test-refactor; existing_test: libs/.../"
     "invoices.rs::tests::fetch_invoice_by_remote_id_requires_xero_api_base_url -->"
 )
@@ -133,9 +133,7 @@ class ParseTestRefactorAssertionsTests(unittest.TestCase):
             "no local `env_lock()` or `lock_env()` helper"
         )
         names = sorted(n.pattern for n in negatives)
-        self.assertEqual(
-            [r"\bfn\s+env_lock\b", r"\bfn\s+lock_env\b"], names
-        )
+        self.assertEqual([r"\bfn\s+env_lock\b", r"\bfn\s+lock_env\b"], names)
 
     def test_struct_and_helper_clauses_joined_by_and_both_parsed(self):
         _pos, negatives = lib._parse_test_refactor_assertions(
@@ -151,14 +149,17 @@ class ParseTestRefactorAssertionsTests(unittest.TestCase):
 
     def test_uses_clause_yields_leading_ident_path_positive(self):
         positives, _neg = lib._parse_test_refactor_assertions(
-            "still uses `EnvVarGuard::unset(\"XERO_API_BASE_URL\")` here"
+            'still uses `EnvVarGuard::unset("XERO_API_BASE_URL")` here'
         )
         self.assertEqual(["EnvVarGuard::unset"], positives)
 
     def test_unparseable_wording_yields_no_assertions(self):
-        self.assertEqual(([], []), lib._parse_test_refactor_assertions(
-            "test still acquires the shared env lock and behaves correctly"
-        ))
+        self.assertEqual(
+            ([], []),
+            lib._parse_test_refactor_assertions(
+                "test still acquires the shared env lock and behaves correctly"
+            ),
+        )
 
     def test_imports_keyword_inside_word_is_not_matched_as_uses(self):
         # "imports" must not be misread by the "uses?" pattern (which
@@ -196,13 +197,17 @@ class CheckTestRefactorSatisfiedTests(unittest.TestCase):
     def test_imports_present_but_missing_one_name_returns_false(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
-            _write(root, SA529_FILE, """\
+            _write(
+                root,
+                SA529_FILE,
+                """\
 use crate::test_support::{EnvVarGuard};  // only one helper imported
 #[cfg(test)]
 mod tests {
     use crate::test_support::EnvVarGuard;
 }
-""")
+""",
+            )
             with _chdir(root):
                 # env_test_lock not present anywhere -> positive fails.
                 self.assertFalse(lib.check_test_refactor_satisfied(SA529_C1, []))
@@ -212,27 +217,35 @@ mod tests {
         # so C2 (which requires NO local struct) is not satisfied.
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
-            _write(root, SA529_FILE, """\
+            _write(
+                root,
+                SA529_FILE,
+                """\
 use crate::test_support::{EnvVarGuard, env_test_lock};
 #[cfg(test)]
 mod tests {
     struct EnvVarGuard { x: u8 }  // local copy still here
     use crate::test_support::env_test_lock;
 }
-""")
+""",
+            )
             with _chdir(root):
                 self.assertFalse(lib.check_test_refactor_satisfied(SA529_C2, []))
 
     def test_no_local_helper_present_fn_env_lock_returns_false(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
-            _write(root, SA529_FILE, """\
+            _write(
+                root,
+                SA529_FILE,
+                """\
 use crate::test_support::{EnvVarGuard, env_test_lock};
 #[cfg(test)]
 mod tests {
     fn env_lock() {}  // local helper still here
 }
-""")
+""",
+            )
             with _chdir(root):
                 self.assertFalse(lib.check_test_refactor_satisfied(SA529_C2, []))
 
@@ -243,7 +256,11 @@ mod tests {
         )
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
-            _write(root, "src/lib.rs", "use crate::bar::Foo;\n// refactored to the shared helper\n")
+            _write(
+                root,
+                "src/lib.rs",
+                "use crate::bar::Foo;\n// refactored to the shared helper\n",
+            )
             with _chdir(root):
                 self.assertTrue(lib.check_test_refactor_satisfied(criterion, []))
 
@@ -286,15 +303,21 @@ mod tests {
                 self.assertTrue(
                     lib.check_test_refactor_satisfied(
                         SA529_C1,
-                        [f"{SA529_FILE}::tests::fetch_invoice_by_remote_id_requires_xero_api_base_url"],
+                        [
+                            f"{SA529_FILE}::tests::fetch_invoice_by_remote_id_requires_xero_api_base_url"
+                        ],
                     )
                 )
 
 
 class FindRecheckVerdictTests(unittest.TestCase):
     def test_bare_verdict_on_final_line(self):
-        self.assertEqual("SATISFIED", lib._find_recheck_verdict("evidence...\nSATISFIED"))
-        self.assertEqual("NOT SATISFIED", lib._find_recheck_verdict("evidence\nNOT SATISFIED"))
+        self.assertEqual(
+            "SATISFIED", lib._find_recheck_verdict("evidence...\nSATISFIED")
+        )
+        self.assertEqual(
+            "NOT SATISFIED", lib._find_recheck_verdict("evidence\nNOT SATISFIED")
+        )
         self.assertEqual("UNKNOWN", lib._find_recheck_verdict("evidence\nUNKNOWN"))
 
     def test_verdict_after_label_with_markdown_emphasis(self):
@@ -320,16 +343,25 @@ class RecheckSingleCriterionTests(unittest.TestCase):
     """Mock pipeline_lib.run_with_tools so no network is touched."""
 
     def _run(self, ai_text):
-        with mock.patch.object(lib, "run_with_tools", return_value=AIResult(text=ai_text)):
-            return lib.recheck_single_criterion("criterion", "context", "model", ticket_id="SA-1")
+        with mock.patch.object(
+            lib, "run_with_tools", return_value=AIResult(text=ai_text)
+        ):
+            return lib.recheck_single_criterion(
+                "criterion", "context", "model", ticket_id="SA-1"
+            )
 
     def test_parses_satisfied(self):
-        with tempfile.TemporaryDirectory() as d, _chdir(Path(d)):  # log_event writes here
+        with (
+            tempfile.TemporaryDirectory() as d,
+            _chdir(Path(d)),
+        ):  # log_event writes here
             self.assertEqual("SATISFIED", self._run("all good\nSATISFIED"))
 
     def test_parses_not_satisfied(self):
         with tempfile.TemporaryDirectory() as d, _chdir(Path(d)):
-            self.assertEqual("NOT SATISFIED", self._run("missing import\nNOT SATISFIED"))
+            self.assertEqual(
+                "NOT SATISFIED", self._run("missing import\nNOT SATISFIED")
+            )
 
     def test_parses_unknown(self):
         with tempfile.TemporaryDirectory() as d, _chdir(Path(d)):
@@ -338,9 +370,7 @@ class RecheckSingleCriterionTests(unittest.TestCase):
     def test_ai_failure_degrades_to_unknown(self):
         # No time.sleep delay: patch sleep so the retry backoff is free.
         with mock.patch.object(lib, "time", new=mock.MagicMock()):
-            with mock.patch.object(
-                lib, "run_with_tools", side_effect=AIError("boom")
-            ):
+            with mock.patch.object(lib, "run_with_tools", side_effect=AIError("boom")):
                 with tempfile.TemporaryDirectory() as d, _chdir(Path(d)):
                     verdict = lib.recheck_single_criterion("c", "ctx", "model")
         self.assertEqual("UNKNOWN", verdict)
@@ -357,12 +387,16 @@ class RunTesterStepNoFilesTests(unittest.TestCase):
         with mock.patch.object(lib, "run_with_tools", return_value=AIResult(text="")):
             with tempfile.TemporaryDirectory() as d, _chdir(Path(d)):
                 with self.assertRaises(SystemExit):
-                    lib._run_tester_step("p", "model", None, "c", no_files_is_fatal=True)
+                    lib._run_tester_step(
+                        "p", "model", None, "c", no_files_is_fatal=True
+                    )
 
     def test_no_files_is_fatal_false_returns_none_sentinel(self):
         with mock.patch.object(lib, "run_with_tools", return_value=AIResult(text="")):
             with tempfile.TemporaryDirectory() as d, _chdir(Path(d)):
-                result = lib._run_tester_step("p", "model", None, "c", no_files_is_fatal=False)
+                result = lib._run_tester_step(
+                    "p", "model", None, "c", no_files_is_fatal=False
+                )
         self.assertEqual((None, None), result)
 
 
@@ -376,7 +410,10 @@ class FullRetryNoFilesTests(unittest.TestCase):
             with mock.patch.object(lib, "run_command") as run_command:
                 with tempfile.TemporaryDirectory() as d, _chdir(Path(d)):
                     out = lib.run_test_for_criterion_with_full_retry(
-                        "criterion", "context", "model", commands,
+                        "criterion",
+                        "context",
+                        "model",
+                        commands,
                     )
         self.assertEqual((None, None, [], None, None), out)
         run_command.assert_not_called()
@@ -401,9 +438,13 @@ class HandleNoTestWrittenTests(unittest.TestCase):
     def test_accept_no_test_pops_frame(self):
         frame = self._frame()
         stack = [frame]
-        with mock.patch.object(lib, "load_stack", return_value=stack), \
-             mock.patch.object(lib, "save_stack") as save_stack:
-            next_step._handle_no_test_written(stack, frame, "model", accept_no_test=True)
+        with (
+            mock.patch.object(lib, "load_stack", return_value=stack),
+            mock.patch.object(lib, "save_stack") as save_stack,
+        ):
+            next_step._handle_no_test_written(
+                stack, frame, "model", accept_no_test=True
+            )
         self.assertEqual("done", frame.status)
         self.assertEqual([], frame.unconfirmed_tests)
         save_stack.assert_called_once()
@@ -415,48 +456,76 @@ class HandleNoTestWrittenTests(unittest.TestCase):
         stack = [frame]
         with tempfile.TemporaryDirectory() as d:
             _write(Path(d), SA529_FILE, SATISFIED_INVOICES)
-            with _chdir(Path(d)), \
-                 mock.patch.object(lib, "load_stack", return_value=stack), \
-                 mock.patch.object(lib, "save_stack"), \
-                 mock.patch.object(lib, "recheck_single_criterion") as recheck:
-                next_step._handle_no_test_written(stack, frame, "model", accept_no_test=False)
+            with (
+                _chdir(Path(d)),
+                mock.patch.object(lib, "load_stack", return_value=stack),
+                mock.patch.object(lib, "save_stack"),
+                mock.patch.object(lib, "recheck_single_criterion") as recheck,
+            ):
+                next_step._handle_no_test_written(
+                    stack, frame, "model", accept_no_test=False
+                )
             recheck.assert_not_called()
         self.assertEqual("done", frame.status)
 
     def test_recheck_satisfied_pops_frame(self):
-        frame = self._frame(criterion="- [ ] `nope.rs` behavioral criterion", verification="test")
+        frame = self._frame(
+            criterion="- [ ] `nope.rs` behavioral criterion", verification="test"
+        )
         stack = [frame]
-        with mock.patch.object(lib, "check_test_refactor_satisfied", return_value=False), \
-             mock.patch.object(lib, "load_stack", return_value=stack), \
-             mock.patch.object(lib, "save_stack"), \
-             mock.patch.object(lib, "recheck_single_criterion", return_value="SATISFIED"):
-            next_step._handle_no_test_written(stack, frame, "model", accept_no_test=False)
+        with (
+            mock.patch.object(lib, "check_test_refactor_satisfied", return_value=False),
+            mock.patch.object(lib, "load_stack", return_value=stack),
+            mock.patch.object(lib, "save_stack"),
+            mock.patch.object(
+                lib, "recheck_single_criterion", return_value="SATISFIED"
+            ),
+        ):
+            next_step._handle_no_test_written(
+                stack, frame, "model", accept_no_test=False
+            )
         self.assertEqual("done", frame.status)
 
     def test_recheck_not_satisfied_pauses(self):
-        frame = self._frame(criterion="- [ ] `nope.rs` behavioral criterion", verification="test")
+        frame = self._frame(
+            criterion="- [ ] `nope.rs` behavioral criterion", verification="test"
+        )
         stack = [frame]
-        with mock.patch.object(lib, "check_test_refactor_satisfied", return_value=False), \
-             mock.patch.object(lib, "load_stack", return_value=stack), \
-             mock.patch.object(lib, "save_stack"), \
-             mock.patch.object(lib, "recheck_single_criterion", return_value="NOT SATISFIED"):
+        with (
+            mock.patch.object(lib, "check_test_refactor_satisfied", return_value=False),
+            mock.patch.object(lib, "load_stack", return_value=stack),
+            mock.patch.object(lib, "save_stack"),
+            mock.patch.object(
+                lib, "recheck_single_criterion", return_value="NOT SATISFIED"
+            ),
+        ):
             with self.assertRaises(SystemExit) as cm:
-                next_step._handle_no_test_written(stack, frame, "model", accept_no_test=False)
+                next_step._handle_no_test_written(
+                    stack, frame, "model", accept_no_test=False
+                )
         self.assertEqual(0, cm.exception.code)
         self.assertEqual(next_step.NOTHING_WRITTEN_STATUS, frame.status)
 
     def test_resume_skip_ai_does_not_call_recheck_and_pauses(self):
         # skip_ai=True (the resume path): mechanical check inconclusive
         # -> pause, and recheck must NOT be called.
-        frame = self._frame(criterion="- [ ] `nope.rs` behavioral criterion", verification="test")
+        frame = self._frame(
+            criterion="- [ ] `nope.rs` behavioral criterion", verification="test"
+        )
         stack = [frame]
-        with mock.patch.object(lib, "check_test_refactor_satisfied", return_value=False), \
-             mock.patch.object(lib, "load_stack", return_value=stack), \
-             mock.patch.object(lib, "save_stack"), \
-             mock.patch.object(lib, "recheck_single_criterion") as recheck:
+        with (
+            mock.patch.object(lib, "check_test_refactor_satisfied", return_value=False),
+            mock.patch.object(lib, "load_stack", return_value=stack),
+            mock.patch.object(lib, "save_stack"),
+            mock.patch.object(lib, "recheck_single_criterion") as recheck,
+        ):
             with self.assertRaises(SystemExit):
                 next_step._handle_no_test_written(
-                    stack, frame, "model", accept_no_test=False, skip_ai=True,
+                    stack,
+                    frame,
+                    "model",
+                    accept_no_test=False,
+                    skip_ai=True,
                 )
         recheck.assert_not_called()
         self.assertEqual(next_step.NOTHING_WRITTEN_STATUS, frame.status)
@@ -464,11 +533,17 @@ class HandleNoTestWrittenTests(unittest.TestCase):
     def test_resume_accept_no_test_pops_without_ai(self):
         frame = self._frame()
         stack = [frame]
-        with mock.patch.object(lib, "load_stack", return_value=stack), \
-             mock.patch.object(lib, "save_stack"), \
-             mock.patch.object(lib, "recheck_single_criterion") as recheck:
+        with (
+            mock.patch.object(lib, "load_stack", return_value=stack),
+            mock.patch.object(lib, "save_stack"),
+            mock.patch.object(lib, "recheck_single_criterion") as recheck,
+        ):
             next_step._handle_no_test_written(
-                stack, frame, "model", accept_no_test=True, skip_ai=True,
+                stack,
+                frame,
+                "model",
+                accept_no_test=True,
+                skip_ai=True,
             )
         recheck.assert_not_called()
         self.assertEqual("done", frame.status)

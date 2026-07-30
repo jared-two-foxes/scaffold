@@ -62,19 +62,24 @@ SA-528
 
 def init_git_repo(root: Path) -> None:
     import subprocess
+
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=root, check=True
+    )
     subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
 
 
 def git_add(root: Path, *paths: str) -> None:
     import subprocess
+
     subprocess.run(["git", "add", *paths], cwd=root, check=True)
 
 
 class _TempGitRepo:
     def __enter__(self) -> Path:
         import tempfile
+
         self._tmp = tempfile.TemporaryDirectory()
         root = Path(self._tmp.name)
         init_git_repo(root)
@@ -91,11 +96,13 @@ class _cwd:
 
     def __enter__(self) -> None:
         import os
+
         self._prev = os.getcwd()
         os.chdir(self._path)
 
     def __exit__(self, *exc) -> None:
         import os
+
         os.chdir(self._prev)
 
 
@@ -122,7 +129,9 @@ class ExtractVerificationModeScopedTests(unittest.TestCase):
     def test_parses_test_when_no_tag_present(self):
         # A scoped criterion without a verify tag still defaults to
         # "test" - scoping doesn't change the default.
-        scoped = "- [ ] `foo.rs` uses `Bar`. <!-- why: original covers 3 files; 2 done -->"
+        scoped = (
+            "- [ ] `foo.rs` uses `Bar`. <!-- why: original covers 3 files; 2 done -->"
+        )
         self.assertEqual("test", lib.extract_verification_mode(scoped))
 
 
@@ -154,7 +163,10 @@ class ExtractPlanContextForCriterionScopedTests(unittest.TestCase):
         lines = context.splitlines()
         self.assertEqual(2, len(lines))
         self.assertTrue(
-            all("xero_reconcile_observability" in l or "xero_webhook" in l for l in lines)
+            all(
+                "xero_reconcile_observability" in l or "xero_webhook" in l
+                for l in lines
+            )
         )
         self.assertNotIn("foo.rs", context)
 
@@ -293,13 +305,17 @@ class SA528RegressionTests(unittest.TestCase):
             (root / "tests" / "xero_webhook.rs").write_text(
                 "fn webhook_handler() {}\n", encoding="utf-8"
             )
-            git_add(root, "tests/xero_reconcile_observability.rs", "tests/xero_webhook.rs")
+            git_add(
+                root, "tests/xero_reconcile_observability.rs", "tests/xero_webhook.rs"
+            )
 
             criterion = lib.extract_acceptance_criteria(SCOPED_GAP_PLAN)[0]
             frame = lib.CriterionFrame(
                 ticket="SA-528",
                 criterion=criterion,
-                plan_context=lib.extract_plan_context_for_criterion(criterion, SCOPED_GAP_PLAN),
+                plan_context=lib.extract_plan_context_for_criterion(
+                    criterion, SCOPED_GAP_PLAN
+                ),
                 test_files=None,
                 test_names=None,
                 status="pending",
