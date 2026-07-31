@@ -64,7 +64,9 @@ class StrategyDispatchTests(unittest.TestCase):
             mock.patch.object(lib, "load_stack", return_value=[frame]),
             mock.patch.object(lib, "extract_referenced_paths", return_value=[]),
             mock.patch.object(lib, "git_changed_files", return_value=[]),
-            mock.patch("ticket_pipeline.strategies.manual.do_await_manual_impl") as manual_pause,
+            mock.patch(
+                "ticket_pipeline.strategies.manual.do_await_manual_impl"
+            ) as manual_pause,
         ):
             next_step.step(
                 "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
