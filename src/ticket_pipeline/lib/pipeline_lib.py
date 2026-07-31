@@ -103,6 +103,7 @@ DECLINED_CRITERIA_FILE = Path(".declined-criteria.json")
 # Gitignored like every other pipeline state file (see
 # ensure_gitignore_entries) so `git reset --hard` never touches it.
 GIT_STATE_FILE = Path(".pipeline-git-state.json")
+SCAFFOLD_TEMP_DIR = Path(".scaffold")
 
 PLAN_PROMPT_FILE = PROMPTS_DIR / "plan.prompt.md"
 NARROW_PROMPT_FILE = PROMPTS_DIR / "narrow-plan.prompt.md"
@@ -1554,11 +1555,12 @@ def load_stack() -> list[CriterionFrame]:
 
 def save_stack(frames: list[CriterionFrame]) -> None:
     """
-    Serialise and write atomically: write to a temp file in the same
-    directory, then os.replace. Prevents a partial write from
-    corrupting the stack if the process is interrupted mid-write.
+    Serialise and write atomically: write to a temp file, then
+    os.replace. Prevents a partial write from corrupting the stack if
+    the process is interrupted mid-write.
     """
-    tmp_path = CRITERIA_STACK_FILE.with_name(CRITERIA_STACK_FILE.name + ".tmp")
+    SCAFFOLD_TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    tmp_path = SCAFFOLD_TEMP_DIR / (CRITERIA_STACK_FILE.name + ".tmp")
     tmp_path.write_text(
         json.dumps([asdict(frame) for frame in frames], indent=2) + "\n",
         encoding="utf-8",
@@ -2487,7 +2489,8 @@ def load_git_state() -> dict[str, str]:
 
 
 def save_git_state(state: dict[str, str]) -> None:
-    tmp = GIT_STATE_FILE.with_name(GIT_STATE_FILE.name + ".tmp")
+    SCAFFOLD_TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = SCAFFOLD_TEMP_DIR / (GIT_STATE_FILE.name + ".tmp")
     tmp.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
     os.replace(tmp, GIT_STATE_FILE)
 
@@ -2819,6 +2822,7 @@ def post_validate_git(
 # already present, and creates .gitignore if it doesn't exist.
 
 _GITIGNORE_ENTRIES = (
+    ".scaffold/",
     str(CRITERIA_STACK_FILE),
     str(GIT_STATE_FILE),
     str(DECLINED_CRITERIA_FILE),
