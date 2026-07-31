@@ -139,6 +139,17 @@ class FeedbackRetryTests(unittest.TestCase):
         frame = self._tester_frame()
         stack = [frame]
         git_cfg = lib.GitConfig(git_workflow=True)
+        ctx = lib.StepContext(
+            model="model",
+            step_models={},
+            commands={"test_compile_cmd": "true"},
+            config_path=lib.PIPELINE_CONFIG_FILE,
+            continuous=False,
+            max_attempts=3,
+            accept_no_test=False,
+            skip_implementation=False,
+            git_cfg=git_cfg,
+        )
         with (
             mock.patch.object(
                 lib, "git_changed_files", return_value=["tests/test_example.py"]
@@ -147,20 +158,14 @@ class FeedbackRetryTests(unittest.TestCase):
             mock.patch.object(lib, "save_stack"),
             mock.patch("ticket_pipeline.strategies.tdd.do_write_test") as do_write_test,
         ):
-            next_step._run_feedback_retry(
-                stack,
-                frame,
-                "model",
-                {"test_compile_cmd": "true"},
-                False,
-                3,
-                skip_implementation=False,
-                continuous=False,
-                git_cfg=git_cfg,
-            )
+            next_step._run_feedback_retry(stack, frame, ctx)
         reset_hard.assert_called_once_with("abc123")
         do_write_test.assert_called_once()
-        kwargs = do_write_test.call_args.kwargs
+        call_args = do_write_test.call_args
+        self.assertIs(stack, call_args.args[0])
+        self.assertIs(frame, call_args.args[1])
+        self.assertIs(ctx, call_args.args[2])
+        kwargs = call_args.kwargs
         self.assertEqual("narrow the rewrite", kwargs["feedback"])
         self.assertEqual(["tests/test_example.py"], kwargs["previous_changed_files"])
         self.assertIsNone(frame.feedback)
@@ -173,6 +178,19 @@ class FeedbackRetryTests(unittest.TestCase):
         frame = self._implementor_frame()
         stack = [frame]
         seen_statuses = []
+        ctx = lib.StepContext(
+            model="model",
+            step_models={},
+            commands={"build_cmd": "true"},
+            config_path=lib.PIPELINE_CONFIG_FILE,
+            continuous=False,
+            max_attempts=3,
+            accept_green=False,
+            accept_manual=False,
+            accept_no_test=False,
+            skip_implementation=False,
+            git_cfg=None,
+        )
 
         def _record_status(*args, **kwargs):
             seen_statuses.append(frame.status)
@@ -187,17 +205,7 @@ class FeedbackRetryTests(unittest.TestCase):
             ) as implement,
             mock.patch("ticket_pipeline.strategies.tdd.recheck") as recheck,
         ):
-            next_step._run_feedback_retry(
-                stack,
-                frame,
-                "model",
-                {"build_cmd": "true"},
-                False,
-                3,
-                skip_implementation=False,
-                continuous=False,
-                git_cfg=None,
-            )
+            next_step._run_feedback_retry(stack, frame, ctx)
         implement.assert_called_once()
         self.assertEqual(["test-written"], seen_statuses)
         self.assertEqual(
@@ -206,6 +214,9 @@ class FeedbackRetryTests(unittest.TestCase):
         self.assertEqual(
             ["src/example.py"], implement.call_args.kwargs["previous_changed_files"]
         )
+        impl_ctx = implement.call_args.args[1]
+        self.assertFalse(impl_ctx.accept_green)
+        self.assertFalse(impl_ctx.accept_manual)
         recheck.assert_called_once()
         self.assertIsNone(frame.feedback)
         self.assertIsNone(frame.feedback_target)

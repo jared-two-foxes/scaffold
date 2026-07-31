@@ -98,15 +98,7 @@ def advance(stack, frame, ctx):
         return
 
     if frame.status == "done":
-        next_step.do_pop(
-            frame,
-            ctx.continuous,
-            ctx.model,
-            {},
-            ctx.commands,
-            ctx.config_path,
-            ctx.git_cfg,
-        )
+        next_step.do_pop(frame, ctx)
         return
 
     sys.exit(0)

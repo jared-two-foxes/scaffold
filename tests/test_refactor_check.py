@@ -422,6 +422,23 @@ class FullRetryNoFilesTests(unittest.TestCase):
 class HandleNoTestWrittenTests(unittest.TestCase):
     """Change B + C: the recovery path in tdd._handle_no_test_written."""
 
+    def _ctx(self, **overrides):
+        defaults = dict(
+            model="model",
+            step_models={},
+            commands={},
+            config_path=lib.PIPELINE_CONFIG_FILE,
+            continuous=False,
+            max_attempts=3,
+            accept_green=False,
+            accept_manual=False,
+            accept_no_test=False,
+            skip_implementation=False,
+            git_cfg=None,
+        )
+        defaults.update(overrides)
+        return lib.StepContext(**defaults)
+
     def _frame(self, criterion=SA529_C2, verification="test-refactor"):
         return lib.CriterionFrame(
             ticket="SA-529",
@@ -442,7 +459,7 @@ class HandleNoTestWrittenTests(unittest.TestCase):
             mock.patch.object(lib, "load_stack", return_value=stack),
             mock.patch.object(lib, "save_stack") as save_stack,
         ):
-            tdd._handle_no_test_written(stack, frame, "model", accept_no_test=True)
+            tdd._handle_no_test_written(stack, frame, self._ctx(accept_no_test=True))
         self.assertEqual("done", frame.status)
         self.assertEqual([], frame.unconfirmed_tests)
         save_stack.assert_called_once()
@@ -460,7 +477,7 @@ class HandleNoTestWrittenTests(unittest.TestCase):
                 mock.patch.object(lib, "save_stack"),
                 mock.patch.object(lib, "recheck_single_criterion") as recheck,
             ):
-                tdd._handle_no_test_written(stack, frame, "model", accept_no_test=False)
+                tdd._handle_no_test_written(stack, frame, self._ctx())
             recheck.assert_not_called()
         self.assertEqual("done", frame.status)
 
@@ -477,7 +494,7 @@ class HandleNoTestWrittenTests(unittest.TestCase):
                 lib, "recheck_single_criterion", return_value="SATISFIED"
             ),
         ):
-            tdd._handle_no_test_written(stack, frame, "model", accept_no_test=False)
+            tdd._handle_no_test_written(stack, frame, self._ctx())
         self.assertEqual("done", frame.status)
 
     def test_recheck_not_satisfied_pauses(self):
@@ -494,7 +511,7 @@ class HandleNoTestWrittenTests(unittest.TestCase):
             ),
         ):
             with self.assertRaises(SystemExit) as cm:
-                tdd._handle_no_test_written(stack, frame, "model", accept_no_test=False)
+                tdd._handle_no_test_written(stack, frame, self._ctx())
         self.assertEqual(0, cm.exception.code)
         self.assertEqual(tdd.NOTHING_WRITTEN_STATUS, frame.status)
 
@@ -515,8 +532,7 @@ class HandleNoTestWrittenTests(unittest.TestCase):
                 tdd._handle_no_test_written(
                     stack,
                     frame,
-                    "model",
-                    accept_no_test=False,
+                    self._ctx(),
                     skip_ai=True,
                 )
         recheck.assert_not_called()
@@ -530,13 +546,7 @@ class HandleNoTestWrittenTests(unittest.TestCase):
             mock.patch.object(lib, "save_stack"),
             mock.patch.object(lib, "recheck_single_criterion") as recheck,
         ):
-            tdd._handle_no_test_written(
-                stack,
-                frame,
-                "model",
-                accept_no_test=True,
-                skip_ai=True,
-            )
+            tdd._handle_no_test_written(stack, frame, self._ctx(accept_no_test=True), skip_ai=True)
         recheck.assert_not_called()
         self.assertEqual("done", frame.status)
 

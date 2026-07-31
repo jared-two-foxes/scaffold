@@ -107,24 +107,17 @@ def do_await_green_unconfirmed(frame: "lib.CriterionFrame") -> None:
 def do_write_test(
     stack: list,
     frame: "lib.CriterionFrame",
-    model: str,
-    commands: dict,
-    accept_no_test: bool = False,
-    skip_implementation: bool = False,
-    continuous: bool = False,
-    max_attempts: int = 3,
-    accept_green: bool = False,
-    git_cfg: "lib.GitConfig | None" = None,
+    ctx: "lib.StepContext",
     feedback: str | None = None,
     previous_changed_files: list[str] | None = None,
 ) -> None:
-    next_step._record_base_commit_if_needed(stack, frame, git_cfg)
+    next_step._record_base_commit_if_needed(stack, frame, ctx.git_cfg)
     file_paths, test_names, test_results, compile_result, quality_concern = (
         lib.run_test_for_criterion_with_full_retry(
             frame.criterion,
             frame.plan_context,
-            model,
-            commands,
+            ctx.model,
+            ctx.commands,
             ticket_id=frame.ticket,
             existing_test_refs=frame.existing_test_refs,
             verification=frame.verification,
@@ -133,7 +126,7 @@ def do_write_test(
         )
     )
     if file_paths is None:
-        _handle_no_test_written(stack, frame, model, accept_no_test)
+        _handle_no_test_written(stack, frame, ctx)
         return
     if compile_result is None or compile_result.returncode != 0:
         exit_code = (
@@ -188,33 +181,19 @@ def do_write_test(
     frame.status = "test-written"
     frame.unconfirmed_tests = unconfirmed
     lib.save_stack(stack)
-    if skip_implementation:
+    if ctx.skip_implementation:
         do_await_impl(frame, test_results_zipped)
         return
-    ctx = lib.StepContext(
-        model=model,
-        step_models={},
-        commands=commands,
-        config_path=lib.PIPELINE_CONFIG_FILE,
-        continuous=continuous,
-        max_attempts=max_attempts,
-        accept_green=accept_green,
-        accept_manual=False,
-        accept_no_test=False,
-        skip_implementation=skip_implementation,
-        git_cfg=git_cfg,
-    )
     advance(stack, frame, ctx)
 
 
 def _handle_no_test_written(
     stack: list,
     frame: "lib.CriterionFrame",
-    model: str,
-    accept_no_test: bool,
+    ctx: "lib.StepContext",
     skip_ai: bool = False,
 ) -> None:
-    if accept_no_test:
+    if ctx.accept_no_test:
         log.info(
             "-- --accept-no-test: accepting %s as satisfied despite the "
             "tester writing nothing.",
@@ -238,7 +217,7 @@ def _handle_no_test_written(
         verdict = lib.recheck_single_criterion(
             frame.criterion,
             frame.plan_context,
-            model,
+            ctx.model,
             ticket_id=frame.ticket,
         )
         if verdict == "SATISFIED":
@@ -278,16 +257,10 @@ def _handle_no_test_written(
 def recheck_test_frame(
     stack: list,
     frame: "lib.CriterionFrame",
-    model: str,
-    commands: dict,
-    accept_green: bool,
-    continuous: bool,
-    max_attempts: int,
-    skip_implementation: bool,
-    git_cfg: "lib.GitConfig | None",
+    ctx: "lib.StepContext",
 ) -> None:
     results = lib.run_scoped_tests(
-        frame.test_names, commands, "phase check", quiet=True
+        frame.test_names, ctx.commands, "phase check", quiet=True
     )
     test_results = list(zip(frame.test_files, frame.test_names, results))
     red_names = [n for n, r in zip(frame.test_names, results) if r.returncode != 0]
@@ -296,22 +269,9 @@ def recheck_test_frame(
     if red_names:
         frame.status = "test-written"
         lib.save_stack(stack)
-        if skip_implementation:
+        if ctx.skip_implementation:
             do_await_impl(frame, test_results)
             return
-        ctx = lib.StepContext(
-            model=model,
-            step_models={},
-            commands=commands,
-            config_path=lib.PIPELINE_CONFIG_FILE,
-            continuous=continuous,
-            max_attempts=max_attempts,
-            accept_green=accept_green,
-            accept_manual=False,
-            accept_no_test=False,
-            skip_implementation=skip_implementation,
-            git_cfg=git_cfg,
-        )
         implement(frame, ctx)
         return
 
@@ -320,7 +280,7 @@ def recheck_test_frame(
         lib.save_stack(stack)
         return
 
-    if accept_green:
+    if ctx.accept_green:
         log.info(
             "-- --accept-green: accepting %s as satisfied despite origin=%r "
             "(unconfirmed test(s): %s).",
@@ -432,8 +392,7 @@ def skip_test_implementation(
     _handle_no_test_written(
         stack,
         frame,
-        ctx.model,
-        accept_no_test=ctx.accept_no_test,
+        ctx,
         skip_ai=False,
     )
 
@@ -513,43 +472,17 @@ def implement(frame, ctx, feedback=None, previous_changed_files=None):
 
 
 def recheck(stack, frame, ctx):
-    return recheck_test_frame(
-        stack,
-        frame,
-        ctx.model,
-        ctx.commands,
-        ctx.accept_green,
-        ctx.continuous,
-        ctx.max_attempts,
-        ctx.skip_implementation,
-        ctx.git_cfg,
-    )
+    return recheck_test_frame(stack, frame, ctx)
 
 
 def advance(stack, frame, ctx):
     """TDD strategy dispatch: test-first -> implement -> verify green."""
     if frame.status == GREEN_UNCONFIRMED_STATUS:
-        recheck_test_frame(
-            stack,
-            frame,
-            ctx.model,
-            ctx.commands,
-            ctx.accept_green,
-            ctx.continuous,
-            ctx.max_attempts,
-            ctx.skip_implementation,
-            ctx.git_cfg,
-        )
+        recheck_test_frame(stack, frame, ctx)
         return
 
     if frame.status == NOTHING_WRITTEN_STATUS:
-        _handle_no_test_written(
-            stack,
-            frame,
-            ctx.model,
-            ctx.accept_no_test,
-            skip_ai=True,
-        )
+        _handle_no_test_written(stack, frame, ctx, skip_ai=True)
         return
 
     if frame.status == "pending":
@@ -563,14 +496,7 @@ def advance(stack, frame, ctx):
         do_write_test(
             stack,
             frame,
-            ctx.model,
-            ctx.commands,
-            accept_no_test=ctx.accept_no_test,
-            skip_implementation=ctx.skip_implementation,
-            continuous=ctx.continuous,
-            max_attempts=ctx.max_attempts,
-            accept_green=ctx.accept_green,
-            git_cfg=ctx.git_cfg,
+            ctx,
         )
         return
 
@@ -579,39 +505,14 @@ def advance(stack, frame, ctx):
             do_write_test(
                 stack,
                 frame,
-                ctx.model,
-                ctx.commands,
-                accept_no_test=ctx.accept_no_test,
-                skip_implementation=ctx.skip_implementation,
-                continuous=ctx.continuous,
-                max_attempts=ctx.max_attempts,
-                accept_green=ctx.accept_green,
-                git_cfg=ctx.git_cfg,
+                ctx,
             )
             return
-        recheck_test_frame(
-            stack,
-            frame,
-            ctx.model,
-            ctx.commands,
-            ctx.accept_green,
-            ctx.continuous,
-            ctx.max_attempts,
-            ctx.skip_implementation,
-            ctx.git_cfg,
-        )
+        recheck_test_frame(stack, frame, ctx)
         return
 
     if frame.status == "done":
-        next_step.do_pop(
-            frame,
-            ctx.continuous,
-            ctx.model,
-            {},
-            ctx.commands,
-            ctx.config_path,
-            ctx.git_cfg,
-        )
+        next_step.do_pop(frame, ctx)
         return
 
     sys.exit(0)

@@ -37,7 +37,7 @@ Usage:
 """
 
 import argparse
-import subprocess
+from dataclasses import replace
 import sys
 from pathlib import Path
 
@@ -67,13 +67,7 @@ def _record_base_commit_if_needed(
 def _run_feedback_retry(
     stack: list,
     frame: "lib.CriterionFrame",
-    model: str,
-    commands: dict,
-    accept_no_test: bool,
-    max_attempts: int,
-    skip_implementation: bool,
-    continuous: bool,
-    git_cfg: "lib.GitConfig | None",
+    ctx: "lib.StepContext",
 ) -> None:
     """
     Apply queued user feedback on the top frame as a first-class retry path.
@@ -102,7 +96,7 @@ def _run_feedback_retry(
     frame.feedback_attempts += 1
 
     if target == lib.FEEDBACK_TARGET_TESTER:
-        if not git_cfg or not git_cfg.git_workflow or frame.base_commit is None:
+        if not ctx.git_cfg or not ctx.git_cfg.git_workflow or frame.base_commit is None:
             lib.die_with_log(
                 "feedback",
                 "Tester feedback requires git_workflow = true and a recorded base_commit so the "
@@ -138,15 +132,9 @@ def _run_feedback_retry(
         do_write_test_tdd(
             stack,
             frame,
-            model,
-            commands,
-            accept_no_test=accept_no_test,
+            ctx,
             feedback=feedback,
             previous_changed_files=previous_changed_files,
-            skip_implementation=skip_implementation,
-            continuous=continuous,
-            max_attempts=max_attempts,
-            git_cfg=git_cfg,
         )
         return
 
@@ -162,26 +150,14 @@ def _run_feedback_retry(
         strategy = resolve_strategy(frame)
         frame.status = strategy.IMPL_AWAITING_STATUS
         lib.save_stack(stack)
-        ctx = lib.StepContext(
-            model=model,
-            step_models={},
-            commands=commands,
-            config_path=lib.PIPELINE_CONFIG_FILE,
-            continuous=continuous,
-            max_attempts=max_attempts,
-            accept_green=False,
-            accept_manual=False,
-            accept_no_test=accept_no_test,
-            skip_implementation=skip_implementation,
-            git_cfg=git_cfg,
-        )
+        feedback_ctx = replace(ctx, accept_green=False, accept_manual=False)
         strategy.implement(
             frame,
-            ctx,
+            feedback_ctx,
             feedback=feedback,
             previous_changed_files=previous_changed_files,
         )
-        strategy.recheck(stack, frame, ctx)
+        strategy.recheck(stack, frame, feedback_ctx)
         return
 
     lib.die_with_log(
@@ -194,12 +170,7 @@ def _run_feedback_retry(
 
 def do_pop(
     frame: "lib.CriterionFrame",
-    continuous: bool,
-    model: str,
-    step_models: dict[str, str],
-    commands: dict,
-    config_path: Path,
-    git_cfg: "lib.GitConfig | None" = None,
+    ctx: "lib.StepContext",
 ) -> None:
     just_popped_ticket = frame.ticket
     just_popped_criterion = frame.criterion
@@ -210,10 +181,10 @@ def do_pop(
     # commit. A real git error is also non-fatal here: the POP still
     # happens so the stack advances; the uncommitted changes just ride
     # along into the next criterion's commit.
-    if git_cfg is not None and git_cfg.git_workflow:
+    if ctx.git_cfg is not None and ctx.git_cfg.git_workflow:
         try:
             sha = lib.commit_criterion(
-                git_cfg, just_popped_ticket, just_popped_criterion
+                ctx.git_cfg, just_popped_ticket, just_popped_criterion
             )
             if sha is not None:
                 frame.commit_sha = sha
@@ -222,7 +193,6 @@ def do_pop(
                     "criterion-committed",
                     ticket=just_popped_ticket,
                     criterion=just_popped_criterion,
-                    commit_sha=sha,
                 )
         except lib.GitError as e:
             log.warning("-- git_workflow: commit-on-POP failed (non-fatal): %s", e)
@@ -233,18 +203,10 @@ def do_pop(
     render.print_line(f"-- Criterion done: {just_popped_criterion}")
 
     if not new_stack or new_stack[0].ticket != just_popped_ticket:
-        do_ticket_validate(
-            just_popped_ticket,
-            model,
-            step_models,
-            commands,
-            config_path,
-            git_cfg,
-            ticket_snapshot=frame.ticket_snapshot,
-        )
+        do_ticket_validate(just_popped_ticket, ctx, ticket_snapshot=frame.ticket_snapshot)
         return
 
-    if not continuous:
+    if not ctx.continuous:
         render.print_line(f"-- Next: {new_stack[0].criterion}")
         render.print_line(f"-- Token usage: {ai_client.usage}")
         sys.exit(0)
@@ -254,11 +216,7 @@ def do_pop(
 
 def do_ticket_validate(
     ticket_id: str,
-    model: str,
-    step_models: dict[str, str],
-    commands: dict,
-    config_path: Path,
-    git_cfg: "lib.GitConfig | None" = None,
+    ctx: "lib.StepContext",
     ticket_snapshot: str | None = None,
 ) -> None:
     """
@@ -289,9 +247,9 @@ def do_ticket_validate(
     ticket's "still needs validating" fact having vanished the moment
     its last real criterion was popped.
     """
-    plan_model = step_models.get("plan", model)
-    narrow_model = step_models.get("narrow", model)
-    review_model = step_models.get("review", model)
+    plan_model = ctx.step_models.get("plan", ctx.model)
+    narrow_model = ctx.step_models.get("narrow", ctx.model)
+    review_model = ctx.step_models.get("review", ctx.model)
     lib.ensure_validating_sentinel(ticket_id, ticket_snapshot=ticket_snapshot)
 
     render.print_line()
@@ -371,9 +329,9 @@ def do_ticket_validate(
         render.print_line(f"-- Token usage: {ai_client.usage}")
         sys.exit(0)
 
-    lib.run_lint_gate(commands)
+    lib.run_lint_gate(ctx.commands)
 
-    result = lib.run_command(commands["test_cmd"], "full test suite gate")
+    result = lib.run_command(ctx.commands["test_cmd"], "full test suite gate")
     if result.returncode != 0:
         lib.die_with_log(
             "test-suite",
@@ -383,7 +341,7 @@ def do_ticket_validate(
             ticket=ticket_id,
         )
 
-    smoke_cmd = lib.load_smoke_cmd(config_path)
+    smoke_cmd = lib.load_smoke_cmd(ctx.config_path)
     lib.run_smoke_gate(smoke_cmd)
 
     changed_files = lib.git_changed_files()
@@ -431,9 +389,9 @@ def do_ticket_validate(
         # a failure here can't leave a stale "still needs validating"
         # marker. Non-fatal: the verdict is already APPROVED, so a merge
         # conflict or push failure is surfaced as a warning, not a die.
-        if git_cfg is not None:
+        if ctx.git_cfg is not None:
             lib.post_validate_git(
-                git_cfg,
+                ctx.git_cfg,
                 ticket_id,
                 title=f"{ticket_id}: validated",
                 body=f"Ticket {ticket_id} passed the pipeline's full validation gate "
@@ -564,6 +522,20 @@ def step(
         frame.criterion,
     )
 
+    ctx = lib.StepContext(
+        model=model,
+        step_models=step_models,
+        commands=commands,
+        config_path=config_path,
+        continuous=continuous,
+        max_attempts=max_attempts,
+        accept_green=accept_green,
+        accept_manual=accept_manual,
+        accept_no_test=accept_no_test,
+        skip_implementation=skip_implementation,
+        git_cfg=git_cfg,
+    )
+
     if manual_test:
         if frame.status != "pending":
             lib.die_with_log(
@@ -580,19 +552,6 @@ def step(
                 criterion=frame.criterion,
                 ticket=frame.ticket,
             )
-        ctx = lib.StepContext(
-            model=model,
-            step_models=step_models,
-            commands=commands,
-            config_path=config_path,
-            continuous=continuous,
-            max_attempts=max_attempts,
-            accept_green=accept_green,
-            accept_manual=accept_manual,
-            accept_no_test=accept_no_test,
-            skip_implementation=skip_implementation,
-            git_cfg=git_cfg,
-        )
         strategy_module.manual_test_authoring(stack, frame, ctx, manual_test_refs)
         return
 
@@ -619,19 +578,6 @@ def step(
                 criterion=frame.criterion,
                 ticket=frame.ticket,
             )
-        ctx = lib.StepContext(
-            model=model,
-            step_models=step_models,
-            commands=commands,
-            config_path=config_path,
-            continuous=continuous,
-            max_attempts=max_attempts,
-            accept_green=accept_green,
-            accept_manual=accept_manual,
-            accept_no_test=accept_no_test,
-            skip_implementation=skip_implementation,
-            git_cfg=git_cfg,
-        )
         strategy_module.skip_test_implementation(stack, frame, ctx)
         return
 
@@ -644,11 +590,7 @@ def step(
         # still uses the original ticket text rather than re-fetching.
         do_ticket_validate(
             frame.ticket,
-            model,
-            step_models,
-            commands,
-            config_path,
-            git_cfg,
+            ctx,
             ticket_snapshot=frame.ticket_snapshot,
         )
         return
@@ -657,33 +599,14 @@ def step(
         _run_feedback_retry(
             stack,
             frame,
-            model,
-            commands,
-            accept_no_test,
-            max_attempts,
-            skip_implementation=skip_implementation,
-            continuous=continuous,
-            git_cfg=git_cfg,
+            ctx,
         )
         return
 
     if frame.status == "done":
-        do_pop(frame, continuous, model, step_models, commands, config_path, git_cfg)
+        do_pop(frame, ctx)
         return
 
-    ctx = lib.StepContext(
-        model=model,
-        step_models=step_models,
-        commands=commands,
-        config_path=config_path,
-        continuous=continuous,
-        max_attempts=max_attempts,
-        accept_green=accept_green,
-        accept_manual=accept_manual,
-        accept_no_test=accept_no_test,
-        skip_implementation=skip_implementation,
-        git_cfg=git_cfg,
-    )
     strategy_module = resolve_strategy(frame)
     strategy_module.advance(stack, frame, ctx)
     return

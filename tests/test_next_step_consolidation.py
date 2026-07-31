@@ -109,21 +109,24 @@ class NextStepContinuousModeTests(unittest.TestCase):
         red = subprocess.CompletedProcess(
             args=["test"], returncode=1, stdout="", stderr=""
         )
+        ctx = lib.StepContext(
+            model="model",
+            step_models={},
+            commands={"build_cmd": "true"},
+            config_path=lib.PIPELINE_CONFIG_FILE,
+            continuous=True,
+            max_attempts=2,
+            accept_green=False,
+            accept_manual=False,
+            accept_no_test=False,
+            skip_implementation=False,
+            git_cfg=None,
+        )
         with (
             mock.patch.object(lib, "run_scoped_tests", return_value=[red]),
             mock.patch("ticket_pipeline.strategies.tdd.implement") as implement,
         ):
-            tdd_strategy.recheck_test_frame(
-                [frame],
-                frame,
-                "model",
-                {"build_cmd": "true"},
-                False,
-                True,
-                2,
-                False,
-                None,
-            )
+            tdd_strategy.recheck_test_frame([frame], frame, ctx)
         implement.assert_called_once()
 
     def test_implementation_phase_exits_after_single_phase_without_continuous(self):
@@ -131,21 +134,24 @@ class NextStepContinuousModeTests(unittest.TestCase):
         red = subprocess.CompletedProcess(
             args=["test"], returncode=1, stdout="", stderr=""
         )
+        ctx = lib.StepContext(
+            model="model",
+            step_models={},
+            commands={"build_cmd": "true"},
+            config_path=lib.PIPELINE_CONFIG_FILE,
+            continuous=False,
+            max_attempts=2,
+            accept_green=False,
+            accept_manual=False,
+            accept_no_test=False,
+            skip_implementation=False,
+            git_cfg=None,
+        )
         with (
             mock.patch.object(lib, "run_scoped_tests", return_value=[red]),
             mock.patch("ticket_pipeline.strategies.tdd.implement") as implement,
         ):
-            tdd_strategy.recheck_test_frame(
-                [frame],
-                frame,
-                "model",
-                {"build_cmd": "true"},
-                False,
-                False,
-                2,
-                False,
-                None,
-            )
+            tdd_strategy.recheck_test_frame([frame], frame, ctx)
         implement.assert_called_once()
 
     def test_continuous_still_pauses_for_green_unconfirmed(self):
