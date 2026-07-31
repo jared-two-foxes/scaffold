@@ -1284,6 +1284,8 @@ def extract_acceptance_criteria(plan_content: str) -> list[str]:
 VERIFICATION_TAG_RE = re.compile(
     r"verify:\s*(test(?:-refactor)?|refactor|manual)\b", re.IGNORECASE
 )
+STRATEGY_TAG_RE = re.compile(r"strategy:\s*(\w+)\b", re.IGNORECASE)
+KNOWN_STRATEGIES = frozenset({"tdd", "direct", "manual", "refactor"})
 
 
 def extract_verification_mode(criterion: str) -> str:
@@ -1310,6 +1312,21 @@ def extract_verification_mode(criterion: str) -> str:
 
 
 EXISTING_TEST_TAG_RE = re.compile(r"existing_test:\s*(\S+)")
+
+
+def extract_strategy(criterion: str) -> str:
+    """
+    Parses a "strategy: <name>" tag from a criterion's trailing HTML
+    comment. Defaults to "tdd" — the universal behavior before this
+    field existed, and the safe default for anything the tag-parsing
+    can't find one on.
+    """
+    match = STRATEGY_TAG_RE.search(criterion)
+    if match:
+        name = match.group(1).lower()
+        if name in KNOWN_STRATEGIES:
+            return name
+    return "tdd"
 
 
 def extract_existing_test_refs(criterion: str) -> list[str]:
@@ -1398,6 +1415,23 @@ def resolve_feedback_target(frame: "CriterionFrame", requested: str | None) -> s
 
 
 @dataclass
+class StepContext:
+    """Shared context passed to strategy handlers."""
+
+    model: str
+    step_models: dict[str, str]
+    commands: dict
+    config_path: Path
+    continuous: bool
+    max_attempts: int
+    accept_green: bool = False
+    accept_manual: bool = False
+    accept_no_test: bool = False
+    skip_implementation: bool = False
+    git_cfg: "GitConfig | None" = None
+
+
+@dataclass
 class CriterionFrame:
     ticket: str  # e.g. "SA-42"
     criterion: str  # verbatim bullet from the gap plan, e.g. "- [ ] ..."
@@ -1426,6 +1460,11 @@ class CriterionFrame:
     # test-write -> implement -> gate cycle.
     verification: str = "test"  # "test" | "test-refactor" | "refactor"
     # | "manual" - set from the gap plan's own
+    strategy: str = "tdd"  # "tdd" | "direct" | "manual" | "refactor"
+    # - records how the criterion should be implemented, independent of
+    # the verification gate. The default stays "tdd" for backwards
+    # compatibility with old stacks and plans that do not carry an
+    # explicit strategy tag.
     # "verify:" tag (see
     # extract_verification_mode). "test" is the
     # default for behavior changes a red/green
@@ -1621,7 +1660,9 @@ VALIDATING_ORIGIN = "ticket-validate"
 VALIDATING_CRITERION_TEXT = "(ticket validation pending)"
 
 
-def ensure_validating_sentinel(ticket_id: str, ticket_snapshot: str | None = None) -> None:
+def ensure_validating_sentinel(
+    ticket_id: str, ticket_snapshot: str | None = None
+) -> None:
     """
     Makes "this ticket still needs TICKET_VALIDATE" a durable stack
     frame instead of a fact that only exists for the duration of one

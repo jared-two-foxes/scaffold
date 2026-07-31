@@ -115,15 +115,22 @@ def prepare_git_branch(ticket_id: str, cfg: "lib.GitConfig", force: bool) -> Non
     base_branch = cfg.base_branch or lib.git_current_branch()
     if lib.git_branch_exists(branch):
         if not force and lib.git_current_branch() != branch:
-            log.info("-- git_workflow: ticket branch %s already exists; checking it out.", branch)
+            log.info(
+                "-- git_workflow: ticket branch %s already exists; checking it out.",
+                branch,
+            )
         lib.git_checkout(branch)
     else:
         lib.git_create_branch(branch)
-        render.print_line(f"-- git_workflow: created branch {branch} from {base_branch}.")
+        render.print_line(
+            f"-- git_workflow: created branch {branch} from {base_branch}."
+        )
     lib.record_git_base_branch(ticket_id, base_branch)
 
 
-def print_declined_criteria(newly_declined: list[tuple["lib.CriterionFrame", list[str]]]) -> None:
+def print_declined_criteria(
+    newly_declined: list[tuple["lib.CriterionFrame", list[str]]],
+) -> None:
     """
     Same shape as next_step.py's helper of the same name - prints one
     loud block per criterion a mechanical grounding check just rejected
@@ -138,7 +145,9 @@ def print_declined_criteria(newly_declined: list[tuple["lib.CriterionFrame", lis
         return
     render.print_line()
     noun = "criterion" if len(newly_declined) == 1 else "criteria"
-    render.print_line(f"-- {len(newly_declined)} {noun} failed mechanical grounding - NOT pushed:")
+    render.print_line(
+        f"-- {len(newly_declined)} {noun} failed mechanical grounding - NOT pushed:"
+    )
     for frame, reasons in newly_declined:
         render.print_line(f"   {frame.criterion}")
         for reason in reasons:
@@ -154,6 +163,7 @@ def resolve_ticket_frames(
     model: str,
     step_models: dict[str, str],
     ticket_file_in: Path | None,
+    strategy_override: str | None = None,
 ) -> list[lib.CriterionFrame]:
     """
     Fetches the ticket, runs plan+narrow, and builds one CriterionFrame
@@ -169,24 +179,33 @@ def resolve_ticket_frames(
 
     lib.remove_scratch_files((lib.TICKET_FILE, lib.PLAN_FILE, lib.GAP_PLAN_FILE))
     lib.TICKET_FILE.write_text(ticket_content, encoding="utf-8")
-    lib.walk(lib.build_planning_blocks(ticket_id, model, step_models=step_models, ticket_file_in=lib.TICKET_FILE))
+    lib.walk(
+        lib.build_planning_blocks(
+            ticket_id, model, step_models=step_models, ticket_file_in=lib.TICKET_FILE
+        )
+    )
     gap_plan_content = lib.GAP_PLAN_FILE.read_text(encoding="utf-8")
 
     criteria = lib.extract_acceptance_criteria(gap_plan_content)
     if not criteria:
-        render.print_line(f"-- {ticket_id}: no gap found. All acceptance criteria already satisfied.")
+        render.print_line(
+            f"-- {ticket_id}: no gap found. All acceptance criteria already satisfied."
+        )
         return []
 
     candidate_frames = [
         lib.CriterionFrame(
             ticket=ticket_id,
             criterion=criterion,
-            plan_context=lib.extract_plan_context_for_criterion(criterion, gap_plan_content),
+            plan_context=lib.extract_plan_context_for_criterion(
+                criterion, gap_plan_content
+            ),
             test_files=None,
             test_names=None,
             status="pending",
             origin="ticket",
             verification=lib.extract_verification_mode(criterion),
+            strategy=strategy_override or lib.extract_strategy(criterion),
             existing_test_refs=lib.extract_existing_test_refs(criterion),
             ticket_snapshot=ticket_content,
         )
@@ -205,7 +224,7 @@ def resolve_ticket_frames(
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Fetch a ticket, plan+narrow it, and seed the criteria "
-                     "stack with one frame per remaining acceptance criterion.",
+        "stack with one frame per remaining acceptance criterion.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -220,71 +239,79 @@ def main() -> None:
         type=Path,
         default=None,
         help="Read the ticket from this local file instead of fetching from "
-             "Linear - e.g. a not-yet-pushed revision from propose-ticket-edit.py. "
-             "Ignored with --from-gap-plan (no fetch happens either way).",
+        "Linear - e.g. a not-yet-pushed revision from propose-ticket-edit.py. "
+        "Ignored with --from-gap-plan (no fetch happens either way).",
     )
     seed_group = parser.add_mutually_exclusive_group()
     seed_group.add_argument(
         "--from-gap-plan",
         action="store_true",
         help="Read criteria from the existing .gap-plan.md instead of "
-             "fetching the ticket and re-running plan+narrow. The ticket ID "
-             "is still required (for the frame tag). Errors if .gap-plan.md "
-             "does not exist or isn't a valid gap plan.",
+        "fetching the ticket and re-running plan+narrow. The ticket ID "
+        "is still required (for the frame tag). Errors if .gap-plan.md "
+        "does not exist or isn't a valid gap plan.",
     )
     seed_group.add_argument(
         "--validate-only",
         action="store_true",
         help="Skip fetch/plan/narrow and criteria-building entirely - just "
-             "push a 'validating' sentinel for this ticket, so the next "
-             "'next_step' call runs the full ticket-validation gate directly. "
-             "Use this to trigger a validation pass on demand.",
+        "push a 'validating' sentinel for this ticket, so the next "
+        "'next_step' call runs the full ticket-validation gate directly. "
+        "Use this to trigger a validation pass on demand.",
     )
     guard_group = parser.add_mutually_exclusive_group()
     guard_group.add_argument(
         "--force",
         action="store_true",
         help="Abandon and replace an in-progress stack for a different "
-             "ticket. Without --force or --prepend, pushing a different "
-             "ticket while one is already in progress prints a warning "
-             "and exits non-zero.",
+        "ticket. Without --force or --prepend, pushing a different "
+        "ticket while one is already in progress prints a warning "
+        "and exits non-zero.",
     )
     guard_group.add_argument(
         "--prepend",
         action="store_true",
         help="Insert this ticket's frames ahead of an in-progress stack "
-             "for a different ticket, as a prerequisite - the in-progress "
-             "stack is kept, not discarded, and resumes automatically once "
-             "this ticket's own frames are popped and validated. Use this "
-             "when the current top criterion turns out to depend on some "
-             "other system that doesn't exist yet.",
+        "for a different ticket, as a prerequisite - the in-progress "
+        "stack is kept, not discarded, and resumes automatically once "
+        "this ticket's own frames are popped and validated. Use this "
+        "when the current top criterion turns out to depend on some "
+        "other system that doesn't exist yet.",
     )
     parser.add_argument(
         "--explore",
         action="store_true",
         help="After plan+narrow (or --from-gap-plan), run an interactive "
-             "per-criterion context-scaffolding session before writing the "
-             "stack. For each criterion the agent explores the codebase and "
-             "asks targeted questions about implementation approach, patterns, "
-             "and integration points, appending its findings to that frame's "
-             "plan_context so every downstream step sees the enriched context. "
-             "Incompatible with --validate-only (no criteria are built in that "
-             "mode). Makes push_ticket interactive - omit for scripted/headless "
-             "use.",
+        "per-criterion context-scaffolding session before writing the "
+        "stack. For each criterion the agent explores the codebase and "
+        "asks targeted questions about implementation approach, patterns, "
+        "and integration points, appending its findings to that frame's "
+        "plan_context so every downstream step sees the enriched context. "
+        "Incompatible with --validate-only (no criteria are built in that "
+        "mode). Makes push_ticket interactive - omit for scripted/headless "
+        "use.",
+    )
+    parser.add_argument(
+        "--strategy",
+        default=None,
+        choices=["tdd", "direct"],
+        help="Strategy for all seeded frames (default: per-criterion tag or 'tdd').",
     )
     parser.add_argument(
         "--log-level",
         default="info",
         choices=list(verbosity.LEVELS),
         help="Console verbosity (default: info). 'debug' shows per-tool-call "
-             "activity and command output even on success; 'trace' adds raw "
-             "request/response payloads; 'warning'/'error'/'critical' show "
-             "progressively less.",
+        "activity and command output even on success; 'trace' adds raw "
+        "request/response payloads; 'warning'/'error'/'critical' show "
+        "progressively less.",
     )
     args = parser.parse_args()
     verbosity.setup_logging(args.log_level)
     if args.explore and args.validate_only:
-        lib.die("--explore and --validate-only are incompatible: --validate-only pushes no criteria frames.")
+        lib.die(
+            "--explore and --validate-only are incompatible: --validate-only pushes no criteria frames."
+        )
     model, step_models = lib.resolve_step_models(lib.PIPELINE_CONFIG_FILE, args.model)
     git_cfg = lib.load_git_config(lib.PIPELINE_CONFIG_FILE)
     ticket_id = args.ticket_id
@@ -309,7 +336,9 @@ def main() -> None:
                 )
             log.info(
                 "-- --prepend: inserting %s ahead of %d frame(s) in progress for %s.",
-                ticket_id, len(existing), existing[0].ticket,
+                ticket_id,
+                len(existing),
+                existing[0].ticket,
             )
         elif not args.force:
             render.print_line(
@@ -324,7 +353,8 @@ def main() -> None:
         else:
             log.info(
                 "-- --force: overwriting in-progress stack for %s with %s.",
-                existing[0].ticket, ticket_id,
+                existing[0].ticket,
+                ticket_id,
             )
 
     # ── git-native workflow: branch + dirty-tree guard (Layer 1) ────────
@@ -335,7 +365,9 @@ def main() -> None:
         lib.ensure_validating_sentinel(ticket_id)
         render.print_line()
         render.print_line(f"-- Pushed a validation-pending marker for {ticket_id}.")
-        render.print_line("-- Run 'next_step' to run the full ticket validation gate now.")
+        render.print_line(
+            "-- Run 'next_step' to run the full ticket validation gate now."
+        )
         return
 
     if args.from_gap_plan:
@@ -344,30 +376,41 @@ def main() -> None:
             lib.die(f"--from-gap-plan given but {lib.GAP_PLAN_FILE} does not exist.")
         gap_plan_content = lib.GAP_PLAN_FILE.read_text(encoding="utf-8")
         if "## Acceptance Criteria" not in gap_plan_content:
-            lib.die(f"--from-gap-plan given but {lib.GAP_PLAN_FILE} is not a valid gap plan (see output above).")
-        render.print_line(f"-- Using existing {lib.GAP_PLAN_FILE} (--from-gap-plan). No fetch, no plan+narrow.")
+            lib.die(
+                f"--from-gap-plan given but {lib.GAP_PLAN_FILE} is not a valid gap plan (see output above)."
+            )
+        render.print_line(
+            f"-- Using existing {lib.GAP_PLAN_FILE} (--from-gap-plan). No fetch, no plan+narrow."
+        )
 
         criteria = lib.extract_acceptance_criteria(gap_plan_content)
         if not criteria:
             render.print_line()
-            render.print_line("-- No gap found. All acceptance criteria already satisfied. Nothing pushed.")
+            render.print_line(
+                "-- No gap found. All acceptance criteria already satisfied. Nothing pushed."
+            )
             render.print_line(f"-- Token usage: {ai_client.usage}")
             return
         candidate_frames = [
             lib.CriterionFrame(
                 ticket=ticket_id,
                 criterion=criterion,
-                plan_context=lib.extract_plan_context_for_criterion(criterion, gap_plan_content),
+                plan_context=lib.extract_plan_context_for_criterion(
+                    criterion, gap_plan_content
+                ),
                 test_files=None,
                 test_names=None,
                 status="pending",
                 origin="ticket",
                 verification=lib.extract_verification_mode(criterion),
+                strategy=strategy_override or lib.extract_strategy(criterion),
                 existing_test_refs=lib.extract_existing_test_refs(criterion),
             )
             for criterion in criteria
         ]
-        frames, newly_declined, skipped_count = lib.filter_grounded_frames(candidate_frames)
+        frames, newly_declined, skipped_count = lib.filter_grounded_frames(
+            candidate_frames
+        )
         print_declined_criteria(newly_declined)
         if skipped_count:
             render.print_line(
@@ -383,7 +426,11 @@ def main() -> None:
             return
     else:
         frames = resolve_ticket_frames(
-            ticket_id, model, step_models, args.ticket_file_in,
+            ticket_id,
+            model,
+            step_models,
+            args.ticket_file_in,
+            strategy_override=args.strategy,
         )
         if not frames:
             render.print_line("-- Nothing pushed.")
@@ -418,7 +465,9 @@ def main() -> None:
     else:
         lib.save_stack(frames)
         render.print_line()
-        render.print_line(f"-- Pushed {len(frames)} frame(s) for {ticket_id} onto the stack.")
+        render.print_line(
+            f"-- Pushed {len(frames)} frame(s) for {ticket_id} onto the stack."
+        )
         for frame in frames:
             render.print_line(f"   {frame.criterion}")
         render.print_line("-- Run 'next_step' to begin.")

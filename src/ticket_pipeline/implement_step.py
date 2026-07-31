@@ -116,8 +116,12 @@ DEFAULT_MODEL = "opencode:gpt-5.4-mini"
 DEFAULT_MAX_ATTEMPTS = 3
 
 IMPLEMENT_CRITERION_PROMPT_FILE = lib.PROMPTS_DIR / "implement-criterion.prompt.md"
-IMPLEMENT_CRITERION_DIRECT_PROMPT_FILE = lib.PROMPTS_DIR / "implement-criterion-direct.prompt.md"
-IMPLEMENT_CRITERION_REFACTOR_PROMPT_FILE = lib.PROMPTS_DIR / "implement-criterion-refactor.prompt.md"
+IMPLEMENT_CRITERION_DIRECT_PROMPT_FILE = (
+    lib.PROMPTS_DIR / "implement-criterion-direct.prompt.md"
+)
+IMPLEMENT_CRITERION_REFACTOR_PROMPT_FILE = (
+    lib.PROMPTS_DIR / "implement-criterion-refactor.prompt.md"
+)
 IMPLEMENT_REFINE_PROMPT_FILE = lib.PROMPTS_DIR / "implement-refine.prompt.md"
 
 # Pipeline bookkeeping the Implementor must never write, regardless of
@@ -153,7 +157,9 @@ def _extract_function_block(content: str, qualified_test_name: str) -> str | Non
     can't parse.
     """
     short_name = qualified_test_name.rsplit("::", 1)[-1]
-    match = re.search(rf"^[ \t]*.*\b{re.escape(short_name)}\s*\(", content, re.MULTILINE)
+    match = re.search(
+        rf"^[ \t]*.*\b{re.escape(short_name)}\s*\(", content, re.MULTILINE
+    )
     if not match:
         return None
     brace_start = content.find("{", match.end())
@@ -166,7 +172,7 @@ def _extract_function_block(content: str, qualified_test_name: str) -> str | Non
         elif content[i] == "}":
             depth -= 1
             if depth == 0:
-                return content[match.start():i + 1]
+                return content[match.start() : i + 1]
     return None
 
 
@@ -209,7 +215,9 @@ def verify_test_unchanged(
         )
 
 
-def snapshot_tests(test_files: list[str], test_names: list[str]) -> dict[str, str | None]:
+def snapshot_tests(
+    test_files: list[str], test_names: list[str]
+) -> dict[str, str | None]:
     """
     original_block per test_name (keyed by name - TEST_WITNESS parsing
     already requires names to be unique within a frame, since
@@ -221,25 +229,32 @@ def snapshot_tests(test_files: list[str], test_names: list[str]) -> dict[str, st
     snapshots: dict[str, str | None] = {}
     for test_file, test_name in zip(test_files, test_names):
         original_content = (
-            Path(test_file).read_text(encoding="utf-8") if Path(test_file).is_file() else None
+            Path(test_file).read_text(encoding="utf-8")
+            if Path(test_file).is_file()
+            else None
         )
         original_block = (
             _extract_function_block(original_content, test_name)
-            if original_content is not None else None
+            if original_content is not None
+            else None
         )
         if original_block is None:
             log.warning(
                 "-- Could not extract %s's source from %s for the tamper check "
                 "(non-brace language, or unexpected layout) - the byte-for-byte "
                 "verification will be skipped for this test.",
-                test_name, test_file,
+                test_name,
+                test_file,
             )
         snapshots[test_name] = original_block
     return snapshots
 
 
 def verify_tests_unchanged(
-    test_files: list[str], test_names: list[str], snapshots: dict[str, str | None], criterion: str
+    test_files: list[str],
+    test_names: list[str],
+    snapshots: dict[str, str | None],
+    criterion: str,
 ) -> None:
     """Loops verify_test_unchanged over every test in the group - a fix
     attempt aimed at one still-red test is just as capable of tampering
@@ -302,10 +317,11 @@ def build_implement_criterion_fix_prompt(
             f"and it compiles, but {'the test' if len(still_red) == 1 else 'these tests'} "
             f"still fail:\n{still_red_list}\n\n"
             + (
-                "Every test named above under \"failing test(s)\" must end up passing "
+                'Every test named above under "failing test(s)" must end up passing '
                 "- including any not listed as still failing, which already pass and "
                 "must not be broken while you fix the rest. "
-                if plural else ""
+                if plural
+                else ""
             )
             + "Read the test output below to understand the gap between what "
             "the still-failing test(s) expect and what the implementation does, "
@@ -401,13 +417,14 @@ def build_implement_criterion_refactor_fix_prompt(
         )
     else:
         still_red_list = "\n".join(f"- {n}" for n in still_red)
-        safety_quote = 'safety-net test(s)'
+        safety_quote = "safety-net test(s)"
         extra = (
-            f"Every test named above under \"{safety_quote}\" must end up "
+            f'Every test named above under "{safety_quote}" must end up '
             f"green - including any not listed as still red, which were "
             f"already green and must not be broken again while you fix the "
             f"rest. "
-            if len(test_names) != 1 else ""
+            if len(test_names) != 1
+            else ""
         )
         failure_desc = (
             f"and it builds, but your refactor broke "
@@ -442,20 +459,23 @@ def build_implement_feedback_prompt(
     verification: str = "test",
 ) -> str:
     instructions = lib.load_prompt_body(IMPLEMENT_REFINE_PROMPT_FILE)
-    changed_list = "\n".join(f"- {p}" for p in previous_changed_files) or "- (none recorded)"
+    changed_list = (
+        "\n".join(f"- {p}" for p in previous_changed_files) or "- (none recorded)"
+    )
     test_block = ""
     if frame.test_files and frame.test_names:
-        label = "Safety-net tests" if verification == "refactor" else "Tests to preserve"
-        test_block = (
-            f"\n\n{label}:\n"
-            + "\n".join(f"- {f} :: {n}" for f, n in zip(frame.test_files, frame.test_names))
+        label = (
+            "Safety-net tests" if verification == "refactor" else "Tests to preserve"
+        )
+        test_block = f"\n\n{label}:\n" + "\n".join(
+            f"- {f} :: {n}" for f, n in zip(frame.test_files, frame.test_names)
         )
     mode_note = (
         "This is a refactor retry: preserve behavior, keep the named tests GREEN, "
         "and address only the structural problem called out in the feedback."
         if verification == "refactor"
         else "This is an implementation retry: preserve the criterion and make the "
-             "smallest targeted correction the feedback asks for."
+        "smallest targeted correction the feedback asks for."
     )
     return (
         f"{instructions}\n\n---\n\n"
@@ -503,14 +523,20 @@ def run_implement_direct_with_refine(
                     frame, feedback, previous_changed_files or [], verification="manual"
                 )
             else:
-                prompt = build_implement_criterion_direct_prompt(frame.criterion, frame.plan_context)
+                prompt = build_implement_criterion_direct_prompt(
+                    frame.criterion, frame.plan_context
+                )
         else:
             log.warning(
                 "-- Build failed (attempt %d/%d). Feeding the error back to Direct Implementor to fix.",
-                attempt - 1, max_attempts,
+                attempt - 1,
+                max_attempts,
             )
             prompt = build_implement_criterion_direct_fix_prompt(
-                frame.criterion, frame.plan_context, sorted(set(all_changed)), last_error,
+                frame.criterion,
+                frame.plan_context,
+                sorted(set(all_changed)),
+                last_error,
             )
 
         attempt_changed: list[str] = []
@@ -534,7 +560,9 @@ def run_implement_direct_with_refine(
                 attempt_step, "implement-criterion-direct", criterion=frame.criterion
             )
         except (AIError, tools.PipelineAbort) as e:
-            lib.die_with_log("implement-criterion-direct", str(e), criterion=frame.criterion)
+            lib.die_with_log(
+                "implement-criterion-direct", str(e), criterion=frame.criterion
+            )
         lib.render_step_output(result.text)
         if not attempt_changed:
             lib.die_with_log(
@@ -553,7 +581,8 @@ def run_implement_direct_with_refine(
         last_error = (build_result.stdout or "") + (build_result.stderr or "")
         last_result = build_result
         lib.log_event(
-            "implement-criterion-direct", "retry",
+            "implement-criterion-direct",
+            "retry",
             error=f"build failed (attempt {attempt}/{max_attempts})",
             criterion=frame.criterion,
         )
@@ -617,7 +646,10 @@ def run_implement_with_refine(
         if attempt == 1:
             if feedback:
                 prompt = build_implement_feedback_prompt(
-                    frame, feedback, previous_changed_files or [], verification=verification
+                    frame,
+                    feedback,
+                    previous_changed_files or [],
+                    verification=verification,
                 )
             elif verification == "refactor":
                 prompt = build_implement_criterion_refactor_prompt(
@@ -631,17 +663,30 @@ def run_implement_with_refine(
             log.warning(
                 "-- %s failed (attempt %d/%d). Feeding the error back to Implementor to fix.",
                 "Build" if failure_kind == "compile" else "Green check",
-                attempt - 1, max_attempts,
+                attempt - 1,
+                max_attempts,
             )
             if verification == "refactor":
                 prompt = build_implement_criterion_refactor_fix_prompt(
-                    frame.criterion, frame.plan_context, test_files, test_names, still_red,
-                    sorted(set(all_changed)), failure_kind, last_error,
+                    frame.criterion,
+                    frame.plan_context,
+                    test_files,
+                    test_names,
+                    still_red,
+                    sorted(set(all_changed)),
+                    failure_kind,
+                    last_error,
                 )
             else:
                 prompt = build_implement_criterion_fix_prompt(
-                    frame.criterion, frame.plan_context, test_files, test_names, still_red,
-                    sorted(set(all_changed)), failure_kind, last_error,
+                    frame.criterion,
+                    frame.plan_context,
+                    test_files,
+                    test_names,
+                    still_red,
+                    sorted(set(all_changed)),
+                    failure_kind,
+                    last_error,
                 )
 
         attempt_changed: list[str] = []
@@ -688,7 +733,8 @@ def run_implement_with_refine(
             last_error = (build_result.stdout or "") + (build_result.stderr or "")
             last_result = build_result
             lib.log_event(
-                "implement-criterion", "retry",
+                "implement-criterion",
+                "retry",
                 error=f"build failed (attempt {attempt}/{max_attempts})",
                 criterion=frame.criterion,
             )
@@ -704,17 +750,25 @@ def run_implement_with_refine(
         failure_kind = "test-red"
         last_error = "\n\n".join(
             f"{n}:\n" + (r.stdout or "") + (r.stderr or "")
-            for n, r in zip(test_names, green_results) if r.returncode != 0
+            for n, r in zip(test_names, green_results)
+            if r.returncode != 0
         )
-        last_result = next(r for n, r in zip(test_names, green_results) if n in still_red)
+        last_result = next(
+            r for n, r in zip(test_names, green_results) if n in still_red
+        )
         lib.log_event(
-            "implement-criterion", "retry",
+            "implement-criterion",
+            "retry",
             error=f"{len(still_red)} test(s) still red (attempt {attempt}/{max_attempts})",
             criterion=frame.criterion,
         )
 
     exit_code = last_result.returncode if last_result is not None else "unknown"
-    what = "Code does not compile" if failure_kind == "compile" else f"{len(still_red)} test(s) still fail"
+    what = (
+        "Code does not compile"
+        if failure_kind == "compile"
+        else f"{len(still_red)} test(s) still fail"
+    )
     if verification == "refactor":
         tail = (
             " See output above. The frame is untouched - the safety-net test(s) "
@@ -739,8 +793,8 @@ def run_implement_with_refine(
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="AI-implement the top frame's criterion: make its named "
-                     "failing test pass without modifying it. Never touches "
-                     "the stack - run 'next_step' afterward to pop.",
+        "failing test pass without modifying it. Never touches "
+        "the stack - run 'next_step' afterward to pop.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -759,16 +813,16 @@ def main() -> None:
         type=int,
         default=DEFAULT_MAX_ATTEMPTS,
         help=f"Total Implementor attempts, initial write + refines sharing "
-             f"one budget (default: {DEFAULT_MAX_ATTEMPTS}).",
+        f"one budget (default: {DEFAULT_MAX_ATTEMPTS}).",
     )
     parser.add_argument(
         "--log-level",
         default="info",
         choices=list(verbosity.LEVELS),
         help="Console verbosity (default: info). 'debug' shows per-tool-call "
-             "activity and command output even on success; 'trace' adds raw "
-             "request/response payloads; 'warning'/'error'/'critical' show "
-             "progressively less.",
+        "activity and command output even on success; 'trace' adds raw "
+        "request/response payloads; 'warning'/'error'/'critical' show "
+        "progressively less.",
     )
     args = parser.parse_args()
     verbosity.setup_logging(args.log_level)
@@ -778,13 +832,18 @@ def main() -> None:
     # ── Guard: re-check every precondition from real state ─────────────────
     stack = lib.load_stack()
     if not stack:
-        render.print_line("-- Stack is empty. Nothing to implement. Run 'push_ticket <id>' first.")
+        render.print_line(
+            "-- Stack is empty. Nothing to implement. Run 'push_ticket <id>' first."
+        )
         sys.exit(1)
 
     frame = stack[0]
     log.info(
         "-- implement_step: ticket=%s status=%s verification=%s criterion=%s",
-        frame.ticket, frame.status, frame.verification, frame.criterion,
+        frame.ticket,
+        frame.status,
+        frame.verification,
+        frame.criterion,
     )
 
     # ── Level 2: manual-verification frames have no target test, so they
@@ -792,6 +851,32 @@ def main() -> None:
     # "pending"/"awaiting-manual-impl" mirror next_step.py's own pending
     # and MANUAL_PENDING_STATUS values - duplicated as literals rather
     # than imported, same as this script already does for "test-written".
+    if frame.strategy == "direct":
+        if frame.status not in ("pending", "implemented"):
+            render.print_line(
+                f"-- Top frame is a direct-strategy criterion but its status ({frame.status!r}) isn't awaiting implementation. Run 'next_step' first."
+            )
+            sys.exit(1)
+
+        render.print_line()
+        render.print_line("-- Implementing directly (strategy=direct):")
+        render.print_line(f"   Criterion: {frame.criterion}")
+
+        changed_files = run_implement_direct_with_refine(
+            frame, args.model, commands, args.max_attempts
+        )
+
+        render.print_line()
+        render.print_line(f"-- Implemented: {frame.criterion}")
+        render.print_line(
+            f"   Files changed ({len(changed_files)}): {', '.join(changed_files)}"
+        )
+        render.print_line(
+            "-- Run 'next_step' to check whether this satisfies the criterion and continue."
+        )
+        render.print_line(f"-- Token usage: {ai_client.usage}")
+        return
+
     if frame.verification == "manual":
         if frame.status not in ("pending", "awaiting-manual-impl"):
             render.print_line(
@@ -801,7 +886,9 @@ def main() -> None:
             sys.exit(1)
 
         render.print_line()
-        render.print_line("-- Implementing directly (verification=manual, no target test):")
+        render.print_line(
+            "-- Implementing directly (verification=manual, no target test):"
+        )
         render.print_line(f"   Criterion: {frame.criterion}")
 
         changed_files = run_implement_direct_with_refine(
@@ -810,7 +897,9 @@ def main() -> None:
 
         render.print_line()
         render.print_line(f"-- Implemented: {frame.criterion}")
-        render.print_line(f"   Files changed ({len(changed_files)}): {', '.join(changed_files)}")
+        render.print_line(
+            f"   Files changed ({len(changed_files)}): {', '.join(changed_files)}"
+        )
         render.print_line(
             "-- Run 'next_step' to check whether this satisfies the criterion and continue."
         )
@@ -845,7 +934,9 @@ def main() -> None:
         green_results = lib.run_scoped_tests(
             frame.test_names, commands, "pre-refactor green check"
         )
-        red_names = [n for n, r in zip(frame.test_names, green_results) if r.returncode != 0]
+        red_names = [
+            n for n, r in zip(frame.test_names, green_results) if r.returncode != 0
+        ]
         if red_names:
             render.print_line(
                 "-- Safety-net test(s) are RED - the refactor cannot proceed "
@@ -863,7 +954,10 @@ def main() -> None:
         render.print_line("   Criterion: " + frame.criterion)
 
         changed_files = run_implement_with_refine(
-            frame, args.model, commands, args.max_attempts,
+            frame,
+            args.model,
+            commands,
+            args.max_attempts,
             verification=frame.verification,
         )
 
@@ -875,7 +969,10 @@ def main() -> None:
         for f, n in zip(frame.test_files, frame.test_names):
             render.print_line("     " + f + " :: " + n)
         render.print_line(
-            "   Files changed (" + str(len(changed_files)) + "): " + ", ".join(changed_files)
+            "   Files changed ("
+            + str(len(changed_files))
+            + "): "
+            + ", ".join(changed_files)
         )
         render.print_line("-- Run 'next_step' to re-check and pop this criterion.")
         render.print_line(f"-- Token usage: {ai_client.usage}")
@@ -893,9 +990,7 @@ def main() -> None:
         render.print_line(
             "   There is no production code to implement - the rewrite itself"
         )
-        render.print_line(
-            "   is incorrect. Fix the test by hand (keep its assertions"
-        )
+        render.print_line("   is incorrect. Fix the test by hand (keep its assertions")
         render.print_line(
             "   functionally identical; change only the structural elements"
         )
@@ -912,7 +1007,9 @@ def main() -> None:
         )
         sys.exit(1)
 
-    red_results = lib.run_scoped_tests(frame.test_names, commands, "pre-implement red check")
+    red_results = lib.run_scoped_tests(
+        frame.test_names, commands, "pre-implement red check"
+    )
     still_red = [n for n, r in zip(frame.test_names, red_results) if r.returncode != 0]
     if not still_red:
         render.print_line(
@@ -926,23 +1023,31 @@ def main() -> None:
     if len(frame.test_names) == 1:
         render.print_line("-- Implementing:")
     else:
-        render.print_line(f"-- Implementing ({len(still_red)} of {len(frame.test_names)} still red):")
+        render.print_line(
+            f"-- Implementing ({len(still_red)} of {len(frame.test_names)} still red):"
+        )
     for f, n in zip(frame.test_files, frame.test_names):
         tag = "" if n in still_red else " (already passing)"
         render.print_line(f"   {f} :: {n}{tag}")
     render.print_line(f"   Criterion: {frame.criterion}")
 
-    changed_files = run_implement_with_refine(frame, args.model, commands, args.max_attempts)
+    changed_files = run_implement_with_refine(
+        frame, args.model, commands, args.max_attempts
+    )
 
     render.print_line()
     render.print_line(f"-- Implemented: {frame.criterion}")
     if len(frame.test_names) == 1:
-        render.print_line(f"   Test now green: {frame.test_files[0]} :: {frame.test_names[0]}")
+        render.print_line(
+            f"   Test now green: {frame.test_files[0]} :: {frame.test_names[0]}"
+        )
     else:
         render.print_line(f"   All {len(frame.test_names)} test(s) now green:")
         for f, n in zip(frame.test_files, frame.test_names):
             render.print_line(f"     {f} :: {n}")
-    render.print_line(f"   Files changed ({len(changed_files)}): {', '.join(changed_files)}")
+    render.print_line(
+        f"   Files changed ({len(changed_files)}): {', '.join(changed_files)}"
+    )
     render.print_line("-- Run 'next_step' to pop this criterion and continue.")
     render.print_line(f"-- Token usage: {ai_client.usage}")
 
