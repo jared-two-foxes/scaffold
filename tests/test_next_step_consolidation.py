@@ -4,7 +4,8 @@ import sys
 import unittest
 from unittest import mock
 
-from ticket_pipeline import cli, next_step, status
+from scaffold_cli import cli
+from ticket_pipeline import next_step, status
 from ticket_pipeline.lib import pipeline_lib as lib
 
 

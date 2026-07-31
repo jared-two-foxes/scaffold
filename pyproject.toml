@@ -13,7 +13,7 @@ requires-python = ">=3.11"
 dependencies = ["rich"]
 
 [project.scripts]
-scaffold = "ticket_pipeline.cli:main"
+scaffold = "scaffold_cli.cli:main"
 
 # Every script (push_ticket, review-ticket, next_step, ..., plus
 # bench/bench_block) is reachable as `scaffold <name>` via cli.py's
