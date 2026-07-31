@@ -39,7 +39,6 @@ import shutil
 import statistics
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import uuid
@@ -59,6 +58,12 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 # ticket_pipeline package - one level up from this module.
 PROJECT_DIR = SCRIPT_DIR.parent
 DEFAULT_REPO = Path.home() / "code" / "own" / "VirtualAssistant"
+SCAFFOLD_TEMP_DIR = Path.cwd() / ".scaffold"
+
+
+def _scaffold_temp_path(*parts: str) -> Path:
+    SCAFFOLD_TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    return SCAFFOLD_TEMP_DIR.joinpath(*parts)
 
 # test-criterion trials actually invoke cargo (compile + scoped run) -
 # each worktree is a fresh checkout with no target/ directory, so a
@@ -74,7 +79,7 @@ DEFAULT_REPO = Path.home() / "code" / "own" / "VirtualAssistant"
 # is only ever used by one trial at a time (checked out from the queue,
 # returned when done), so compiles stay warm within a lane but two
 # trials never touch the same target dir simultaneously.
-_CARGO_LANES_BASE = Path(tempfile.gettempdir()) / "bench-cargo-target"
+_CARGO_LANES_BASE = _scaffold_temp_path("bench-cargo-target")
 _cargo_lane_pool: "queue.Queue[Path]" = queue.Queue()
 _cargo_lane_pool_size = 0
 
@@ -182,7 +187,7 @@ def resolve_fixture_base_ref(fixtures_dir: Path) -> str:
 
 
 def create_worktree(repo: Path, base_ref: str) -> Path:
-    wt_path = Path(tempfile.gettempdir()) / "bench-worktrees" / uuid.uuid4().hex[:12]
+    wt_path = _scaffold_temp_path("bench-worktrees", uuid.uuid4().hex[:12])
     with _WORKTREE_LOCK:
         subprocess.run(
             [

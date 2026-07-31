@@ -7,6 +7,7 @@ __pycache__/
 .ruff_cache/
 
 # Pipeline runtime state files
+.scaffold/
 .pipeline-log.jsonl
 .criteria-stack.json
 .tdd-plan.md
