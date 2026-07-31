@@ -1,7 +1,7 @@
 """
 pipeline_lib - shared step library for push_ticket.py and next_step.py
-(the criteria-stack pipeline), plus the bench.py/bench_block.py
-benchmark harness.
+(the criteria-stack pipeline), plus the benchmark/bench.py and
+benchmark/bench_block.py harness.
 
 push_ticket.py seeds a `.criteria-stack.json` work-queue (fetch -> plan
 -> narrow -> one CriterionFrame per remaining acceptance criterion).

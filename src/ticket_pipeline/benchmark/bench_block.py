@@ -46,7 +46,7 @@ import sys
 import time
 from pathlib import Path
 
-from .lib import ai_client, pipeline_lib as lib
+from ..lib import ai_client, pipeline_lib as lib
 
 
 def grade_sa452_no_file_split(plan_text: str) -> tuple[bool, str]:

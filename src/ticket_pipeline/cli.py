@@ -98,11 +98,11 @@ _GROUPS: list[tuple[str, dict[str, _Command]]] = [
             has_argparse=False,
         ),
         "bench": _Command(
-            "bench",
+            "benchmark.bench",
             "Run a pipeline_lib block N times per model and report pass-rate/cost",
         ),
         "bench-block": _Command(
-            "bench_block",
+            "benchmark.bench_block",
             "Run one pipeline_lib block once against fixed fixtures (used by bench)",
         ),
     }),
