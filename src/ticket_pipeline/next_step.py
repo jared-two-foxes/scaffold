@@ -203,7 +203,9 @@ def do_pop(
     render.print_line(f"-- Criterion done: {just_popped_criterion}")
 
     if not new_stack or new_stack[0].ticket != just_popped_ticket:
-        do_ticket_validate(just_popped_ticket, ctx, ticket_snapshot=frame.ticket_snapshot)
+        do_ticket_validate(
+            just_popped_ticket, ctx, ticket_snapshot=frame.ticket_snapshot
+        )
         return
 
     if not ctx.continuous:

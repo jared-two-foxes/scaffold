@@ -546,7 +546,9 @@ class HandleNoTestWrittenTests(unittest.TestCase):
             mock.patch.object(lib, "save_stack"),
             mock.patch.object(lib, "recheck_single_criterion") as recheck,
         ):
-            tdd._handle_no_test_written(stack, frame, self._ctx(accept_no_test=True), skip_ai=True)
+            tdd._handle_no_test_written(
+                stack, frame, self._ctx(accept_no_test=True), skip_ai=True
+            )
         recheck.assert_not_called()
         self.assertEqual("done", frame.status)
 
