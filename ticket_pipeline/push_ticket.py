@@ -188,6 +188,7 @@ def resolve_ticket_frames(
             origin="ticket",
             verification=lib.extract_verification_mode(criterion),
             existing_test_refs=lib.extract_existing_test_refs(criterion),
+            ticket_snapshot=ticket_content,
         )
         for criterion in criteria
     ]
