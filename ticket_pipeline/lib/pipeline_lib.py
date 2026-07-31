@@ -1494,6 +1494,14 @@ class CriterionFrame:
     feedback: str | None = None
     feedback_target: str | None = None
     feedback_attempts: int = 0
+    ticket_snapshot: str | None = None  # rendered ticket markdown captured
+    # at push_ticket seed time (or at --validate-only push time, if the
+    # caller provides it). Re-used by TICKET_VALIDATE's re-narrow so the
+    # same ticket text that was planned against is also what validation
+    # checks, without an unconditional Linear round-trip. None means no
+    # snapshot was captured (e.g. --from-gap-plan, --validate-only with
+    # no fetch, or a stack file written before this field existed) -
+    # TICKET_VALIDATE falls back to a live fetch in that case.
 
 
 def load_stack() -> list[CriterionFrame]:
@@ -1611,7 +1619,7 @@ VALIDATING_ORIGIN = "ticket-validate"
 VALIDATING_CRITERION_TEXT = "(ticket validation pending)"
 
 
-def ensure_validating_sentinel(ticket_id: str) -> None:
+def ensure_validating_sentinel(ticket_id: str, ticket_snapshot: str | None = None) -> None:
     """
     Makes "this ticket still needs TICKET_VALIDATE" a durable stack
     frame instead of a fact that only exists for the duration of one
@@ -1630,6 +1638,11 @@ def ensure_validating_sentinel(ticket_id: str) -> None:
         resume mechanism, just pushed directly instead of arrived at
         via a pop.
 
+    ticket_snapshot: if provided, the rendered ticket markdown captured
+    at push_ticket seed time. Stored in the sentinel so that a resumed
+    retry (next `next_step` after a failed validation) can use the same
+    ticket text without re-fetching from Linear.
+
     Idempotent: does nothing if this exact sentinel is already the top
     frame - the case where this is a resumed retry after a prior
     validation failure, not a fresh one.
@@ -1647,6 +1660,7 @@ def ensure_validating_sentinel(ticket_id: str) -> None:
                 test_names=None,
                 status=VALIDATING_STATUS,
                 origin=VALIDATING_ORIGIN,
+                ticket_snapshot=ticket_snapshot,
             )
         ]
     )

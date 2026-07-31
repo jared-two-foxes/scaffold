@@ -1309,7 +1309,7 @@ def do_pop(frame: "lib.CriterionFrame", continuous: bool, model: str, step_model
     render.print_line(f"-- Criterion done: {just_popped_criterion}")
 
     if not new_stack or new_stack[0].ticket != just_popped_ticket:
-        do_ticket_validate(just_popped_ticket, model, step_models, commands, config_path, git_cfg)
+        do_ticket_validate(just_popped_ticket, model, step_models, commands, config_path, git_cfg, ticket_snapshot=frame.ticket_snapshot)
         return
 
     if not continuous:
@@ -1320,14 +1320,21 @@ def do_pop(frame: "lib.CriterionFrame", continuous: bool, model: str, step_model
     # straight into the new top frame's WRITE_TEST phase.
 
 
-def do_ticket_validate(ticket_id: str, model: str, step_models: dict[str, str], commands: dict, config_path: Path, git_cfg: "lib.GitConfig | None" = None) -> None:
+def do_ticket_validate(ticket_id: str, model: str, step_models: dict[str, str], commands: dict, config_path: Path, git_cfg: "lib.GitConfig | None" = None, ticket_snapshot: str | None = None) -> None:
     """
     Full ticket-validation gate, run once a ticket's per-criterion
-    frames are all popped: fresh re-fetch + re-narrow (safety net for
-    criteria the per-criterion gates missed), lint, full test suite,
-    smoke test, code review. A CHANGES REQUESTED review or a non-empty
-    safety-net re-narrow pushes new frames instead of failing outright -
-    next_step is meant to be re-run, not treated as a one-shot gate.
+    frames are all popped: re-narrow (safety net for criteria the
+    per-criterion gates missed), lint, full test suite, smoke test,
+    code review. A CHANGES REQUESTED review or a non-empty safety-net
+    re-narrow pushes new frames instead of failing outright - next_step
+    is meant to be re-run, not treated as a one-shot gate.
+
+    ticket_snapshot: the rendered ticket markdown captured at push_ticket
+    seed time, propagated here via the last popped criterion frame (or
+    the sentinel frame on a resumed retry). When present it is used
+    directly, avoiding a round-trip to Linear. When None (--validate-only,
+    --from-gap-plan, or an older stack file without the field), the ticket
+    is fetched live from Linear as before.
 
     The very first thing this does is ensure a "validating" sentinel
     frame for ticket_id is on the stack (see lib.ensure_validating_sentinel -
@@ -1345,13 +1352,17 @@ def do_ticket_validate(ticket_id: str, model: str, step_models: dict[str, str], 
     plan_model = step_models.get("plan", model)
     narrow_model = step_models.get("narrow", model)
     review_model = step_models.get("review", model)
-    lib.ensure_validating_sentinel(ticket_id)
+    lib.ensure_validating_sentinel(ticket_id, ticket_snapshot=ticket_snapshot)
 
     render.print_line()
     render.print_line(f"-- All criteria for {ticket_id} done. Running full ticket validation ...")
 
-    ticket_content = lib.fetch_ticket_text(ticket_id)
-    tools.write_file_block(str(lib.TICKET_FILE))(ticket_content)
+    if ticket_snapshot is not None:
+        ticket_content = ticket_snapshot
+        tools.write_file_block(str(lib.TICKET_FILE))(ticket_content)
+    else:
+        ticket_content = lib.fetch_ticket_text(ticket_id)
+        tools.write_file_block(str(lib.TICKET_FILE))(ticket_content)
 
     if lib.PLAN_FILE.is_file():
         plan_text = lib.PLAN_FILE.read_text(encoding="utf-8")
@@ -1636,8 +1647,9 @@ def step(
         # through (lint/test-suite/smoke/unparseable review) and left
         # this sentinel behind - re-enter validation directly, no pop
         # needed (there's nothing left to pop; the real criteria are
-        # long gone).
-        do_ticket_validate(frame.ticket, model, step_models, commands, config_path, git_cfg)
+        # long gone). Pass the sentinel's snapshot so a resumed retry
+        # still uses the original ticket text rather than re-fetching.
+        do_ticket_validate(frame.ticket, model, step_models, commands, config_path, git_cfg, ticket_snapshot=frame.ticket_snapshot)
         return
 
     if frame.status == FEEDBACK_READY_STATUS:
