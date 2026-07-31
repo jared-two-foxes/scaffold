@@ -14,8 +14,9 @@ import re
 import subprocess
 from pathlib import Path
 
-from . import pipeline_lib as lib, render, tools, verbosity
+from . import pipeline_lib as lib, tools, verbosity
 from .ai_client import AIError, run_with_tools
+from .retry import RetryPolicy
 
 log = verbosity.get_logger(__name__)
 
@@ -408,6 +409,7 @@ def run_implement_direct_with_refine(
     max_attempts: int,
     feedback: str | None = None,
     previous_changed_files: list[str] | None = None,
+    retry_policy: RetryPolicy | None = None,
 ) -> list[str]:
     """
     Level 2: direct implementation for a verification="manual" frame -
@@ -419,11 +421,18 @@ def run_implement_direct_with_refine(
     actually satisfied - that's next_step's do_manual_criterion, unchanged,
     run on the next 'next_step' call.
     """
+    from .retry import FixedBudgetPolicy
+
+    policy = retry_policy or FixedBudgetPolicy(max_attempts)
+    limit_desc = policy.describe_limit()
+
     all_changed: list[str] = []
     last_error: str | None = None
     last_result: subprocess.CompletedProcess | None = None
 
-    for attempt in range(1, max_attempts + 1):
+    attempt = 0
+    while True:
+        attempt += 1
         if attempt == 1:
             if feedback:
                 prompt = build_implement_feedback_prompt(
@@ -435,9 +444,9 @@ def run_implement_direct_with_refine(
                 )
         else:
             log.warning(
-                "-- Build failed (attempt %d/%d). Feeding the error back to Direct Implementor to fix.",
+                "-- Build failed (attempt %d, %s). Feeding the error back to Direct Implementor to fix.",
                 attempt - 1,
-                max_attempts,
+                limit_desc,
             )
             prompt = build_implement_criterion_direct_fix_prompt(
                 frame.criterion,
@@ -480,7 +489,7 @@ def run_implement_direct_with_refine(
         all_changed.extend(attempt_changed)
 
         build_result = lib.run_command(
-            commands["build_cmd"], f"build gate (attempt {attempt}/{max_attempts})"
+            commands["build_cmd"], f"build gate (attempt {attempt}, {limit_desc})"
         )
         if build_result.returncode == 0:
             return sorted(set(all_changed))
@@ -490,19 +499,19 @@ def run_implement_direct_with_refine(
         lib.log_event(
             "implement-criterion-direct",
             "retry",
-            error=f"build failed (attempt {attempt}/{max_attempts})",
+            error=f"build failed (attempt {attempt}, {limit_desc})",
             criterion=frame.criterion,
         )
-
-    exit_code = last_result.returncode if last_result is not None else "unknown"
-    lib.die_with_log(
-        "implement-criterion-direct",
-        f"Code does not build after {max_attempts} attempt(s) (exit {exit_code}). See "
-        f"output above. The frame is untouched - run 'next_step' again (perhaps "
-        f"with a different --model), or make the change by hand and then re-run "
-        f"'next_step'.",
-        criterion=frame.criterion,
-    )
+        if not policy.should_continue(attempt, "compile", frame, None):
+            policy.on_exhausted(
+                "compile",
+                last_error or "",
+                sorted(set(all_changed)),
+                last_result,
+                frame,
+                None,
+            )
+            return sorted(set(all_changed))
 
 
 def run_implement_with_refine(
@@ -513,6 +522,7 @@ def run_implement_with_refine(
     verification: str = "test",
     feedback: str | None = None,
     previous_changed_files: list[str] | None = None,
+    retry_policy: RetryPolicy | None = None,
 ) -> list[str]:
     """
     Implement the frame's criterion against its named failing test(s),
@@ -539,6 +549,11 @@ def run_implement_with_refine(
     test_files, test_names = frame.test_files, frame.test_names
     snapshots = snapshot_tests(test_files, test_names)
 
+    from .retry import FixedBudgetPolicy
+
+    policy = retry_policy or FixedBudgetPolicy(max_attempts)
+    limit_desc = policy.describe_limit()
+
     all_changed: list[str] = []
     failure_kind: str | None = None
     last_error: str | None = None
@@ -549,7 +564,9 @@ def run_implement_with_refine(
     # attempt's green check anyway.
     still_red: list[str] = [] if verification == "refactor" else list(test_names)
 
-    for attempt in range(1, max_attempts + 1):
+    attempt = 0
+    while True:
+        attempt += 1
         if attempt == 1:
             if feedback:
                 prompt = build_implement_feedback_prompt(
@@ -568,10 +585,10 @@ def run_implement_with_refine(
                 )
         else:
             log.warning(
-                "-- %s failed (attempt %d/%d). Feeding the error back to Implementor to fix.",
+                "-- %s failed (attempt %d, %s). Feeding the error back to Implementor to fix.",
                 "Build" if failure_kind == "compile" else "Green check",
                 attempt - 1,
-                max_attempts,
+                limit_desc,
             )
             if verification == "refactor":
                 prompt = build_implement_criterion_refactor_fix_prompt(
@@ -633,7 +650,7 @@ def run_implement_with_refine(
         verify_tests_unchanged(test_files, test_names, snapshots, frame.criterion)
 
         build_result = lib.run_command(
-            commands["build_cmd"], f"build gate (attempt {attempt}/{max_attempts})"
+            commands["build_cmd"], f"build gate (attempt {attempt}, {limit_desc})"
         )
         if build_result.returncode != 0:
             failure_kind = "compile"
@@ -642,13 +659,23 @@ def run_implement_with_refine(
             lib.log_event(
                 "implement-criterion",
                 "retry",
-                error=f"build failed (attempt {attempt}/{max_attempts})",
+                error=f"build failed (attempt {attempt}, {limit_desc})",
                 criterion=frame.criterion,
             )
+            if not policy.should_continue(attempt, failure_kind, frame, None):
+                policy.on_exhausted(
+                    failure_kind,
+                    last_error or "",
+                    sorted(set(all_changed)),
+                    last_result,
+                    frame,
+                    None,
+                )
+                return sorted(set(all_changed))
             continue
 
         green_results = lib.run_scoped_tests(
-            test_names, commands, f"green check (attempt {attempt}/{max_attempts})"
+            test_names, commands, f"green check (attempt {attempt}, {limit_desc})"
         )
         still_red = [n for n, r in zip(test_names, green_results) if r.returncode != 0]
         if not still_red:
@@ -666,32 +693,16 @@ def run_implement_with_refine(
         lib.log_event(
             "implement-criterion",
             "retry",
-            error=f"{len(still_red)} test(s) still red (attempt {attempt}/{max_attempts})",
+            error=f"{len(still_red)} test(s) still red (attempt {attempt}, {limit_desc})",
             criterion=frame.criterion,
         )
-
-    exit_code = last_result.returncode if last_result is not None else "unknown"
-    what = (
-        "Code does not compile"
-        if failure_kind == "compile"
-        else f"{len(still_red)} test(s) still fail"
-    )
-    if verification == "refactor":
-        tail = (
-            " See output above. The frame is untouched - the safety-net test(s) "
-            "were broken by the refactor and 'next_step' still pauses at "
-            "baseline-confirmed, so you can fix the refactor by hand (or run "
-            "'next_step' again, perhaps with a different --model)."
-        )
-    else:
-        tail = (
-            ". See output above. The frame is untouched - the test(s) are "
-            "still red and 'next_step' still reports AWAIT_IMPL, so you can "
-            "implement by hand (or run 'next_step' again, perhaps with a "
-            "different --model)."
-        )
-    lib.die_with_log(
-        "implement-criterion",
-        f"{what} after {max_attempts} attempt(s) (exit {exit_code}){tail}",
-        criterion=frame.criterion,
-    )
+        if not policy.should_continue(attempt, failure_kind, frame, None):
+            policy.on_exhausted(
+                failure_kind,
+                last_error or "",
+                sorted(set(all_changed)),
+                last_result,
+                frame,
+                None,
+            )
+            return sorted(set(all_changed))

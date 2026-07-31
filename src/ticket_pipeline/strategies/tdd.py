@@ -118,6 +118,7 @@ def do_write_test(
             frame.plan_context,
             ctx.model,
             ctx.commands,
+            retry_policy=ctx.retry_policy,
             ticket_id=frame.ticket,
             existing_test_refs=frame.existing_test_refs,
             verification=frame.verification,
@@ -387,7 +388,7 @@ def skip_test_implementation(
 ) -> None:
     next_step._record_base_commit_if_needed(stack, frame, ctx.git_cfg)
     implement_lib.run_implement_direct_with_refine(
-        frame, ctx.model, ctx.commands, ctx.max_attempts
+        frame, ctx.model, ctx.commands, ctx.max_attempts, retry_policy=ctx.retry_policy
     )
     _handle_no_test_written(
         stack,
@@ -451,6 +452,7 @@ def implement(frame, ctx, feedback=None, previous_changed_files=None):
         ctx.model,
         ctx.commands,
         ctx.max_attempts,
+        retry_policy=ctx.retry_policy,
         feedback=feedback,
         previous_changed_files=previous_changed_files,
     )

@@ -57,6 +57,7 @@ from . import repo_context
 from . import tools
 from . import toolchains
 from . import verbosity
+from .retry import RetryPolicy
 
 log = verbosity.get_logger(__name__)
 
@@ -710,7 +711,9 @@ def load_pipeline_config(config_path: Path) -> dict:
     # load_smoke_cmd; the git_workflow.* keys via load_git_config). All
     # other top-level keys stay unknown-key-rejected so a typo in a
     # toolchain command name is still caught loudly.
-    _ALLOWED_EXTRA_KEYS = {"step_models", "smoke_cmd"} | set(GitConfig.__annotations__)
+    _ALLOWED_EXTRA_KEYS = {"step_models", "smoke_cmd", "retry"} | set(
+        GitConfig.__annotations__
+    )
     unknown = set(data) - set(toolchain.commands) - _ALLOWED_EXTRA_KEYS
     if unknown:
         die(
@@ -1428,6 +1431,7 @@ class StepContext:
     config_path: Path
     continuous: bool
     max_attempts: int
+    retry_policy: RetryPolicy | None = None
     accept_green: bool = False
     accept_manual: bool = False
     accept_no_test: bool = False
@@ -3529,6 +3533,7 @@ def run_test_for_criterion_with_full_retry(
     model: str,
     commands: dict,
     max_attempts: int = 5,
+    retry_policy: RetryPolicy | None = None,
     ticket_id: str | None = None,
     existing_test_refs: list[str] | None = None,
     verification: str = "test",
@@ -3599,6 +3604,11 @@ def run_test_for_criterion_with_full_retry(
     compile-retry variant); fix prompts already say "read_file {files}
     and fix them" regardless of new vs. modified.
     """
+    from .retry import FixedBudgetPolicy
+
+    policy = retry_policy or FixedBudgetPolicy(max_attempts)
+    limit_desc = policy.describe_limit()
+
     file_paths: list[str] = []
     test_names: list[str] = []
     failure_kind: str | None = None  # "compile" | "quality-red" | "quality-green"
@@ -3607,7 +3617,9 @@ def run_test_for_criterion_with_full_retry(
     test_results: list[subprocess.CompletedProcess] = []
     quality_concern: str | None = None
 
-    for attempt in range(1, max_attempts + 1):
+    attempt = 0
+    while True:
+        attempt += 1
         # -- Select prompt ------------------------------------------------
         if attempt == 1:
             if feedback:
@@ -3628,18 +3640,18 @@ def run_test_for_criterion_with_full_retry(
                 )
         elif failure_kind == "compile":
             log.warning(
-                "-- Compile failed (attempt %d/%d). Feeding the compile error back to Tester to fix.",
+                "-- Compile failed (attempt %d, %s). Feeding the compile error back to Tester to fix.",
                 attempt - 1,
-                max_attempts,
+                limit_desc,
             )
             prompt = build_test_criterion_fix_prompt(
                 criterion, plan_context, file_paths, last_error
             )
         elif failure_kind in ("quality-red", "quality-green"):
             log.warning(
-                "-- Test-quality review flagged (attempt %d/%d). Feeding the concern back to Tester.",
+                "-- Test-quality review flagged (attempt %d, %s). Feeding the concern back to Tester.",
                 attempt - 1,
-                max_attempts,
+                limit_desc,
             )
             prompt = build_test_criterion_quality_fix_prompt(
                 criterion,
@@ -3671,7 +3683,7 @@ def run_test_for_criterion_with_full_retry(
         # -- Gate 1: compile ---------------------------------------------
         compile_result = run_command(
             commands["test_compile_cmd"],
-            f"test compile gate (attempt {attempt}/{max_attempts})",
+            f"test compile gate (attempt {attempt}, {limit_desc})",
         )
         if compile_result.returncode != 0:
             failure_kind = "compile"
@@ -3679,17 +3691,19 @@ def run_test_for_criterion_with_full_retry(
             log_event(
                 "test-criterion",
                 "retry",
-                error=f"compile failed (attempt {attempt}/{max_attempts})",
+                error=f"compile failed (attempt {attempt}, {limit_desc})",
                 criterion=criterion,
                 ticket=ticket_id,
             )
+            if not policy.should_continue(attempt, failure_kind, None, None):
+                break
             continue
 
         # -- Gate 2: run scoped tests ------------------------------------
         test_results = run_scoped_tests(
             test_names,
             commands,
-            f"red check (attempt {attempt}/{max_attempts})",
+            f"red check (attempt {attempt}, {limit_desc})",
             quiet=True,
         )
 
@@ -3720,10 +3734,12 @@ def run_test_for_criterion_with_full_retry(
             )
             render.print_line()
             render.print_line(
-                f"-- Test-quality review flagged (attempt {attempt}/{max_attempts}, "
+                f"-- Test-quality review flagged (attempt {attempt}, {limit_desc}, "
                 f"test is {'red' if any_red else 'green'}):"
             )
             render.print_line(concern)
+            if not policy.should_continue(attempt, failure_kind, None, None):
+                break
             continue
 
         # -- All gates passed --------------------------------------------
@@ -3740,8 +3756,8 @@ def run_test_for_criterion_with_full_retry(
     # test_results holds the last iteration's results for dispatch.
     if quality_concern:
         log.warning(
-            "-- Test-quality review still flagged after %d attempts (advisory, proceeding): %s",
-            max_attempts,
+            "-- Test-quality review still flagged after %s (advisory, proceeding): %s",
+            limit_desc,
             quality_concern,
         )
     return file_paths, test_names, test_results, compile_result, quality_concern

@@ -162,6 +162,7 @@ def implement(frame, ctx, feedback=None, previous_changed_files=None):
         ctx.model,
         ctx.commands,
         ctx.max_attempts,
+        retry_policy=ctx.retry_policy,
         verification=frame.verification,
         feedback=feedback,
         previous_changed_files=previous_changed_files,

@@ -2,11 +2,18 @@ import io
 import subprocess
 import sys
 import unittest
+import tempfile
+from pathlib import Path
 from unittest import mock
 
 from scaffold_cli import cli
 from ticket_pipeline import next_step, status
 from ticket_pipeline.lib import pipeline_lib as lib
+from ticket_pipeline.lib.retry import (
+    EndlessRetryPolicy,
+    FixedBudgetPolicy,
+    resolve_retry_policy,
+)
 from ticket_pipeline.strategies import manual as manual_strategy
 from ticket_pipeline.strategies import tdd as tdd_strategy
 
@@ -228,6 +235,26 @@ class CliHelpTests(unittest.TestCase):
         self.assertIn("--manual-test", help_text)
         self.assertIn("--manual-test-ref", help_text)
         self.assertIn("--skip-implementation", help_text)
+        self.assertIn("--retry-policy", help_text)
+
+
+class RetryPolicyResolutionTests(unittest.TestCase):
+    def test_resolve_retry_policy_defaults_to_none(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertIsNone(resolve_retry_policy(Path(d) / "missing.toml", None, 3))
+
+    def test_resolve_retry_policy_supports_endless_from_config(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = Path(d) / "pipeline.toml"
+            cfg.write_text("[retry]\npolicy = 'endless'\n", encoding="utf-8")
+            policy = resolve_retry_policy(cfg, None, 3)
+        self.assertIsInstance(policy, EndlessRetryPolicy)
+
+    def test_resolve_retry_policy_supports_cli_fixed_budget(self):
+        with tempfile.TemporaryDirectory() as d:
+            policy = resolve_retry_policy(Path(d) / "missing.toml", "fixed-budget", 5)
+        self.assertIsInstance(policy, FixedBudgetPolicy)
+        self.assertEqual(5, policy.max_attempts)
 
 
 class ManualTestModeTests(unittest.TestCase):

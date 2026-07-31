@@ -42,6 +42,7 @@ import sys
 from pathlib import Path
 
 from .lib import ai_client, pipeline_lib as lib, render, tools, verbosity
+from .lib.retry import resolve_retry_policy
 from .strategies.registry import resolve_strategy
 
 log = verbosity.get_logger(__name__)
@@ -498,6 +499,7 @@ def step(
     skip_test: bool = False,
     skip_implementation: bool = False,
     max_attempts: int = 3,
+    retry_policy=None,
     git_cfg: "lib.GitConfig | None" = None,
     strategy_override: str | None = None,
 ) -> None:
@@ -531,6 +533,7 @@ def step(
         config_path=config_path,
         continuous=continuous,
         max_attempts=max_attempts,
+        retry_policy=retry_policy,
         accept_green=accept_green,
         accept_manual=accept_manual,
         accept_no_test=accept_no_test,
@@ -647,6 +650,12 @@ def main() -> None:
         "refines sharing one budget (default: 3).",
     )
     parser.add_argument(
+        "--retry-policy",
+        default=None,
+        choices=["fixed-budget", "endless"],
+        help="Retry policy for refine loops. Default: fixed-budget with --max-attempts.",
+    )
+    parser.add_argument(
         "--accept-green",
         action="store_true",
         help="Accept the top frame as satisfied if it's currently paused "
@@ -736,6 +745,12 @@ def main() -> None:
 
     model, step_models = lib.resolve_step_models(config_path, args.model)
     git_cfg = lib.load_git_config(config_path)
+    try:
+        retry_policy = resolve_retry_policy(
+            config_path, args.retry_policy, args.max_attempts
+        )
+    except ValueError as e:
+        parser.error(str(e))
 
     while True:
         step(
@@ -752,6 +767,7 @@ def main() -> None:
             skip_test=args.skip_test,
             skip_implementation=args.skip_implementation,
             max_attempts=args.max_attempts,
+            retry_policy=retry_policy,
             git_cfg=git_cfg,
             strategy_override=args.strategy,
         )
