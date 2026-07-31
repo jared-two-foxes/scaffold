@@ -2,12 +2,57 @@
 
 import sys
 
-from .. import implement_step, next_step
-from ..lib import ai_client, pipeline_lib as lib, render
+from .. import next_step
+from ..lib import ai_client, implement as implement_lib, pipeline_lib as lib, render
 
 PHASES = ["pending", "manual-pending", "done"]
+MANUAL_PENDING_STATUS = "awaiting-manual-impl"
 
 IMPL_AWAITING_STATUS = "awaiting-manual-impl"
+
+
+def do_await_manual_impl(frame: "lib.CriterionFrame", paths: list[str]) -> None:
+    render.print_line()
+    render.print_line("-- Manual change needed (not test-verifiable):")
+    render.print_line(f"   Criterion: {frame.criterion}")
+    if frame.plan_context:
+        render.print_line(f"   Context: {frame.plan_context}")
+    if paths:
+        render.print_line(f"   Expecting changes to: {', '.join(paths)}")
+        render.print_line(
+            "   Make the change by hand, or run 'next_step' again to let the "
+            "pipeline attempt it automatically. A later 'next_step' run checks "
+            "whether those file(s) actually changed before marking this done."
+        )
+    else:
+        render.print_line(
+            "   No specific file could be identified from this criterion, so "
+            "there's nothing to mechanically check here. Make the change by "
+            "hand, or run 'next_step' again to let the pipeline try it, then "
+            "use 'next_step --accept-manual' to confirm it's done."
+        )
+    render.print_line(f"-- Token usage: {ai_client.usage}")
+    sys.exit(0)
+
+
+def do_manual_criterion(
+    stack: list,
+    frame: "lib.CriterionFrame",
+    accept_manual: bool,
+    git_cfg: "lib.GitConfig | None" = None,
+) -> None:
+    next_step._record_base_commit_if_needed(stack, frame, git_cfg)
+    paths = lib.extract_referenced_paths(f"{frame.criterion}\n{frame.plan_context}")
+    mechanically_confirmed = bool(paths) and bool(
+        set(paths) & set(lib.git_changed_files())
+    )
+    if mechanically_confirmed or accept_manual:
+        frame.status = "done"
+        lib.save_stack(stack)
+        return
+    frame.status = MANUAL_PENDING_STATUS
+    lib.save_stack(stack)
+    do_await_manual_impl(frame, paths)
 
 
 def implement(frame, ctx, feedback=None, previous_changed_files=None):
@@ -21,7 +66,7 @@ def implement(frame, ctx, feedback=None, previous_changed_files=None):
     render.print_line("-- Implementing directly (verification=manual, no target test):")
     render.print_line(f"   Criterion: {frame.criterion}")
 
-    changed_files = implement_step.run_implement_direct_with_refine(
+    changed_files = implement_lib.run_implement_direct_with_refine(
         frame,
         ctx.model,
         ctx.commands,
@@ -40,38 +85,17 @@ def implement(frame, ctx, feedback=None, previous_changed_files=None):
 
 
 def recheck(stack, frame, ctx):
-    return next_step.do_manual_criterion(stack, frame, ctx.accept_manual, ctx.git_cfg)
+    return do_manual_criterion(stack, frame, ctx.accept_manual, ctx.git_cfg)
 
 
 def advance(stack, frame, ctx):
     if frame.status == "pending":
-        next_step._record_base_commit_if_needed(stack, frame, ctx.git_cfg)
-        paths = lib.extract_referenced_paths(f"{frame.criterion}\n{frame.plan_context}")
-        mechanically_confirmed = bool(paths) and bool(
-            set(paths) & set(lib.git_changed_files())
-        )
-        if mechanically_confirmed or ctx.accept_manual:
-            frame.status = "done"
-            lib.save_stack(stack)
-            return
-        implement(frame, ctx)
-        if ctx.continuous and paths:
-            return
-        sys.exit(0)
+        do_manual_criterion(stack, frame, ctx.accept_manual, ctx.git_cfg)
+        return
 
-    if frame.status == next_step.MANUAL_PENDING_STATUS:
-        paths = lib.extract_referenced_paths(f"{frame.criterion}\n{frame.plan_context}")
-        mechanically_confirmed = bool(paths) and bool(
-            set(paths) & set(lib.git_changed_files())
-        )
-        if mechanically_confirmed or ctx.accept_manual:
-            frame.status = "done"
-            lib.save_stack(stack)
-            return
-        implement(frame, ctx)
-        if ctx.continuous:
-            return
-        sys.exit(0)
+    if frame.status == MANUAL_PENDING_STATUS:
+        do_manual_criterion(stack, frame, ctx.accept_manual, ctx.git_cfg)
+        return
 
     if frame.status == "done":
         next_step.do_pop(

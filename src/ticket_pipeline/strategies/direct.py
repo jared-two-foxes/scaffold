@@ -2,8 +2,8 @@
 
 import sys
 
-from .. import implement_step, next_step
-from ..lib import ai_client, pipeline_lib as lib, render
+from .. import next_step
+from ..lib import ai_client, implement as implement_lib, pipeline_lib as lib, render
 
 PHASES = ["pending", "implemented", "done"]
 IMPL_AWAITING_STATUS = "pending"
@@ -20,7 +20,7 @@ def implement(frame, ctx, feedback=None, previous_changed_files=None):
     render.print_line("-- Implementing directly (strategy=direct):")
     render.print_line(f"   Criterion: {frame.criterion}")
 
-    changed_files = implement_step.run_implement_direct_with_refine(
+    changed_files = implement_lib.run_implement_direct_with_refine(
         frame,
         ctx.model,
         ctx.commands,

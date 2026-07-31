@@ -7,6 +7,8 @@ from unittest import mock
 from scaffold_cli import cli
 from ticket_pipeline import next_step, status
 from ticket_pipeline.lib import pipeline_lib as lib
+from ticket_pipeline.strategies import manual as manual_strategy
+from ticket_pipeline.strategies import tdd as tdd_strategy
 
 
 class NextStepDispatchTests(unittest.TestCase):
@@ -31,27 +33,25 @@ class NextStepDispatchTests(unittest.TestCase):
         frame = self._frame()
         with (
             mock.patch.object(lib, "load_stack", return_value=[frame]),
-            mock.patch.object(next_step, "recheck_test_frame") as recheck,
+            mock.patch.object(tdd_strategy, "recheck_test_frame") as recheck,
         ):
             next_step.step(
                 "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
             )
         recheck.assert_called_once()
 
-    def test_awaiting_manual_dispatches_to_implementation_phase(self):
+    def test_awaiting_manual_dispatches_to_manual_pause_handler(self):
         frame = self._frame(
-            verification="manual", status=next_step.MANUAL_PENDING_STATUS
+            verification="manual", status=manual_strategy.MANUAL_PENDING_STATUS
         )
         with (
             mock.patch.object(lib, "load_stack", return_value=[frame]),
-            mock.patch("ticket_pipeline.strategies.manual.implement") as run_impl,
+            mock.patch("ticket_pipeline.strategies.manual.do_await_manual_impl") as run_pause,
         ):
-            with self.assertRaises(SystemExit) as cm:
-                next_step.step(
-                    "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
-                )
-        self.assertEqual(0, cm.exception.code)
-        run_impl.assert_called_once()
+            next_step.step(
+                "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
+            )
+        run_pause.assert_called_once()
 
     def test_baseline_confirmed_dispatches_to_implementation_phase(self):
         frame = self._frame(
@@ -96,7 +96,7 @@ class NextStepContinuousModeTests(unittest.TestCase):
             plan_context="ctx",
             test_files=None,
             test_names=None,
-            status=next_step.MANUAL_PENDING_STATUS,
+            status=manual_strategy.MANUAL_PENDING_STATUS,
             origin="ticket",
             verification="manual",
             strategy="manual",
@@ -111,7 +111,7 @@ class NextStepContinuousModeTests(unittest.TestCase):
             mock.patch.object(lib, "run_scoped_tests", return_value=[red]),
             mock.patch("ticket_pipeline.strategies.tdd.implement") as implement,
         ):
-            next_step.recheck_test_frame(
+            tdd_strategy.recheck_test_frame(
                 [frame],
                 frame,
                 "model",
@@ -133,7 +133,7 @@ class NextStepContinuousModeTests(unittest.TestCase):
             mock.patch.object(lib, "run_scoped_tests", return_value=[red]),
             mock.patch("ticket_pipeline.strategies.tdd.implement") as implement,
         ):
-            next_step.recheck_test_frame(
+            tdd_strategy.recheck_test_frame(
                 [frame],
                 frame,
                 "model",
@@ -148,7 +148,7 @@ class NextStepContinuousModeTests(unittest.TestCase):
 
     def test_continuous_still_pauses_for_green_unconfirmed(self):
         frame = self._test_frame(
-            status=next_step.GREEN_UNCONFIRMED_STATUS,
+            status=tdd_strategy.GREEN_UNCONFIRMED_STATUS,
             unconfirmed_tests=["tests::example"],
         )
         green = subprocess.CompletedProcess(
@@ -173,11 +173,9 @@ class NextStepContinuousModeTests(unittest.TestCase):
         with (
             mock.patch.object(lib, "git_changed_files", return_value=["docs/guide.md"]),
             mock.patch.object(lib, "extract_referenced_paths", return_value=[]),
-            mock.patch("ticket_pipeline.strategies.manual.implement") as implement,
+            mock.patch("ticket_pipeline.strategies.manual.do_await_manual_impl") as await_manual,
         ):
-            from ticket_pipeline.strategies import manual
-
-            manual.advance(
+            manual_strategy.advance(
                 [frame],
                 frame,
                 lib.StepContext(
@@ -189,7 +187,7 @@ class NextStepContinuousModeTests(unittest.TestCase):
                     max_attempts=2,
                 ),
             )
-        implement.assert_called_once()
+        await_manual.assert_called_once()
 
 
 class CliHelpTests(unittest.TestCase):
@@ -253,8 +251,8 @@ class ManualTestModeTests(unittest.TestCase):
             ),
             mock.patch.object(lib, "run_scoped_tests", return_value=[red]),
             mock.patch.object(lib, "save_stack") as save_stack,
-            mock.patch.object(next_step, "recheck_test_frame") as recheck,
-            mock.patch.object(next_step, "do_write_test") as do_write_test,
+            mock.patch.object(tdd_strategy, "recheck_test_frame") as recheck,
+            mock.patch.object(tdd_strategy, "do_write_test") as do_write_test,
         ):
             next_step.step(
                 "model",
@@ -287,8 +285,8 @@ class ManualTestModeTests(unittest.TestCase):
             ),
             mock.patch.object(lib, "run_scoped_tests", return_value=[red]),
             mock.patch.object(lib, "save_stack"),
-            mock.patch.object(next_step, "do_await_impl") as await_impl,
-            mock.patch.object(next_step, "recheck_test_frame") as recheck,
+            mock.patch.object(tdd_strategy, "do_await_impl") as await_impl,
+            mock.patch.object(tdd_strategy, "recheck_test_frame") as recheck,
         ):
             next_step.step(
                 "model",
@@ -365,7 +363,7 @@ class ManualTestModeTests(unittest.TestCase):
             mock.patch.object(lib, "run_scoped_tests", return_value=[green]),
             mock.patch.object(lib, "save_stack"),
             mock.patch.object(
-                next_step, "do_await_green_unconfirmed"
+                tdd_strategy, "do_await_green_unconfirmed"
             ) as await_unconfirmed,
         ):
             next_step.step(
@@ -376,7 +374,7 @@ class ManualTestModeTests(unittest.TestCase):
                 manual_test=True,
                 manual_test_refs=["tests/test_example.py::tests::example"],
             )
-        self.assertEqual(next_step.GREEN_UNCONFIRMED_STATUS, frame.status)
+        self.assertEqual(tdd_strategy.GREEN_UNCONFIRMED_STATUS, frame.status)
         self.assertEqual(["tests::example"], frame.unconfirmed_tests)
         await_unconfirmed.assert_called_once()
 
@@ -397,7 +395,7 @@ class ManualTestModeTests(unittest.TestCase):
             ),
             mock.patch.object(lib, "run_scoped_tests", return_value=[red]),
             mock.patch.object(lib, "save_stack"),
-            mock.patch.object(next_step, "recheck_test_frame"),
+            mock.patch.object(tdd_strategy, "recheck_test_frame"),
         ):
             next_step.step(
                 "model",
@@ -411,7 +409,7 @@ class ManualTestModeTests(unittest.TestCase):
 
 
 class SkipTestModeTests(unittest.TestCase):
-    def _frame(self, *, status="pending", verification="test"):
+    def _frame(self, *, status="pending", verification="test", strategy="tdd"):
         return lib.CriterionFrame(
             ticket="SA-1",
             criterion="- [ ] do the thing",
@@ -421,6 +419,7 @@ class SkipTestModeTests(unittest.TestCase):
             status=status,
             origin="ticket",
             verification=verification,
+            strategy=strategy,
         )
 
     def test_pending_skip_test_hands_off_to_direct_implementor(self):
@@ -428,10 +427,10 @@ class SkipTestModeTests(unittest.TestCase):
         with (
             mock.patch.object(lib, "load_stack", return_value=[frame]),
             mock.patch(
-                "ticket_pipeline.implement_step.run_implement_direct_with_refine",
+                "ticket_pipeline.lib.implement.run_implement_direct_with_refine",
                 return_value=["src/example.py"],
             ) as run_direct,
-            mock.patch.object(next_step, "_handle_no_test_written") as handle_no_test,
+            mock.patch.object(tdd_strategy, "_handle_no_test_written") as handle_no_test,
         ):
             next_step.step(
                 "model",
@@ -463,8 +462,8 @@ class SkipTestModeTests(unittest.TestCase):
             "only applies when the top frame is pending", die_with_log.call_args.args[1]
         )
 
-    def test_skip_test_rejects_non_test_verification(self):
-        frame = self._frame(verification="manual")
+    def test_skip_test_rejects_non_supported_strategy(self):
+        frame = self._frame(verification="manual", strategy="manual")
         with (
             mock.patch.object(lib, "load_stack", return_value=[frame]),
             mock.patch.object(
@@ -480,7 +479,7 @@ class SkipTestModeTests(unittest.TestCase):
                     skip_test=True,
                 )
         self.assertIn(
-            "only valid for verification='test'", die_with_log.call_args.args[1]
+            "not valid for strategy='manual'", die_with_log.call_args.args[1]
         )
 
     def test_skip_test_rejects_skip_implementation_combination(self):

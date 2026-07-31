@@ -12,8 +12,8 @@ layered changes (see the plan in the originating ticket):
 The mechanical-check tests mirror tests/test_grounding.py's pattern
 (temp dir + chdir, the render stub trick so this stays independent of
 `rich`); the AI-step tests mock pipeline_lib.run_with_tools so no
-network is touched. next_step._handle_no_test_written is exercised
-through a render-stubbed import of next_step with its lib calls mocked.
+network is touched. tdd._handle_no_test_written is exercised
+through its lib calls mocked.
 """
 
 import os
@@ -25,7 +25,7 @@ from unittest import mock
 
 from ticket_pipeline.lib import pipeline_lib as lib
 from ticket_pipeline.lib.ai_client import AIError, AIResult
-from ticket_pipeline import next_step
+from ticket_pipeline.strategies import tdd
 
 # The three SA-529 invoices.rs criteria - the concrete case this whole
 # mechanism was built for (the refactor landed before the pipeline run,
@@ -420,7 +420,7 @@ class FullRetryNoFilesTests(unittest.TestCase):
 
 
 class HandleNoTestWrittenTests(unittest.TestCase):
-    """Change B + C: the recovery path in next_step._handle_no_test_written."""
+    """Change B + C: the recovery path in tdd._handle_no_test_written."""
 
     def _frame(self, criterion=SA529_C2, verification="test-refactor"):
         return lib.CriterionFrame(
@@ -442,7 +442,7 @@ class HandleNoTestWrittenTests(unittest.TestCase):
             mock.patch.object(lib, "load_stack", return_value=stack),
             mock.patch.object(lib, "save_stack") as save_stack,
         ):
-            next_step._handle_no_test_written(
+            tdd._handle_no_test_written(
                 stack, frame, "model", accept_no_test=True
             )
         self.assertEqual("done", frame.status)
@@ -462,7 +462,7 @@ class HandleNoTestWrittenTests(unittest.TestCase):
                 mock.patch.object(lib, "save_stack"),
                 mock.patch.object(lib, "recheck_single_criterion") as recheck,
             ):
-                next_step._handle_no_test_written(
+                tdd._handle_no_test_written(
                     stack, frame, "model", accept_no_test=False
                 )
             recheck.assert_not_called()
@@ -481,7 +481,7 @@ class HandleNoTestWrittenTests(unittest.TestCase):
                 lib, "recheck_single_criterion", return_value="SATISFIED"
             ),
         ):
-            next_step._handle_no_test_written(
+            tdd._handle_no_test_written(
                 stack, frame, "model", accept_no_test=False
             )
         self.assertEqual("done", frame.status)
@@ -500,11 +500,11 @@ class HandleNoTestWrittenTests(unittest.TestCase):
             ),
         ):
             with self.assertRaises(SystemExit) as cm:
-                next_step._handle_no_test_written(
+                tdd._handle_no_test_written(
                     stack, frame, "model", accept_no_test=False
                 )
         self.assertEqual(0, cm.exception.code)
-        self.assertEqual(next_step.NOTHING_WRITTEN_STATUS, frame.status)
+        self.assertEqual(tdd.NOTHING_WRITTEN_STATUS, frame.status)
 
     def test_resume_skip_ai_does_not_call_recheck_and_pauses(self):
         # skip_ai=True (the resume path): mechanical check inconclusive
@@ -520,7 +520,7 @@ class HandleNoTestWrittenTests(unittest.TestCase):
             mock.patch.object(lib, "recheck_single_criterion") as recheck,
         ):
             with self.assertRaises(SystemExit):
-                next_step._handle_no_test_written(
+                tdd._handle_no_test_written(
                     stack,
                     frame,
                     "model",
@@ -528,7 +528,7 @@ class HandleNoTestWrittenTests(unittest.TestCase):
                     skip_ai=True,
                 )
         recheck.assert_not_called()
-        self.assertEqual(next_step.NOTHING_WRITTEN_STATUS, frame.status)
+        self.assertEqual(tdd.NOTHING_WRITTEN_STATUS, frame.status)
 
     def test_resume_accept_no_test_pops_without_ai(self):
         frame = self._frame()
@@ -538,7 +538,7 @@ class HandleNoTestWrittenTests(unittest.TestCase):
             mock.patch.object(lib, "save_stack"),
             mock.patch.object(lib, "recheck_single_criterion") as recheck,
         ):
-            next_step._handle_no_test_written(
+            tdd._handle_no_test_written(
                 stack,
                 frame,
                 "model",

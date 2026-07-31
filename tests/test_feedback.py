@@ -145,7 +145,7 @@ class FeedbackRetryTests(unittest.TestCase):
             ),
             mock.patch.object(lib, "git_reset_hard") as reset_hard,
             mock.patch.object(lib, "save_stack"),
-            mock.patch.object(next_step, "do_write_test") as do_write_test,
+            mock.patch("ticket_pipeline.strategies.tdd.do_write_test") as do_write_test,
         ):
             next_step._run_feedback_retry(
                 stack,

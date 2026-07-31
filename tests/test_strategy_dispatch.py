@@ -1,9 +1,11 @@
 import unittest
+import inspect
 from unittest import mock
 
 from ticket_pipeline import next_step
 from ticket_pipeline.lib import pipeline_lib as lib
-from ticket_pipeline.strategies import registry
+from ticket_pipeline.strategies import refactor as refactor_strategy
+from ticket_pipeline.strategies import tdd as tdd_strategy
 
 
 class StrategyDispatchTests(unittest.TestCase):
@@ -24,7 +26,7 @@ class StrategyDispatchTests(unittest.TestCase):
         frame = self._frame(strategy="tdd", status="pending")
         with (
             mock.patch.object(lib, "load_stack", return_value=[frame]),
-            mock.patch.object(next_step, "do_write_test") as write_test,
+            mock.patch.object(tdd_strategy, "do_write_test") as write_test,
         ):
             next_step.step(
                 "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
@@ -35,7 +37,7 @@ class StrategyDispatchTests(unittest.TestCase):
         frame = self._frame(strategy="tdd", status="test-written")
         with (
             mock.patch.object(lib, "load_stack", return_value=[frame]),
-            mock.patch.object(next_step, "recheck_test_frame") as recheck,
+            mock.patch.object(tdd_strategy, "recheck_test_frame") as recheck,
         ):
             next_step.step(
                 "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
@@ -47,7 +49,7 @@ class StrategyDispatchTests(unittest.TestCase):
         with (
             mock.patch.object(lib, "load_stack", return_value=[frame]),
             mock.patch(
-                "ticket_pipeline.implement_step.run_implement_direct_with_refine",
+                "ticket_pipeline.lib.implement.run_implement_direct_with_refine",
                 return_value=["src/example.py"],
             ),
         ):
@@ -62,13 +64,12 @@ class StrategyDispatchTests(unittest.TestCase):
             mock.patch.object(lib, "load_stack", return_value=[frame]),
             mock.patch.object(lib, "extract_referenced_paths", return_value=[]),
             mock.patch.object(lib, "git_changed_files", return_value=[]),
-            mock.patch("ticket_pipeline.strategies.manual.implement") as manual,
+            mock.patch("ticket_pipeline.strategies.manual.do_await_manual_impl") as manual_pause,
         ):
-            with self.assertRaises(SystemExit):
-                next_step.step(
-                    "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
-                )
-        manual.assert_called_once()
+            next_step.step(
+                "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
+            )
+        manual_pause.assert_called_once()
 
     def test_refactor_strategy_uses_refactor_handler(self):
         frame = self._frame(
@@ -76,7 +77,7 @@ class StrategyDispatchTests(unittest.TestCase):
         )
         with (
             mock.patch.object(lib, "load_stack", return_value=[frame]),
-            mock.patch.object(next_step, "do_refactor_setup") as refactor,
+            mock.patch.object(refactor_strategy, "do_refactor_setup") as refactor,
         ):
             next_step.step(
                 "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
@@ -93,6 +94,29 @@ class StrategyDispatchTests(unittest.TestCase):
                 next_step.step(
                     "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
                 )
+
+    def test_manual_test_refused_for_direct_strategy(self):
+        frame = self._frame(strategy="direct", status="pending", verification="test")
+        with (
+            mock.patch.object(lib, "load_stack", return_value=[frame]),
+            mock.patch.object(
+                lib, "die_with_log", side_effect=RuntimeError("bad manual-test")
+            ) as die_with_log,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "bad manual-test"):
+                next_step.step(
+                    "model",
+                    {"build_cmd": "true", "test_compile_cmd": "true"},
+                    False,
+                    lib.PIPELINE_CONFIG_FILE,
+                    manual_test=True,
+                    manual_test_refs=["tests/test_example.py::tests::example"],
+                )
+        self.assertIn("not valid for strategy='direct'", die_with_log.call_args.args[1])
+
+    def test_step_manual_skip_dispatch_has_no_verification_checks(self):
+        source = inspect.getsource(next_step.step)
+        self.assertNotIn("frame.verification", source)
 
 
 if __name__ == "__main__":

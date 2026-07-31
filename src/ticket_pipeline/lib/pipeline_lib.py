@@ -1645,10 +1645,10 @@ def peek_frame() -> CriterionFrame | None:
 # baseline check has passed: the safety-net tests named in
 # existing_test_refs were all GREEN at baseline, so the refactor is
 # cleared to proceed. The frame sits in this status while the human
-# (or implement_step) makes the structural changes to production code;
+# (or lib/implement.py) makes the structural changes to production code;
 # the next 'next_step' call re-runs the safety-net tests and pops only if
 # they're still GREEN *and* a production file actually changed. Shared
-# here (not private to next_step.py) because implement_step.py needs to
+# here (not private to next_step.py) because lib/implement.py needs to
 # recognize it as the "refactor awaiting implementation" status too.
 BASELINE_CONFIRMED_STATUS = "baseline-confirmed"
 
@@ -1902,7 +1902,7 @@ def verify_existing_test_refs_resolve(existing_test_refs: list[str]) -> list[str
     function name (the last "::"-separated segment of the qualified test
     name) appears somewhere in it as a whole word - a plain text search,
     not full AST parsing, language-agnostic on purpose (unlike
-    implement_step.py's brace-counting _extract_function_block, this only
+    lib/implement.py's brace-counting _extract_function_block, this only
     needs to know the name exists *somewhere* plausible, not extract its
     full body). Returns one human-readable reason per ref that doesn't
     resolve.

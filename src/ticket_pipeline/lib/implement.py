@@ -1,114 +1,21 @@
-#!/usr/bin/env python3
-"""
-implement_step - AI-implement the criteria stack's top frame: make its
-one named failing test pass, without touching the stack. The optional
-third gesture of the criteria-stack pipeline, slotting into the pause
-point next_step deliberately leaves open:
+"""Implementation execution mechanics shared by all strategies.
 
-    push_ticket <id>   seed the stack
-    next_step          write the failing test, pause at AWAIT_IMPL
-    implement_step     (this) turn that red test green
-    next_step          re-detect green, pop, continue
+Contains:
+- run_implement_with_refine: test-driven loop (build + green gate + tamper guard + refine)
+- run_implement_direct_with_refine: direct loop (build-only gate, no tamper guard)
+- Prompt builders for each implementation mode (test, direct, refactor, feedback)
+- Test tamper guard (snapshot + byte-for-byte verification)
 
-Contract: this script's only postcondition is "the top frame's scoped
-test passes". It NEVER writes .criteria-stack.json - next_step remains
-the sole owner of phase transitions, and re-detects the green test via
-its existing status=="test-written" phase check on the very next run.
-That single-owner rule is also what makes failure here safe: if the
-Implementor exhausts its attempts, the frame is still test-written, the
-test is still red, and next_step drops back into AWAIT_IMPL exactly as
-if this script had never run - the human implementation path is the
-untouched fallback, not a mode this script replaces.
-
-Guard-first (same principle as push_ticket): every precondition is
-re-checked from real state before any AI call spends money -
-  stack empty                          -> nothing to implement, exit 1
-  top frame status != "test-written",
-    or missing test_file/test_name     -> run next_step first, exit 1
-  scoped test re-run and green         -> nothing to do, run next_step
-                                          to pop it, exit 0
-  scoped test red                      -> proceed
-
-Implement loop (bounded self-correction, mirroring pipeline_lib's
-run_test_for_criterion_with_compile_retry - the legacy resolve-ticket
-pipeline was single-shot here, "no second attempt"; this trades that
-fail-fast behaviour for the same bounded refine loop the Tester side
-already has):
-
-  attempt 1:  fresh implement prompt (frame's own plan_context, not the
-              whole gap plan - frames carry their context since push
-              time, so the Implementor sees exactly what the Tester saw)
-  gate:       build_cmd                -> on failure, feed compile error
-                                          back as a fix prompt
-  gate:       scoped test green check  -> on failure, feed test output
-                                          back as a fix prompt
-  attempts 2..N: fix prompt (initial write + every refine share one
-              budget of --max-attempts total, not N retries on top)
-
-After EVERY attempt, the named test function is verified byte-for-byte
-unchanged against a snapshot taken before the first attempt (brace-
-counting extraction, ported from the legacy pipeline). protected_paths
-can't do this job: when the test lives inline with the production code
-it covers (Rust #[cfg(test)] mod tests - this pipeline's own Tester
-default), the test file IS a file the Implementor must legitimately
-edit; blocking it entirely makes the task impossible, not safe. The
-snapshot check permits the surrounding edits while making test
-tampering a hard, mechanical failure. Pipeline bookkeeping files
-(.criteria-stack.json and the scratch files) ARE fully write-protected
-via protected_paths - the Implementor has no legitimate reason to
-touch those.
-
-Level 2 - direct implementation (verification="manual" frames only):
-criteria narrow-plan.prompt.md tagged manual (documentation, config, CI
-- no meaningful red/green) have no named test to target, so there is
-nothing to gate the build-only retry loop on except the build itself.
-This mode never touches the stack either, same single-owner rule as
-Level 1: next_step's do_manual_criterion is still the sole judge of
-whether the criterion is actually satisfied (its own mechanical floor -
-did a file this criterion names actually change - or --accept-manual),
-run on the very next 'next_step' call same as if a human had made the
-change by hand.
-
-Level 3 - refactor implementation (verification="refactor" frames
-only): criteria narrow-plan.prompt.md tagged refactor (structural
-changes to production code that preserve behavior, with existing tests
-as the safety net) have a named test that's already GREEN at baseline,
-not RED. This level reuses the Level 1 implement loop (tamper guard,
-build gate, green check, refine) but with a refactor-framed prompt
-that tells the Implementor to keep the safety-net tests GREEN while
-restructuring, not to make a red test pass. Same single-owner rule: this
-never touches the stack - next_step's recheck_refactor_tests is still
-the sole judge of whether the criterion is actually satisfied (safety-
-net tests still GREEN *and* a production file actually changed), run on
-the very next 'next_step' call. A pre-refactor green check refuses to
-start if any safety-net test is RED (the safety net must hold before
-*and* after the refactor).
-
-verification="test-refactor" frames are refused here: there is no
-production code to implement for a test-refactoring criterion (the
-test-writer rewrites an existing test, expected GREEN). A test-refactor
-frame that reached test-written (RED rewrite) is an incorrect rewrite
-the human must fix by hand, not work for this script.
-
-Exit codes: 0 when the scoped test is green (whether this run made it
-green or found it already green); non-zero on exhausted attempts, a
-tampered test, or any genuine pipeline failure. Composable from shell:
-
-    implement_step && next_step --continuous
-
-Usage:
-    implement_step [--model <model-id>] [--config <path>]
-                   [--max-attempts <n>] [--log-level <level>]
+Strategy modules select which building block to call via their implement() method.
+This module owns HOW implementation works; strategies own WHEN and WHICH.
 """
 
-import argparse
 import re
 import subprocess
-import sys
 from pathlib import Path
 
-from .lib import pipeline_lib as lib, render, tools, verbosity
-from .lib.ai_client import AIError, run_with_tools
+from . import pipeline_lib as lib, render, tools, verbosity
+from .ai_client import AIError, run_with_tools
 
 log = verbosity.get_logger(__name__)
 
@@ -788,75 +695,3 @@ def run_implement_with_refine(
         f"{what} after {max_attempts} attempt(s) (exit {exit_code}){tail}",
         criterion=frame.criterion,
     )
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="AI-implement the top frame's criterion: make its named "
-        "failing test pass without modifying it. Never touches "
-        "the stack - run 'next_step' afterward to pop.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__,
-    )
-    parser.add_argument(
-        "--model",
-        default=DEFAULT_MODEL,
-        help=f"opencode zen model ID to use (default: {DEFAULT_MODEL}).",
-    )
-    parser.add_argument(
-        "--config",
-        default=str(lib.PIPELINE_CONFIG_FILE),
-        help=f"Path to the build/test command config (default: {lib.PIPELINE_CONFIG_FILE}).",
-    )
-    parser.add_argument(
-        "--max-attempts",
-        type=int,
-        default=DEFAULT_MAX_ATTEMPTS,
-        help=f"Total Implementor attempts, initial write + refines sharing "
-        f"one budget (default: {DEFAULT_MAX_ATTEMPTS}).",
-    )
-    parser.add_argument(
-        "--log-level",
-        default="info",
-        choices=list(verbosity.LEVELS),
-        help="Console verbosity (default: info). 'debug' shows per-tool-call "
-        "activity and command output even on success; 'trace' adds raw "
-        "request/response payloads; 'warning'/'error'/'critical' show "
-        "progressively less.",
-    )
-    args = parser.parse_args()
-    verbosity.setup_logging(args.log_level)
-
-    commands = lib.load_pipeline_config(Path(args.config))
-
-    # ── Guard: re-check every precondition from real state ─────────────────
-    stack = lib.load_stack()
-    if not stack:
-        render.print_line(
-            "-- Stack is empty. Nothing to implement. Run 'push_ticket <id>' first."
-        )
-        sys.exit(1)
-
-    frame = stack[0]
-    log.info(
-        "-- implement_step: ticket=%s status=%s verification=%s criterion=%s",
-        frame.ticket,
-        frame.status,
-        frame.verification,
-        frame.criterion,
-    )
-    from .strategies.registry import resolve_strategy
-
-    ctx = lib.StepContext(
-        model=args.model,
-        step_models={},
-        commands=commands,
-        config_path=Path(args.config),
-        continuous=False,
-        max_attempts=args.max_attempts,
-    )
-    resolve_strategy(frame).implement(frame, ctx)
-
-
-if __name__ == "__main__":
-    main()
