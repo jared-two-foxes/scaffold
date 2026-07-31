@@ -26,7 +26,11 @@ class _chdir:
 
 
 class ResolveFeedbackTargetTests(unittest.TestCase):
-    def _frame(self, verification="test", status="pending"):
+    def _frame(self, verification="test", status="pending", strategy=None):
+        strategy = strategy or {
+            "manual": "manual",
+            "refactor": "refactor",
+        }.get(verification, "tdd")
         return lib.CriterionFrame(
             ticket="SA-1",
             criterion="- [ ] thing",
@@ -36,6 +40,7 @@ class ResolveFeedbackTargetTests(unittest.TestCase):
             status=status,
             origin="ticket",
             verification=verification,
+            strategy=strategy,
         )
 
     def test_test_refactor_defaults_to_tester(self):
@@ -52,7 +57,13 @@ class ResolveFeedbackTargetTests(unittest.TestCase):
             lib.resolve_feedback_target(self._frame(verification="refactor"), "auto"),
         )
 
-    def test_manual_only_allows_human(self):
+    def test_manual_defaults_to_implementor(self):
+        self.assertEqual(
+            lib.FEEDBACK_TARGET_IMPLEMENTOR,
+            lib.resolve_feedback_target(self._frame(verification="manual"), "auto"),
+        )
+
+    def test_manual_rejects_tester_target(self):
         with self.assertRaises(ValueError):
             lib.resolve_feedback_target(self._frame(verification="manual"), "tester")
 
@@ -119,6 +130,7 @@ class FeedbackRetryTests(unittest.TestCase):
             status=lib.FEEDBACK_READY_STATUS,
             origin="ticket",
             verification="test",
+            strategy="tdd",
             feedback="fix only the failing branch",
             feedback_target=lib.FEEDBACK_TARGET_IMPLEMENTOR,
         )
@@ -160,15 +172,20 @@ class FeedbackRetryTests(unittest.TestCase):
     def test_implementor_feedback_uses_refine_path(self):
         frame = self._implementor_frame()
         stack = [frame]
+        seen_statuses = []
+
+        def _record_status(*args, **kwargs):
+            seen_statuses.append(frame.status)
+
         with (
             mock.patch.object(
                 lib, "git_changed_files", return_value=["src/example.py"]
             ),
             mock.patch.object(lib, "save_stack"),
             mock.patch(
-                "ticket_pipeline.implement_step.run_implement_with_refine"
-            ) as run_refine,
-            mock.patch.object(next_step, "recheck_test_frame") as recheck,
+                "ticket_pipeline.strategies.tdd.implement", side_effect=_record_status
+            ) as implement,
+            mock.patch("ticket_pipeline.strategies.tdd.recheck") as recheck,
         ):
             next_step._run_feedback_retry(
                 stack,
@@ -181,12 +198,13 @@ class FeedbackRetryTests(unittest.TestCase):
                 continuous=False,
                 git_cfg=None,
             )
-        run_refine.assert_called_once()
+        implement.assert_called_once()
+        self.assertEqual(["test-written"], seen_statuses)
         self.assertEqual(
-            "fix only the failing branch", run_refine.call_args.kwargs["feedback"]
+            "fix only the failing branch", implement.call_args.kwargs["feedback"]
         )
         self.assertEqual(
-            ["src/example.py"], run_refine.call_args.kwargs["previous_changed_files"]
+            ["src/example.py"], implement.call_args.kwargs["previous_changed_files"]
         )
         recheck.assert_called_once()
         self.assertIsNone(frame.feedback)

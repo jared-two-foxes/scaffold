@@ -784,17 +784,21 @@ def do_write_test(
     if skip_implementation:
         do_await_impl(frame, test_results_zipped)
         return
-    _run_implementation_phase(
-        stack,
-        frame,
-        model,
-        commands,
-        continuous,
-        max_attempts,
+    strategy = resolve_strategy(frame)
+    ctx = lib.StepContext(
+        model=model,
+        step_models={},
+        commands=commands,
+        config_path=lib.PIPELINE_CONFIG_FILE,
+        continuous=continuous,
+        max_attempts=max_attempts,
         accept_green=accept_green,
         accept_manual=False,
+        accept_no_test=False,
+        skip_implementation=skip_implementation,
         git_cfg=git_cfg,
     )
+    strategy.advance(stack, frame, ctx)
 
 
 def _handle_no_test_written(
@@ -942,17 +946,21 @@ def recheck_test_frame(
         if skip_implementation:
             do_await_impl(frame, test_results)
             return
-        _run_implementation_phase(
-            stack,
-            frame,
-            model,
-            commands,
-            continuous,
-            max_attempts,
-            accept_green=False,
+        strategy = resolve_strategy(frame)
+        ctx = lib.StepContext(
+            model=model,
+            step_models={},
+            commands=commands,
+            config_path=lib.PIPELINE_CONFIG_FILE,
+            continuous=continuous,
+            max_attempts=max_attempts,
+            accept_green=accept_green,
             accept_manual=False,
+            accept_no_test=False,
+            skip_implementation=skip_implementation,
             git_cfg=git_cfg,
         )
+        strategy.implement(frame, ctx)
         return
 
     # Every test is green now.
@@ -1064,8 +1072,6 @@ def _run_feedback_retry(
         return
 
     if target == lib.FEEDBACK_TARGET_IMPLEMENTOR:
-        import ticket_pipeline.implement_step as implement_step
-
         lib.save_stack(stack)
         lib.log_feedback_event(
             "apply-implementor",
@@ -1074,37 +1080,29 @@ def _run_feedback_retry(
             ticket=frame.ticket,
             target=target,
         )
-        if frame.verification == "refactor":
-            implement_step.run_implement_with_refine(
-                frame,
-                model,
-                commands,
-                max_attempts,
-                verification="refactor",
-                feedback=feedback,
-                previous_changed_files=previous_changed_files,
-            )
-            recheck_refactor_tests(stack, frame, commands, git_cfg)
-            return
-        implement_step.run_implement_with_refine(
-            frame,
-            model,
-            commands,
-            max_attempts,
-            feedback=feedback,
-            previous_changed_files=previous_changed_files,
-        )
-        recheck_test_frame(
-            stack,
-            frame,
-            model,
-            commands,
-            accept_green=False,
+        strategy = resolve_strategy(frame)
+        frame.status = strategy.IMPL_AWAITING_STATUS
+        lib.save_stack(stack)
+        ctx = lib.StepContext(
+            model=model,
+            step_models={},
+            commands=commands,
+            config_path=lib.PIPELINE_CONFIG_FILE,
             continuous=continuous,
             max_attempts=max_attempts,
+            accept_green=False,
+            accept_manual=False,
+            accept_no_test=accept_no_test,
             skip_implementation=skip_implementation,
             git_cfg=git_cfg,
         )
+        strategy.implement(
+            frame,
+            ctx,
+            feedback=feedback,
+            previous_changed_files=previous_changed_files,
+        )
+        strategy.recheck(stack, frame, ctx)
         return
 
     lib.die_with_log(
@@ -1113,128 +1111,6 @@ def _run_feedback_retry(
         criterion=frame.criterion,
         ticket=frame.ticket,
     )
-
-
-def _run_implementation_phase(
-    stack: list,
-    frame: "lib.CriterionFrame",
-    model: str,
-    commands: dict,
-    continuous: bool,
-    max_attempts: int,
-    accept_green: bool,
-    accept_manual: bool,
-    git_cfg: "lib.GitConfig | None",
-) -> None:
-    import ticket_pipeline.implement_step as implement_step
-
-    if frame.verification == "manual" and frame.strategy != "direct":
-        _record_base_commit_if_needed(stack, frame, git_cfg)
-        paths = lib.extract_referenced_paths(f"{frame.criterion}\n{frame.plan_context}")
-        mechanically_confirmed = bool(paths) and bool(
-            set(paths) & set(lib.git_changed_files())
-        )
-        if mechanically_confirmed or accept_manual:
-            frame.status = "done"
-            lib.save_stack(stack)
-            return
-
-        changed_files = implement_step.run_implement_direct_with_refine(
-            frame, model, commands, max_attempts
-        )
-        render.print_line()
-        render.print_line(f"-- Implemented: {frame.criterion}")
-        render.print_line(
-            f"   Files changed ({len(changed_files)}): {', '.join(changed_files)}"
-        )
-        render.print_line(
-            "-- Run 'next_step' again to check whether this satisfies the criterion and continue."
-        )
-        render.print_line(f"-- Token usage: {ai_client.usage}")
-        if continuous and paths:
-            return
-        sys.exit(0)
-
-    if frame.verification == "refactor" and frame.strategy != "direct":
-        results = lib.run_scoped_tests(
-            frame.test_names, commands, "refactor pre-implement check", quiet=True
-        )
-        red_names = [n for n, r in zip(frame.test_names, results) if r.returncode != 0]
-        paths = lib.extract_referenced_paths(f"{frame.criterion}\n{frame.plan_context}")
-        if not red_names and (not paths or (set(paths) & set(lib.git_changed_files()))):
-            frame.status = "done"
-            lib.save_stack(stack)
-            return
-
-        changed_files = implement_step.run_implement_with_refine(
-            frame,
-            model,
-            commands,
-            max_attempts,
-            verification="refactor",
-        )
-        render.print_line()
-        render.print_line("-- Refactored: " + frame.criterion)
-        render.print_line(
-            "   All " + str(len(frame.test_names)) + " safety-net test(s) still GREEN:"
-        )
-        for f, n in zip(frame.test_files, frame.test_names):
-            render.print_line("     " + f + " :: " + n)
-        render.print_line(
-            "   Files changed ("
-            + str(len(changed_files))
-            + "): "
-            + ", ".join(changed_files)
-        )
-        render.print_line(
-            "-- Run 'next_step' again to re-check and pop this criterion."
-        )
-        render.print_line(f"-- Token usage: {ai_client.usage}")
-        if continuous:
-            return
-        sys.exit(0)
-
-    results = lib.run_scoped_tests(
-        frame.test_names, commands, "pre-implement phase check", quiet=True
-    )
-    red_names = [n for n, r in zip(frame.test_names, results) if r.returncode != 0]
-    frame.unconfirmed_tests = [n for n in frame.unconfirmed_tests if n not in red_names]
-    if not red_names:
-        if not frame.unconfirmed_tests:
-            frame.status = "done"
-            lib.save_stack(stack)
-            return
-        if accept_green:
-            frame.status = "done"
-            frame.unconfirmed_tests = []
-            lib.save_stack(stack)
-            return
-        frame.status = GREEN_UNCONFIRMED_STATUS
-        lib.save_stack(stack)
-        do_await_green_unconfirmed(frame)
-        return
-
-    changed_files = implement_step.run_implement_with_refine(
-        frame, model, commands, max_attempts
-    )
-    render.print_line()
-    render.print_line(f"-- Implemented: {frame.criterion}")
-    if len(frame.test_names) == 1:
-        render.print_line(
-            f"   Test now green: {frame.test_files[0]} :: {frame.test_names[0]}"
-        )
-    else:
-        render.print_line(f"   All {len(frame.test_names)} test(s) now green:")
-        for f, n in zip(frame.test_files, frame.test_names):
-            render.print_line(f"     {f} :: {n}")
-    render.print_line(
-        f"   Files changed ({len(changed_files)}): {', '.join(changed_files)}"
-    )
-    render.print_line("-- Run 'next_step' again to pop this criterion and continue.")
-    render.print_line(f"-- Token usage: {ai_client.usage}")
-    if continuous:
-        return
-    sys.exit(0)
 
 
 def _parse_manual_test_refs(
@@ -1328,17 +1204,21 @@ def do_manual_test_authoring(
     if skip_implementation:
         do_await_impl(frame, test_results)
         return
-    _run_implementation_phase(
-        stack,
-        frame,
-        model,
-        commands,
-        continuous,
-        max_attempts,
+    strategy = resolve_strategy(frame)
+    ctx = lib.StepContext(
+        model=model,
+        step_models={},
+        commands=commands,
+        config_path=lib.PIPELINE_CONFIG_FILE,
+        continuous=continuous,
+        max_attempts=max_attempts,
         accept_green=False,
         accept_manual=False,
+        accept_no_test=False,
+        skip_implementation=skip_implementation,
         git_cfg=git_cfg,
     )
+    strategy.advance(stack, frame, ctx)
 
 
 def do_skip_test_direct_implementation(
@@ -1664,7 +1544,7 @@ def do_push_review_findings(ticket_id: str, review_text: str) -> None:
             test_names=None,
             status="pending",
             origin="review",
-            strategy=lib.extract_strategy(criterion),
+            strategy=lib.extract_strategy(f"- [ ] {finding}"),
         )
         for finding in findings
     ]
@@ -1822,34 +1702,6 @@ def step(
             continuous=continuous,
             git_cfg=git_cfg,
         )
-        return
-
-    if frame.status == GREEN_UNCONFIRMED_STATUS:
-        # Always re-verify real state rather than trusting the stored
-        # status (same principle as every other phase) - the human may
-        # have fixed the test(s) in the meantime, in which case this
-        # becomes a normal AWAIT_IMPL case. Shared with the "test-written"
-        # resume branch below - see recheck_test_frame.
-        recheck_test_frame(
-            stack,
-            frame,
-            model,
-            commands,
-            accept_green,
-            continuous,
-            max_attempts,
-            skip_implementation,
-            git_cfg,
-        )
-        return
-
-    if frame.status == NOTHING_WRITTEN_STATUS:
-        # A prior WRITE_TEST run wrote no test files and paused here -
-        # re-enter the recovery path with skip_ai=True so it doesn't
-        # re-spend the AI second opinion every resume. The mechanical
-        # check still runs (cheap, and may now confirm a human fix), and
-        # --accept-no-test still pops. See _handle_no_test_written.
-        _handle_no_test_written(stack, frame, model, accept_no_test, skip_ai=True)
         return
 
     if frame.status == "done":

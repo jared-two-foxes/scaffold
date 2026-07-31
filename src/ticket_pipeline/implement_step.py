@@ -107,7 +107,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .lib import ai_client, pipeline_lib as lib, render, tools, verbosity
+from .lib import pipeline_lib as lib, render, tools, verbosity
 from .lib.ai_client import AIError, run_with_tools
 
 log = verbosity.get_logger(__name__)
@@ -845,211 +845,17 @@ def main() -> None:
         frame.verification,
         frame.criterion,
     )
+    from .strategies.registry import resolve_strategy
 
-    # ── Level 2: manual-verification frames have no target test, so they
-    # branch out here before Level 1's test-written guard even applies.
-    # "pending"/"awaiting-manual-impl" mirror next_step.py's own pending
-    # and MANUAL_PENDING_STATUS values - duplicated as literals rather
-    # than imported, same as this script already does for "test-written".
-    if frame.strategy == "direct":
-        if frame.status not in ("pending", "implemented"):
-            render.print_line(
-                f"-- Top frame is a direct-strategy criterion but its status ({frame.status!r}) isn't awaiting implementation. Run 'next_step' first."
-            )
-            sys.exit(1)
-
-        render.print_line()
-        render.print_line("-- Implementing directly (strategy=direct):")
-        render.print_line(f"   Criterion: {frame.criterion}")
-
-        changed_files = run_implement_direct_with_refine(
-            frame, args.model, commands, args.max_attempts
-        )
-
-        render.print_line()
-        render.print_line(f"-- Implemented: {frame.criterion}")
-        render.print_line(
-            f"   Files changed ({len(changed_files)}): {', '.join(changed_files)}"
-        )
-        render.print_line(
-            "-- Run 'next_step' to check whether this satisfies the criterion and continue."
-        )
-        render.print_line(f"-- Token usage: {ai_client.usage}")
-        return
-
-    if frame.verification == "manual":
-        if frame.status not in ("pending", "awaiting-manual-impl"):
-            render.print_line(
-                f"-- Top frame is a manual-verification criterion but its status "
-                f"({frame.status!r}) isn't awaiting implementation. Run 'next_step' first."
-            )
-            sys.exit(1)
-
-        render.print_line()
-        render.print_line(
-            "-- Implementing directly (verification=manual, no target test):"
-        )
-        render.print_line(f"   Criterion: {frame.criterion}")
-
-        changed_files = run_implement_direct_with_refine(
-            frame, args.model, commands, args.max_attempts
-        )
-
-        render.print_line()
-        render.print_line(f"-- Implemented: {frame.criterion}")
-        render.print_line(
-            f"   Files changed ({len(changed_files)}): {', '.join(changed_files)}"
-        )
-        render.print_line(
-            "-- Run 'next_step' to check whether this satisfies the criterion and continue."
-        )
-        render.print_line(f"-- Token usage: {ai_client.usage}")
-        return
-
-    # Level 3: refactor-verification frames. The safety-net test(s)
-    # (named in existing_test_refs, mirrored into test_files/test_names
-    # by next_step's do_refactor_setup) are already GREEN at baseline -
-    # this level restructures the production code while keeping them
-    # GREEN, rather than making a red test pass. Pre-conditions mirror
-    # next_step.py's refactor dispatch: status must be baseline-confirmed
-    # (do_refactor_setup ran the baseline check), and the safety-net
-    # tests must currently be GREEN (not RED like Level 1).
-    if frame.verification == "refactor":
-        if frame.status != lib.BASELINE_CONFIRMED_STATUS:
-            render.print_line(
-                "-- Top frame is a refactor criterion but its status "
-                + repr(frame.status)
-                + " is not awaiting implementation. Run 'next_step' first "
-                "to establish the baseline."
-            )
-            sys.exit(1)
-        if not frame.test_files or not frame.test_names:
-            render.print_line(
-                "-- Refactor frame is baseline-confirmed but has no "
-                "safety-net test(s) recorded. Run 'next_step' to re-run "
-                "refactor setup."
-            )
-            sys.exit(1)
-
-        green_results = lib.run_scoped_tests(
-            frame.test_names, commands, "pre-refactor green check"
-        )
-        red_names = [
-            n for n, r in zip(frame.test_names, green_results) if r.returncode != 0
-        ]
-        if red_names:
-            render.print_line(
-                "-- Safety-net test(s) are RED - the refactor cannot proceed "
-                "until they are GREEN again (the safety net must hold before "
-                "and after the refactor). Fix them first, then re-run."
-            )
-            for n in red_names:
-                render.print_line("   RED: " + n)
-            sys.exit(1)
-
-        render.print_line()
-        render.print_line("-- Refactoring (keeping safety-net tests GREEN):")
-        for f, n in zip(frame.test_files, frame.test_names):
-            render.print_line("   " + f + " :: " + n)
-        render.print_line("   Criterion: " + frame.criterion)
-
-        changed_files = run_implement_with_refine(
-            frame,
-            args.model,
-            commands,
-            args.max_attempts,
-            verification=frame.verification,
-        )
-
-        render.print_line()
-        render.print_line("-- Refactored: " + frame.criterion)
-        render.print_line(
-            "   All " + str(len(frame.test_names)) + " safety-net test(s) still GREEN:"
-        )
-        for f, n in zip(frame.test_files, frame.test_names):
-            render.print_line("     " + f + " :: " + n)
-        render.print_line(
-            "   Files changed ("
-            + str(len(changed_files))
-            + "): "
-            + ", ".join(changed_files)
-        )
-        render.print_line("-- Run 'next_step' to re-check and pop this criterion.")
-        render.print_line(f"-- Token usage: {ai_client.usage}")
-        return
-
-    # Refuse test-refactor frames: there is no production code to
-    # implement for a test-refactoring criterion. If the test-writer's
-    # rewrite came back RED (status="test-written"), the rewrite itself
-    # is incorrect - the human must fix the test by hand and re-run
-    # 'next_step', which rechecks and pops once it is GREEN.
-    if frame.verification == "test-refactor" and frame.status == "test-written":
-        render.print_line(
-            "-- This is a test-refactor criterion whose rewrite came back RED."
-        )
-        render.print_line(
-            "   There is no production code to implement - the rewrite itself"
-        )
-        render.print_line("   is incorrect. Fix the test by hand (keep its assertions")
-        render.print_line(
-            "   functionally identical; change only the structural elements"
-        )
-        render.print_line(
-            "   the criterion describes), then run 'next_step' to re-check."
-        )
-        sys.exit(1)
-
-    if frame.status != "test-written" or not frame.test_files or not frame.test_names:
-        render.print_line(
-            f"-- Top frame is not awaiting implementation (status: {frame.status}"
-            f"{'' if frame.test_files else ', no test recorded'}). "
-            f"Run 'next_step' to advance it to AWAIT_IMPL first."
-        )
-        sys.exit(1)
-
-    red_results = lib.run_scoped_tests(
-        frame.test_names, commands, "pre-implement red check"
+    ctx = lib.StepContext(
+        model=args.model,
+        step_models={},
+        commands=commands,
+        config_path=Path(args.config),
+        continuous=False,
+        max_attempts=args.max_attempts,
     )
-    still_red = [n for n, r in zip(frame.test_names, red_results) if r.returncode != 0]
-    if not still_red:
-        render.print_line(
-            f"-- All {len(frame.test_names)} test(s) already green. "
-            f"Nothing to implement. Run 'next_step' to pop this criterion."
-        )
-        sys.exit(0)
-
-    # ── Implement ───────────────────────────────────────────────────────────
-    render.print_line()
-    if len(frame.test_names) == 1:
-        render.print_line("-- Implementing:")
-    else:
-        render.print_line(
-            f"-- Implementing ({len(still_red)} of {len(frame.test_names)} still red):"
-        )
-    for f, n in zip(frame.test_files, frame.test_names):
-        tag = "" if n in still_red else " (already passing)"
-        render.print_line(f"   {f} :: {n}{tag}")
-    render.print_line(f"   Criterion: {frame.criterion}")
-
-    changed_files = run_implement_with_refine(
-        frame, args.model, commands, args.max_attempts
-    )
-
-    render.print_line()
-    render.print_line(f"-- Implemented: {frame.criterion}")
-    if len(frame.test_names) == 1:
-        render.print_line(
-            f"   Test now green: {frame.test_files[0]} :: {frame.test_names[0]}"
-        )
-    else:
-        render.print_line(f"   All {len(frame.test_names)} test(s) now green:")
-        for f, n in zip(frame.test_files, frame.test_names):
-            render.print_line(f"     {f} :: {n}")
-    render.print_line(
-        f"   Files changed ({len(changed_files)}): {', '.join(changed_files)}"
-    )
-    render.print_line("-- Run 'next_step' to pop this criterion and continue.")
-    render.print_line(f"-- Token usage: {ai_client.usage}")
+    resolve_strategy(frame).implement(frame, ctx)
 
 
 if __name__ == "__main__":

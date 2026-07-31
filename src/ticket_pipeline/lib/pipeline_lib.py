@@ -1317,15 +1317,19 @@ EXISTING_TEST_TAG_RE = re.compile(r"existing_test:\s*(\S+)")
 def extract_strategy(criterion: str) -> str:
     """
     Parses a "strategy: <name>" tag from a criterion's trailing HTML
-    comment. Defaults to "tdd" — the universal behavior before this
-    field existed, and the safe default for anything the tag-parsing
-    can't find one on.
+    comment. Defaults from the verification mode when no explicit tag is
+    present.
     """
     match = STRATEGY_TAG_RE.search(criterion)
     if match:
         name = match.group(1).lower()
         if name in KNOWN_STRATEGIES:
             return name
+    verification = extract_verification_mode(criterion)
+    if verification == "manual":
+        return "manual"
+    if verification == "refactor":
+        return "refactor"
     return "tdd"
 
 
@@ -1374,34 +1378,34 @@ def resolve_feedback_target(frame: "CriterionFrame", requested: str | None) -> s
             "auto, tester, implementor, human"
         )
 
-    verification = frame.verification
-    if verification == "test-refactor":
-        default = FEEDBACK_TARGET_TESTER
-        allowed = {FEEDBACK_TARGET_TESTER, FEEDBACK_TARGET_HUMAN}
-    elif verification == "refactor":
+    strategy = frame.strategy
+    if strategy == "tdd":
+        if frame.verification == "test-refactor":
+            default = FEEDBACK_TARGET_TESTER
+            allowed = {FEEDBACK_TARGET_TESTER, FEEDBACK_TARGET_HUMAN}
+        else:
+            default = (
+                FEEDBACK_TARGET_IMPLEMENTOR
+                if frame.status == "test-written"
+                else FEEDBACK_TARGET_TESTER
+            )
+            allowed = {
+                FEEDBACK_TARGET_TESTER,
+                FEEDBACK_TARGET_IMPLEMENTOR,
+                FEEDBACK_TARGET_HUMAN,
+            }
+    elif strategy in ("direct", "manual", "refactor"):
         default = FEEDBACK_TARGET_IMPLEMENTOR
         allowed = {FEEDBACK_TARGET_IMPLEMENTOR, FEEDBACK_TARGET_HUMAN}
-    elif verification == "manual":
-        default = FEEDBACK_TARGET_HUMAN
-        allowed = {FEEDBACK_TARGET_HUMAN}
     else:
-        default = (
-            FEEDBACK_TARGET_IMPLEMENTOR
-            if frame.status == "test-written"
-            else FEEDBACK_TARGET_TESTER
-        )
-        allowed = {
-            FEEDBACK_TARGET_TESTER,
-            FEEDBACK_TARGET_IMPLEMENTOR,
-            FEEDBACK_TARGET_HUMAN,
-        }
+        raise ValueError(f"unknown strategy {strategy!r}")
 
     target = default if requested == "auto" else requested
     if target not in allowed:
         allowed_text = ", ".join(sorted(allowed))
         raise ValueError(
             f"feedback target {target!r} is not valid for verification="
-            f"{verification!r}; allowed targets: {allowed_text}"
+            f"{frame.verification!r} and strategy={strategy!r}; allowed targets: {allowed_text}"
         )
     return target
 

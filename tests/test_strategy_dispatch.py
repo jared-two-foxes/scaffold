@@ -60,11 +60,14 @@ class StrategyDispatchTests(unittest.TestCase):
         frame = self._frame(strategy="manual", status="pending", verification="manual")
         with (
             mock.patch.object(lib, "load_stack", return_value=[frame]),
-            mock.patch.object(next_step, "do_manual_criterion") as manual,
+            mock.patch.object(lib, "extract_referenced_paths", return_value=[]),
+            mock.patch.object(lib, "git_changed_files", return_value=[]),
+            mock.patch("ticket_pipeline.strategies.manual.implement") as manual,
         ):
-            next_step.step(
-                "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
-            )
+            with self.assertRaises(SystemExit):
+                next_step.step(
+                    "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
+                )
         manual.assert_called_once()
 
     def test_refactor_strategy_uses_refactor_handler(self):
