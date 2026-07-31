@@ -14,6 +14,12 @@ dependencies = ["rich"]
 
 [project.scripts]
 scaffold = "scaffold_cli.cli:main"
+build-scaffold-binary = "build_binary:main"
+
+[tool.pyinstaller]
+onefile = true
+name = "scaffold"
+entrypoint = "scaffold_cli.cli:main"
 
 # Every script (push_ticket, review-ticket, next_step, ..., plus
 # bench/bench_block) is reachable as `scaffold <name>` via cli.py's

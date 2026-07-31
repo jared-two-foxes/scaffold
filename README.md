@@ -69,6 +69,16 @@ You can also run a targeted test file:
 pytest -q tests/test_cli_entrypoint.py
 ```
 
+### Build a standalone binary
+
+This project can be packaged into a single executable with a single command:
+
+```bash
+python build_binary.py
+```
+
+The script uses PyInstaller under the hood and writes the resulting binary to the dist directory.
+
 ## Project Layout
 
 ```text
