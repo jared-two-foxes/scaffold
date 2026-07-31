@@ -27,12 +27,16 @@ scaffold = "ticket_pipeline.cli:main"
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+package-dir = { "" = "src" }
+
 [tool.setuptools.packages.find]
+where = ["src"]
 include = ["ticket_pipeline", "ticket_pipeline.*"]
 
 [tool.setuptools.package-data]
 "ticket_pipeline.lib" = ["model-pricing.toml"]
-"ticket_pipeline.prompts" = ["prompts/*.md"]
+"ticket_pipeline.prompts" = ["*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
