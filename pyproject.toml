@@ -21,7 +21,8 @@ scaffold = "ticket_pipeline.cli:main"
 # remember instead of fourteen. bench/bench_block are grouped under
 # `scaffold`'s "Advanced" section since they're situational benchmarking
 # tools, not everyday ticket workflow; still directly runnable via
-# `python -m ticket_pipeline.bench` / `...bench_block` if preferred.
+# `python -m ticket_pipeline.benchmark.bench` /
+# `...benchmark.bench_block` if preferred.
 
 [build-system]
 requires = ["setuptools>=68"]

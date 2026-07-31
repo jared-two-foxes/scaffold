@@ -24,8 +24,8 @@ bad one.
 
 Usage (not a console-script command - deliberately excluded from the
 standard install as situational; run via `python -m`):
-    python -m ticket_pipeline.bench --block plan --models deepseek-v4-pro,glm-5 --trials 3
-    python -m ticket_pipeline.bench --block narrow --models glm-5,gpt-5.1 --trials 3 --plan-fixture both
+    python -m ticket_pipeline.benchmark.bench --block plan --models deepseek-v4-pro,glm-5 --trials 3
+    python -m ticket_pipeline.benchmark.bench --block narrow --models glm-5,gpt-5.1 --trials 3 --plan-fixture both
 
 Each trial calls bench_block.py as a subprocess with cwd set to its
 worktree - see that file for the actual block invocation + grading.
@@ -55,8 +55,8 @@ _WORKTREE_LOCK = threading.Lock()
 SCRIPT_DIR = Path(__file__).resolve().parent
 # fixtures/ is a dev-only benchmark asset directory, kept at the project
 # root (scaffold/) rather than inside the installed
-# ticket_pipeline package - one level up from this module.
-PROJECT_DIR = SCRIPT_DIR.parent
+# ticket_pipeline package - three levels up from this module.
+PROJECT_DIR = SCRIPT_DIR.parents[2]
 DEFAULT_REPO = Path.home() / "code" / "own" / "VirtualAssistant"
 SCAFFOLD_TEMP_DIR = Path.cwd() / ".scaffold"
 
@@ -240,7 +240,7 @@ def run_trial(job: Job, repo: Path, base_ref: str) -> TrialResult:
         cmd = [
             sys.executable,
             "-m",
-            "ticket_pipeline.bench_block",
+            "ticket_pipeline.benchmark.bench_block",
             "--block",
             job.block,
             "--ticket-name",

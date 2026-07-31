@@ -10,7 +10,7 @@ appearing in this list is necessary but not sufficient - ai_client.py's
 own COPILOT comment notes at least one model (gpt-5.4-mini) that's listed
 by Copilot's /models but 400s against /chat/completions with
 "unsupported_api_for_model". Test a model id directly (e.g. a one-off
-review-ticket.py/bench_block.py call) before trusting it just because it
+review-ticket.py/benchmark/bench_block.py call) before trusting it just because it
 showed up here.
 
 Usage:
