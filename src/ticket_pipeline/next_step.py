@@ -499,8 +499,8 @@ def step(
     manual_test_refs: list[str] | None = None,
     skip_test: bool = False,
     skip_implementation: bool = False,
-    allow_compile: bool = False,
-    reset_on_retry: bool = False,
+    allow_compile: bool = True,
+    reset_on_retry: bool = True,
     max_attempts: int = 3,
     retry_policy=None,
     git_cfg: "lib.GitConfig | None" = None,
@@ -726,14 +726,14 @@ def main() -> None:
         "running the Implementor AI).",
     )
     parser.add_argument(
-        "--allow-compile-tool",
+        "--no-compile-tool",
         action="store_true",
-        help="Give the AI a 'compile' tool that runs build_cmd during its turn, so it can self-check compilation before the pipeline's build gate. Opt-in: off by default to preserve the no-shell principle.",
+        help="Disable the AI 'compile' tool for this run. By default it is enabled and runs build_cmd during the model turn for in-turn compile checks.",
     )
     parser.add_argument(
-        "--reset-on-retry",
+        "--no-reset-on-retry",
         action="store_true",
-        help="On each retry attempt, git reset --hard to the test commit so the AI starts from a clean slate (implementation reverted, test preserved). Requires git_workflow = true. Avoids error accumulation from patching a broken foundation.",
+        help="Disable fresh-start retries for this run. By default retries reset to the test commit when available.",
     )
     parser.add_argument(
         "--strategy",
@@ -774,8 +774,10 @@ def main() -> None:
         )
     except ValueError as e:
         parser.error(str(e))
-    allow_compile = bool(args.allow_compile_tool or tools_cfg.get("compile", False))
-    reset_on_retry = bool(args.reset_on_retry or retry_cfg.get("reset_on_retry", False))
+    allow_compile_cfg = tools_cfg.get("compile", True)
+    reset_on_retry_cfg = retry_cfg.get("reset_on_retry", True)
+    allow_compile = bool(allow_compile_cfg) and not args.no_compile_tool
+    reset_on_retry = bool(reset_on_retry_cfg) and not args.no_reset_on_retry
 
     while True:
         step(
