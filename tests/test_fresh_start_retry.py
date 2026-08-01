@@ -91,3 +91,124 @@ class FreshStartRetryTests(unittest.TestCase):
             reset_on_retry=True, test_commit_sha=None
         )
         git_reset_hard.assert_not_called()
+
+    def test_direct_loop_accepts_empty_write_when_build_passes(self):
+        frame = self._frame()
+        prompts: list[str] = []
+        build_result = subprocess.CompletedProcess(
+            args=["build"], returncode=0, stdout="", stderr=""
+        )
+
+        def fake_run_with_tools(prompt, _tool_list, _executor, _name, **_kwargs):
+            prompts.append(prompt)
+            return mock.Mock(text="ok")
+
+        def fake_run_ai_step_with_retry(step_fn, *_args, **_kwargs):
+            return step_fn()
+
+        with (
+            mock.patch.object(
+                implement_lib, "run_with_tools", side_effect=fake_run_with_tools
+            ),
+            mock.patch.object(
+                implement_lib.lib,
+                "run_ai_step_with_retry",
+                side_effect=fake_run_ai_step_with_retry,
+            ),
+            mock.patch.object(
+                implement_lib.lib, "run_command", return_value=build_result
+            ),
+            mock.patch.object(
+                implement_lib.lib,
+                "die_with_log",
+                side_effect=RuntimeError("should not die"),
+            ),
+        ):
+            changed = implement_lib.run_implement_direct_with_refine(
+                frame,
+                "model",
+                {"build_cmd": "build"},
+                2,
+                retry_policy=FixedBudgetPolicy(2),
+            )
+
+        self.assertEqual(changed, [])
+        self.assertEqual(len(prompts), 1)
+
+    def test_with_refine_retries_when_scoped_tests_stay_red(self):
+        frame = lib.CriterionFrame(
+            ticket="SA-1",
+            criterion="- [ ] do the thing",
+            plan_context="ctx",
+            test_files=["tests/test_example.py"],
+            test_names=["tests.test_example"],
+            status="pending",
+            origin="ticket",
+        )
+        prompts: list[str] = []
+        build_results = [
+            subprocess.CompletedProcess(
+                args=["build"], returncode=0, stdout="", stderr=""
+            ),
+            subprocess.CompletedProcess(
+                args=["build"], returncode=0, stdout="", stderr=""
+            ),
+        ]
+        green_results = [
+            [
+                subprocess.CompletedProcess(
+                    args=["test"], returncode=1, stdout="fail", stderr=""
+                )
+            ],
+            [
+                subprocess.CompletedProcess(
+                    args=["test"], returncode=0, stdout="", stderr=""
+                )
+            ],
+        ]
+
+        def fake_run_with_tools(prompt, _tool_list, executor, _name, **_kwargs):
+            prompts.append(prompt)
+            if len(prompts) == 2:
+                executor("write_file", {"path": "src/generated.py", "content": "x"})
+            return mock.Mock(text="ok")
+
+        def fake_run_ai_step_with_retry(step_fn, *_args, **_kwargs):
+            return step_fn()
+
+        with (
+            mock.patch.object(
+                implement_lib, "run_with_tools", side_effect=fake_run_with_tools
+            ),
+            mock.patch.object(
+                implement_lib.lib,
+                "run_ai_step_with_retry",
+                side_effect=fake_run_ai_step_with_retry,
+            ),
+            mock.patch.object(
+                implement_lib.lib,
+                "run_command",
+                side_effect=lambda _command, _label, _quiet=False: build_results.pop(0),
+            ),
+            mock.patch.object(
+                implement_lib.lib,
+                "run_scoped_tests",
+                side_effect=lambda *_args, **_kwargs: green_results.pop(0),
+            ),
+            mock.patch.object(implement_lib, "verify_tests_unchanged"),
+            mock.patch.object(
+                implement_lib.lib,
+                "die_with_log",
+                side_effect=RuntimeError("should not die"),
+            ),
+        ):
+            changed = implement_lib.run_implement_with_refine(
+                frame,
+                "model",
+                {"build_cmd": "build", "test_filter_cmd": "pytest -q {filter}"},
+                2,
+                retry_policy=FixedBudgetPolicy(2),
+            )
+
+        self.assertEqual(changed, ["src/generated.py"])
+        self.assertEqual(len(prompts), 2)

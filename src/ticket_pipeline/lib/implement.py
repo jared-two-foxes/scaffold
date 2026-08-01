@@ -525,6 +525,11 @@ def run_implement_direct_with_refine(
             )
         lib.render_step_output(result.text)
         if not attempt_changed:
+            build_result = lib.run_command(
+                commands["build_cmd"], f"build gate (attempt {attempt}, {limit_desc})"
+            )
+            if build_result.returncode == 0:
+                return sorted(set(all_changed))
             lib.die_with_log(
                 "implement-criterion-direct",
                 "Direct Implementor finished without writing any files.",
@@ -712,11 +717,53 @@ def run_implement_with_refine(
             lib.die_with_log("implement-criterion", str(e), criterion=frame.criterion)
         lib.render_step_output(result.text)
         if not attempt_changed:
-            lib.die_with_log(
+            build_result = lib.run_command(
+                commands["build_cmd"], f"build gate (attempt {attempt}, {limit_desc})"
+            )
+            if build_result.returncode != 0:
+                lib.die_with_log(
+                    "implement-criterion",
+                    "Implementor finished without writing any files.",
+                    criterion=frame.criterion,
+                )
+
+            green_results = lib.run_scoped_tests(
+                test_names,
+                commands,
+                f"green check (attempt {attempt}, {limit_desc})",
+                quiet=True,
+            )
+            still_red = [n for n, r in zip(test_names, green_results) if r.returncode != 0]
+            if not still_red:
+                return sorted(set(all_changed))
+
+            failure_kind = "test-red"
+            last_error = "\n\n".join(
+                f"{n}:\n" + (r.stdout or "") + (r.stderr or "")
+                for n, r in zip(test_names, green_results)
+                if r.returncode != 0
+            )
+            last_result = next(
+                r for n, r in zip(test_names, green_results) if n in still_red
+            )
+            lib.log_event(
                 "implement-criterion",
-                "Implementor finished without writing any files.",
+                "retry",
+                error=f"{len(still_red)} test(s) still red (attempt {attempt}, {limit_desc})",
                 criterion=frame.criterion,
             )
+            if not policy.should_continue(attempt, failure_kind, frame, None):
+                policy.on_exhausted(
+                    failure_kind,
+                    last_error or "",
+                    sorted(set(all_changed)),
+                    last_result,
+                    frame,
+                    None,
+                )
+                return sorted(set(all_changed))
+            continue
+
         all_changed.extend(attempt_changed)
 
         # Tamper check after EVERY attempt, over every test in the group
