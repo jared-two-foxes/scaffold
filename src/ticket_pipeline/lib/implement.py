@@ -27,6 +27,9 @@ IMPLEMENT_CRITERION_PROMPT_FILE = lib.PROMPTS_DIR / "implement-criterion.prompt.
 IMPLEMENT_CRITERION_DIRECT_PROMPT_FILE = (
     lib.PROMPTS_DIR / "implement-criterion-direct.prompt.md"
 )
+IMPLEMENT_CRITERION_DIRECT_STRATEGY_PROMPT_FILE = (
+    lib.PROMPTS_DIR / "implement-criterion-direct-strategy.prompt.md"
+)
 IMPLEMENT_CRITERION_REFACTOR_PROMPT_FILE = (
     lib.PROMPTS_DIR / "implement-criterion-refactor.prompt.md"
 )
@@ -264,19 +267,16 @@ def build_implement_criterion_fix_prompt(
 
 
 def build_implement_criterion_direct_prompt(
-    criterion: str, plan_context: str, verification: str = "manual"
+    criterion: str, plan_context: str, strategy: str = "manual"
 ) -> str:
-    instructions = lib.load_prompt_body(IMPLEMENT_CRITERION_DIRECT_PROMPT_FILE)
-    if verification == "manual":
-        strategy_note = ""
-    else:
-        strategy_note = (
-            "\n\n> **Note:** The direct strategy was explicitly selected for this "
-            "criterion via an override — do not refuse to implement on the grounds "
-            "that a test could verify it; make the change directly."
-        )
+    prompt_file = (
+        IMPLEMENT_CRITERION_DIRECT_PROMPT_FILE
+        if strategy == "manual"
+        else IMPLEMENT_CRITERION_DIRECT_STRATEGY_PROMPT_FILE
+    )
+    instructions = lib.load_prompt_body(prompt_file)
     return (
-        f"{instructions}{strategy_note}\n\n---\n\n"
+        f"{instructions}\n\n---\n\n"
         f"Here is the relevant Implementation Plan context for this "
         f"criterion, extracted from the gap plan - already complete and "
         f"current, no need to read_file it again:\n\n{plan_context}\n\n"
@@ -291,17 +291,14 @@ def build_implement_criterion_direct_fix_prompt(
     changed_so_far: list[str],
     error_output: str,
     fresh_start: bool = False,
-    verification: str = "manual",
+    strategy: str = "manual",
 ) -> str:
-    instructions = lib.load_prompt_body(IMPLEMENT_CRITERION_DIRECT_PROMPT_FILE)
-    if verification == "manual":
-        strategy_note = ""
-    else:
-        strategy_note = (
-            "\n\n> **Note:** The direct strategy was explicitly selected for this "
-            "criterion via an override — do not refuse to implement on the grounds "
-            "that a test could verify it; make the change directly."
-        )
+    prompt_file = (
+        IMPLEMENT_CRITERION_DIRECT_PROMPT_FILE
+        if strategy == "manual"
+        else IMPLEMENT_CRITERION_DIRECT_STRATEGY_PROMPT_FILE
+    )
+    instructions = lib.load_prompt_body(prompt_file)
     changed_list = "\n".join(f"- {p}" for p in changed_so_far) or "- (none recorded)"
     failure_desc = (
         "A previous attempt failed and its changes have been reverted. You are starting from a clean state. Do NOT try to reproduce the previous approach. Read the error below, understand what went wrong, and try a different approach."
@@ -309,7 +306,7 @@ def build_implement_criterion_direct_fix_prompt(
         else "but the project does not build. Fix the build error with the smallest targeted change - do not re-implement from scratch or deviate from the approach already taken unless the error itself proves that approach can't work."
     )
     return (
-        f"{instructions}{strategy_note}\n\n---\n\n"
+        f"{instructions}\n\n---\n\n"
         f"Here is the relevant Implementation Plan context for this "
         f"criterion, extracted from the gap plan - already complete and "
         f"current, no need to read_file it again:\n\n{plan_context}\n\n"
@@ -451,9 +448,9 @@ def run_implement_direct_with_refine(
     test_commit_sha: str | None = None,
 ) -> list[str]:
     """
-    Level 2: direct implementation for a verification="manual" frame -
-    no named test, so no tamper guard and no scoped-test-green gate, just
-    a build-gate retry loop sharing the same one-budget-total shape as
+    Level 2: direct implementation for a single criterion - no named
+    test, so no tamper guard and no scoped-test-green gate, just a
+    build-gate retry loop sharing the same one-budget-total shape as
     run_implement_with_refine. Returns the deduplicated list of changed
     files once the build passes; dies via die_with_log on exhausted
     attempts or an AI failure. Does not judge whether the criterion is
@@ -479,7 +476,7 @@ def run_implement_direct_with_refine(
                 )
             else:
                 prompt = build_implement_criterion_direct_prompt(
-                    frame.criterion, frame.plan_context, verification=frame.verification
+                    frame.criterion, frame.plan_context, strategy=frame.strategy
                 )
         else:
             prev_changed = sorted(set(all_changed))
@@ -510,7 +507,7 @@ def run_implement_direct_with_refine(
                 prev_changed,
                 last_error,
                 fresh_start=fresh_start,
-                verification=frame.verification,
+                strategy=frame.strategy,
             )
 
         attempt_changed: list[str] = []

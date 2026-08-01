@@ -8,7 +8,7 @@ from ticket_pipeline.lib.retry import FixedBudgetPolicy
 
 
 class FreshStartRetryTests(unittest.TestCase):
-    def _frame(self):
+    def _frame(self, *, strategy="tdd", verification="test"):
         return lib.CriterionFrame(
             ticket="SA-1",
             criterion="- [ ] do the thing",
@@ -17,10 +17,18 @@ class FreshStartRetryTests(unittest.TestCase):
             test_names=None,
             status="pending",
             origin="ticket",
+            verification=verification,
+            strategy=strategy,
         )
 
-    def _run_direct_loop(self, *, reset_on_retry: bool, test_commit_sha: str | None):
-        frame = self._frame()
+    def _run_direct_loop(
+        self,
+        *,
+        reset_on_retry: bool,
+        test_commit_sha: str | None,
+        frame=None,
+    ):
+        frame = frame or self._frame()
         prompts: list[str] = []
         build_results = [
             subprocess.CompletedProcess(
@@ -219,3 +227,40 @@ class FreshStartRetryTests(unittest.TestCase):
 
         self.assertEqual(changed, ["src/generated.py"])
         self.assertEqual(len(prompts), 2)
+
+    def test_direct_strategy_and_skip_test_use_the_new_prompt(self):
+        direct_frame = self._frame(strategy="direct", verification="manual")
+        skip_test_frame = self._frame(strategy="tdd", verification="manual")
+        manual_frame = self._frame(strategy="manual", verification="test")
+
+        direct_changed, direct_prompts, _ = self._run_direct_loop(
+            reset_on_retry=False,
+            test_commit_sha=None,
+            frame=direct_frame,
+        )
+        skip_test_changed, skip_test_prompts, _ = self._run_direct_loop(
+            reset_on_retry=False,
+            test_commit_sha=None,
+            frame=skip_test_frame,
+        )
+        manual_changed, manual_prompts, _ = self._run_direct_loop(
+            reset_on_retry=False,
+            test_commit_sha=None,
+            frame=manual_frame,
+        )
+
+        self.assertEqual(["src/generated.py"], direct_changed)
+        self.assertEqual(["src/generated.py"], skip_test_changed)
+        self.assertEqual(["src/generated.py"], manual_changed)
+
+        self.assertEqual(direct_prompts, skip_test_prompts)
+        self.assertNotIn("already judged untestable", direct_prompts[0].lower())
+        self.assertNotIn("do not second-guess it", direct_prompts[0].lower())
+        direct_prompt_text = " ".join(direct_prompts[0].split())
+        manual_prompt_text = " ".join(manual_prompts[0].split())
+        self.assertIn(
+            "make the change one specific acceptance criterion describes",
+            direct_prompt_text,
+        )
+        self.assertIn("already judged untestable", manual_prompt_text.lower())
+        self.assertIn("not to second-guess that", manual_prompt_text.lower())
