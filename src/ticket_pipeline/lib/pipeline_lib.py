@@ -2042,6 +2042,21 @@ def extract_plan_context_for_criterion(criterion: str, gap_plan_text: str) -> st
     if not impl_section:
         return gap_plan_text
 
+    referenced_paths = {
+        Path(path).as_posix() for path in extract_referenced_paths(criterion)
+    }
+    if referenced_paths:
+        matching_lines = []
+        for line in impl_section.splitlines():
+            backtick_match = BACKTICK_TOKEN_RE.search(line)
+            if not backtick_match:
+                continue
+            line_path = Path(backtick_match.group(1).strip()).as_posix()
+            if line_path in referenced_paths:
+                matching_lines.append(line)
+        if matching_lines:
+            return "\n".join(matching_lines)
+
     nouns = {tok.strip() for tok in BACKTICK_TOKEN_RE.findall(criterion) if tok.strip()}
     if not nouns:
         return impl_section

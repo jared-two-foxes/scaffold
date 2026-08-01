@@ -59,6 +59,13 @@ SA-528
 - `tests/xero_webhook.rs`: replace local lock helper with `virtual_assistant::test_support::lock`
 """
 
+CROSS_CONTAMINATED_GAP_PLAN = """\
+## Implementation Plan
+- `src/ticket_pipeline/lib/pipeline_lib.py`: redefine `TICKET_FILE` handling for plan scoping
+- `src/ticket_pipeline/review_ticket.py`: update `TICKET_FILE` usage for retry logic
+- `src/ticket_pipeline/split_ticket.py`: update `TICKET_FILE` usage for split logic
+"""
+
 
 def init_git_repo(root: Path) -> None:
     import subprocess
@@ -196,6 +203,41 @@ class ExtractPlanContextForCriterionScopedTests(unittest.TestCase):
         self.assertEqual(2, len(scoped_context.splitlines()))
         self.assertIn("xero_reconcile_observability", scoped_context)
         self.assertIn("xero_webhook", scoped_context)
+
+    def test_prefers_matching_file_paths_over_shared_backtick_tokens(self):
+        criterion = (
+            "- [ ] `src/ticket_pipeline/lib/pipeline_lib.py` updates `TICKET_FILE` "
+            "behavior. <!-- why: scoped to one file; verify: test-refactor -->"
+        )
+
+        context = lib.extract_plan_context_for_criterion(
+            criterion, CROSS_CONTAMINATED_GAP_PLAN
+        )
+
+        self.assertEqual(
+            [
+                "- `src/ticket_pipeline/lib/pipeline_lib.py`: redefine `TICKET_FILE` handling for plan scoping"
+            ],
+            context.splitlines(),
+        )
+
+    def test_falls_back_to_token_match_and_full_section(self):
+        token_only_criterion = (
+            "- [ ] Update `TICKET_FILE` handling. <!-- why: token-only criterion -->"
+        )
+        token_only_context = lib.extract_plan_context_for_criterion(
+            token_only_criterion, CROSS_CONTAMINATED_GAP_PLAN
+        )
+        self.assertEqual(3, len(token_only_context.splitlines()))
+
+        no_token_criterion = "- [ ] Update the implementation plan."
+        no_token_context = lib.extract_plan_context_for_criterion(
+            no_token_criterion, CROSS_CONTAMINATED_GAP_PLAN
+        )
+        self.assertEqual(
+            "\n".join(CROSS_CONTAMINATED_GAP_PLAN.splitlines()[1:]).strip(),
+            no_token_context,
+        )
 
 
 class VerifyCriterionGroundingScopedTests(unittest.TestCase):
