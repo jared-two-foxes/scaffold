@@ -40,6 +40,7 @@ import argparse
 from dataclasses import replace
 import sys
 from pathlib import Path
+import tomllib
 
 from .lib import ai_client, pipeline_lib as lib, render, tools, verbosity
 from .lib.retry import resolve_retry_policy
@@ -498,6 +499,8 @@ def step(
     manual_test_refs: list[str] | None = None,
     skip_test: bool = False,
     skip_implementation: bool = False,
+    allow_compile: bool = False,
+    reset_on_retry: bool = False,
     max_attempts: int = 3,
     retry_policy=None,
     git_cfg: "lib.GitConfig | None" = None,
@@ -538,6 +541,8 @@ def step(
         accept_manual=accept_manual,
         accept_no_test=accept_no_test,
         skip_implementation=skip_implementation,
+        allow_compile=allow_compile,
+        reset_on_retry=reset_on_retry,
         git_cfg=git_cfg,
     )
 
@@ -721,6 +726,16 @@ def main() -> None:
         "running the Implementor AI).",
     )
     parser.add_argument(
+        "--allow-compile-tool",
+        action="store_true",
+        help="Give the AI a 'compile' tool that runs build_cmd during its turn, so it can self-check compilation before the pipeline's build gate. Opt-in: off by default to preserve the no-shell principle.",
+    )
+    parser.add_argument(
+        "--reset-on-retry",
+        action="store_true",
+        help="On each retry attempt, git reset --hard to the test commit so the AI starts from a clean slate (implementation reverted, test preserved). Requires git_workflow = true. Avoids error accumulation from patching a broken foundation.",
+    )
+    parser.add_argument(
         "--strategy",
         default=None,
         choices=["tdd", "direct"],
@@ -742,6 +757,14 @@ def main() -> None:
 
     config_path = Path(args.config)
     commands = lib.load_pipeline_config(config_path)
+    tools_cfg = lib.load_tools_config(config_path)
+    retry_cfg: dict = {}
+    if config_path.exists():
+        with config_path.open("rb") as f:
+            loaded = tomllib.load(f)
+        retry_value = loaded.get("retry")
+        if isinstance(retry_value, dict):
+            retry_cfg = retry_value
 
     model, step_models = lib.resolve_step_models(config_path, args.model)
     git_cfg = lib.load_git_config(config_path)
@@ -751,6 +774,8 @@ def main() -> None:
         )
     except ValueError as e:
         parser.error(str(e))
+    allow_compile = bool(args.allow_compile_tool or tools_cfg.get("compile", False))
+    reset_on_retry = bool(args.reset_on_retry or retry_cfg.get("reset_on_retry", False))
 
     while True:
         step(
@@ -766,6 +791,8 @@ def main() -> None:
             manual_test_refs=args.manual_test_ref,
             skip_test=args.skip_test,
             skip_implementation=args.skip_implementation,
+            allow_compile=allow_compile,
+            reset_on_retry=reset_on_retry,
             max_attempts=args.max_attempts,
             retry_policy=retry_policy,
             git_cfg=git_cfg,

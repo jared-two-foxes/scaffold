@@ -43,8 +43,6 @@ class ClarificationNeeded(PipelineAbort):
     """
 
 
-
-
 def _safe_path(path_str: str) -> Path:
     """
     Resolve `path_str` relative to cwd and refuse anything that would
@@ -62,7 +60,9 @@ def _safe_path(path_str: str) -> Path:
     return resolved
 
 
-def read_file(path: str, start_line: int | None = None, end_line: int | None = None) -> str:
+def read_file(
+    path: str, start_line: int | None = None, end_line: int | None = None
+) -> str:
     """
     Read a file's content. With no range, returns the raw full text plus
     a trailing line-count note (e.g. so a model sizing up a file before
@@ -115,10 +115,22 @@ def read_file(path: str, start_line: int | None = None, end_line: int | None = N
 # (VCS internals, dependency trees, build output, caches) - pruned
 # before os.walk descends into them, not just filtered after the fact.
 SEARCH_IGNORED_DIR_NAMES = {
-    ".git", ".hg", ".svn",
-    "node_modules", "target", "dist", "build",
-    "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache",
-    ".venv", "venv", ".tox", "htmlcov", ".eggs",
+    ".git",
+    ".hg",
+    ".svn",
+    "node_modules",
+    "target",
+    "dist",
+    "build",
+    "__pycache__",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "venv",
+    ".tox",
+    "htmlcov",
+    ".eggs",
 }
 
 DEFAULT_SEARCH_MAX_RESULTS = 200
@@ -148,7 +160,7 @@ def search_files(
         try:
             compiled = re.compile(pattern)
         except re.error as e:
-            raise ToolError(f"invalid regex: {e}")
+            raise ToolError(f"invalid regex: {e}") from e
         line_matches = compiled.search
     else:
         line_matches = lambda line: pattern in line  # noqa: E731
@@ -182,7 +194,9 @@ def search_files(
         return f"(no matches for {pattern!r} under {path})"
     output = "\n".join(results)
     if truncated:
-        output += f"\n(showing first {max_results} matches - narrow your pattern or path)"
+        output += (
+            f"\n(showing first {max_results} matches - narrow your pattern or path)"
+        )
     return output
 
 
@@ -200,9 +214,11 @@ def write_file_block(path: str) -> Callable[[str], str]:
     pipeline stage - write_file_block(PLAN_FILE)(plan_text) - instead of
     a tool call inside an agentic step.
     """
+
     def block(content: str) -> str:
         log.info("   %s", write_file(path, content))
         return content
+
     return block
 
 
@@ -265,6 +281,8 @@ def summarize_tool_call(name: str, args: dict) -> str:
         return f"Ask: {args.get('question', '(no question)')}"
     if name == "run_command":
         return f"Attempt to run command: {args.get('command', '')}"
+    if name == COMPILE_TOOL_NAME:
+        return "Compile project"
     return f"{name}({args})"
 
 
@@ -474,6 +492,23 @@ RUN_COMMAND_SCHEMA = {
     },
 }
 
+COMPILE_TOOL_NAME = "compile"
+COMPILE_OUTPUT_LIMIT = 3000
+
+COMPILE_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": COMPILE_TOOL_NAME,
+        "description": (
+            "Compile the project using the configured build command. Returns the compile output (truncated to the last few thousand characters). Use this to self-check that your code compiles before finishing your turn - catching syntax errors, missing imports, and type mismatches here avoids wasting a retry attempt on a trivial fix. The command run is the project's configured build_cmd, not a command you choose."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+}
+
 # Every step gets these alongside its other tools - ask_user_prompt gives
 # the model an explicit way to signal "I'm stuck" instead of guessing
 # (a real abort - see ClarificationNeeded), and run_command is offered
@@ -500,6 +535,16 @@ READ_WRITE_TOOLS = [
     RUN_COMMAND_SCHEMA,
 ]
 
+READ_WRITE_TOOLS_WITH_COMPILE = [
+    READ_FILE_SCHEMA,
+    LIST_DIR_SCHEMA,
+    SEARCH_FILES_SCHEMA,
+    WRITE_FILE_SCHEMA,
+    ASK_USER_PROMPT_SCHEMA,
+    RUN_COMMAND_SCHEMA,
+    COMPILE_SCHEMA,
+]
+
 # For genuinely interactive sessions (a human present at the terminal for
 # the whole run) - swaps the abort-on-ask
 # ASK_USER_PROMPT_SCHEMA for ASK_USER_QUESTION_SCHEMA, which make_executor
@@ -521,6 +566,9 @@ def make_executor(
     protected_paths: set[str] | None = None,
     preloaded_paths: set[str] | None = None,
     interactive: bool = False,
+    allow_compile: bool = False,
+    compile_cmd: str | None = None,
+    max_compiles_per_turn: int = 5,
 ):
     """
     Build a tool_executor(name, args) -> str for ai_client.run_with_tools.
@@ -551,6 +599,10 @@ def make_executor(
         rejected the same way write_file is when allow_write=False - this
         executor is meant to answer for real or not offer the tool at all,
         never to silently no-op a live question.
+    allow_compile: if True, compile tool calls are allowed when compile_cmd
+        is provided; otherwise they are refused.
+    compile_cmd: command to run for the compile tool.
+    max_compiles_per_turn: safety limit on compile tool calls per executor.
 
     Every chat-completions turn resends the *entire* message history,
     tool results included - the API has no server-side session state.
@@ -567,8 +619,10 @@ def make_executor(
     """
     full_read_paths: set[str] = set(preloaded_paths or ())
     partial_ranges: set[tuple[str, int | None, int | None]] = set()
+    compile_calls = 0
 
     def executor(name: str, args: dict) -> str:
+        nonlocal compile_calls
         if name == ASK_USER_PROMPT_TOOL_NAME:
             question = args.get("question", "(no question provided)")
             raise ClarificationNeeded(
@@ -583,10 +637,16 @@ def make_executor(
                 answer = input("> ").strip()
             except EOFError:
                 answer = ""
-            return answer if answer else "(human gave no answer - proceed with your own best judgement)"
+            return (
+                answer
+                if answer
+                else "(human gave no answer - proceed with your own best judgement)"
+            )
         if name == RUN_COMMAND_TOOL_NAME:
             command = args.get("command", "(no command provided)")
-            log.warning("-- Refused run_command(%r) - recoverable, not aborting.", command)
+            log.warning(
+                "-- Refused run_command(%r) - recoverable, not aborting.", command
+            )
             return (
                 "ERROR: run_command is not supported - there is no shell behind this tool, "
                 "ever, calling it again will not work either. Use search_files instead of "
@@ -595,6 +655,23 @@ def make_executor(
                 "instead of ls - none of these need cd first, every tool here takes an "
                 "explicit path."
             )
+        if name == COMPILE_TOOL_NAME:
+            if not allow_compile or not compile_cmd:
+                return "ERROR: compile tool is not enabled. Finish your turn and the pipeline will check compilation."
+            if compile_calls >= max_compiles_per_turn:
+                return f"ERROR: compile call limit reached ({max_compiles_per_turn} per turn). Finish your turn - the pipeline will run the build gate."
+            compile_calls += 1
+            from . import pipeline_lib as lib
+
+            result = lib.run_command(
+                compile_cmd, f"compile tool (model-invoked, call {compile_calls})"
+            )
+            output = (result.stdout or "") + (result.stderr or "")
+            if len(output) > COMPILE_OUTPUT_LIMIT:
+                output = "...(truncated)...\n" + output[-COMPILE_OUTPUT_LIMIT:]
+            if result.returncode == 0:
+                return "Compilation successful."
+            return f"Compilation failed (exit {result.returncode}):\n\n{output}"
         try:
             if name == "read_file":
                 path = args["path"]
@@ -604,7 +681,7 @@ def make_executor(
 
                 if path in full_read_paths or range_key in partial_ranges:
                     return (
-                        f"(duplicate read_file(\"{path}\") - you already have "
+                        f'(duplicate read_file("{path}") - you already have '
                         f"this content (or the whole file, which covers it), "
                         f"either from the initial prompt or an earlier "
                         f"read_file call in this conversation; not re-sent to "

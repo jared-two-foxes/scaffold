@@ -207,6 +207,7 @@ def build_implement_criterion_fix_prompt(
     changed_so_far: list[str],
     failure_kind: str,
     error_output: str,
+    fresh_start: bool = False,
 ) -> str:
     instructions = lib.load_prompt_body(IMPLEMENT_CRITERION_PROMPT_FILE)
     plural = len(test_names) != 1
@@ -214,7 +215,11 @@ def build_implement_criterion_fix_prompt(
     changed_list = "\n".join(f"- {p}" for p in changed_so_far) or "- (none recorded)"
     if failure_kind == "compile":
         failure_desc = (
-            "but the code does not compile. Fix the compile error with the "
+            "The previous attempt's code did not compile and has been reverted. "
+            "Implement from scratch, taking the compile error into account - the "
+            "previous approach had a compilation problem, so try a different structure."
+            if fresh_start
+            else "but the code does not compile. Fix the compile error with the "
             "smallest targeted change - do not re-implement from scratch or "
             "deviate from the approach already taken unless the error itself "
             "proves that approach can't work."
@@ -222,16 +227,22 @@ def build_implement_criterion_fix_prompt(
     else:
         still_red_list = "\n".join(f"- {n}" for n in still_red)
         failure_desc = (
-            f"and it compiles, but {'the test' if len(still_red) == 1 else 'these tests'} "
-            f"still fail:\n{still_red_list}\n\n"
-            + (
-                'Every test named above under "failing test(s)" must end up passing '
-                "- including any not listed as still failing, which already pass and "
-                "must not be broken while you fix the rest. "
-                if plural
-                else ""
+            (
+                f"The previous attempt compiled but {'the test' if len(still_red) == 1 else 'these tests'} still failed, and the code has been reverted. "
+                f"Implement from scratch, taking the test failure into account - the previous approach produced the wrong behavior, so try a different approach.\n{still_red_list}\n\n"
             )
-            + "Read the test output below to understand the gap between what "
+            if fresh_start
+            else f"and it compiles, but {'the test' if len(still_red) == 1 else 'these tests'} still fail:\n{still_red_list}\n\n"
+        )
+        failure_desc += (
+            'Every test named above under "failing test(s)" must end up passing '
+            "- including any not listed as still failing, which already pass and "
+            "must not be broken while you fix the rest. "
+            if plural
+            else ""
+        )
+        failure_desc += (
+            "Read the test output below to understand the gap between what "
             "the still-failing test(s) expect and what the implementation does, "
             "then make the smallest targeted fix. Do not weaken or modify any "
             "test to make it pass."
@@ -265,10 +276,19 @@ def build_implement_criterion_direct_prompt(criterion: str, plan_context: str) -
 
 
 def build_implement_criterion_direct_fix_prompt(
-    criterion: str, plan_context: str, changed_so_far: list[str], error_output: str
+    criterion: str,
+    plan_context: str,
+    changed_so_far: list[str],
+    error_output: str,
+    fresh_start: bool = False,
 ) -> str:
     instructions = lib.load_prompt_body(IMPLEMENT_CRITERION_DIRECT_PROMPT_FILE)
     changed_list = "\n".join(f"- {p}" for p in changed_so_far) or "- (none recorded)"
+    failure_desc = (
+        "A previous attempt failed and its changes have been reverted. You are starting from a clean state. Do NOT try to reproduce the previous approach. Read the error below, understand what went wrong, and try a different approach."
+        if fresh_start
+        else "but the project does not build. Fix the build error with the smallest targeted change - do not re-implement from scratch or deviate from the approach already taken unless the error itself proves that approach can't work."
+    )
     return (
         f"{instructions}\n\n---\n\n"
         f"Here is the relevant Implementation Plan context for this "
@@ -278,10 +298,7 @@ def build_implement_criterion_direct_fix_prompt(
         f"acceptance criterion, and only this one:\n\n{criterion}\n\n"
         f"Files changed in the previous attempt (read these first to see "
         f"what was tried):\n{changed_list}\n\n"
-        f"but the project does not build. Fix the build error with the "
-        f"smallest targeted change - do not re-implement from scratch or "
-        f"deviate from the approach already taken unless the error itself "
-        f"proves that approach can't work.\n\n"
+        f"{failure_desc}\n\n"
         f"Error output:\n\n```\n{error_output}\n```"
     )
 
@@ -312,16 +329,16 @@ def build_implement_criterion_refactor_fix_prompt(
     changed_so_far: list[str],
     failure_kind: str,
     error_output: str,
+    fresh_start: bool = False,
 ) -> str:
     instructions = lib.load_prompt_body(IMPLEMENT_CRITERION_REFACTOR_PROMPT_FILE)
     test_list = "\n".join(f"- {f} :: {n}" for f, n in zip(test_files, test_names))
     changed_list = "\n".join(f"- {p}" for p in changed_so_far) or "- (none recorded)"
     if failure_kind == "compile":
         failure_desc = (
-            "but the project does not build. Fix the build error with the "
-            "smallest targeted change - do not re-implement from scratch or "
-            "deviate from the approach already taken unless the error itself "
-            "proves that approach can't work."
+            "The previous attempt's code did not build and has been reverted. Implement from scratch, taking the build error into account - the previous approach had a compilation problem, so try a different structure."
+            if fresh_start
+            else "but the project does not build. Fix the build error with the smallest targeted change - do not re-implement from scratch or deviate from the approach already taken unless the error itself proves that approach can't work."
         )
     else:
         still_red_list = "\n".join(f"- {n}" for n in still_red)
@@ -335,14 +352,13 @@ def build_implement_criterion_refactor_fix_prompt(
             else ""
         )
         failure_desc = (
-            f"and it builds, but your refactor broke "
-            f"{'this test' if len(still_red) == 1 else 'these safety-net tests'} "
-            f"(they were GREEN at baseline and must be GREEN again):\n{still_red_list}\n\n"
+            f"The previous attempt built but {'this test' if len(still_red) == 1 else 'these safety-net tests'} broke, and the code has been reverted. Implement from scratch, taking the test failure into account - the previous approach produced the wrong behavior, so try a different approach:\n{still_red_list}\n\n"
+            if fresh_start
+            else f"and it builds, but your refactor broke {'this test' if len(still_red) == 1 else 'these safety-net tests'} (they were GREEN at baseline and must be GREEN again):\n{still_red_list}\n\n"
+        )
+        failure_desc += (
             f"{extra}"
-            f"Read the test output below to understand what behavior "
-            f"regressed, then make the smallest targeted fix that restores "
-            f"the test(s) to GREEN. Do not modify any named test to make it "
-            f"pass - the tests are the safety net, not the target."
+            f"Read the test output below to understand what behavior regressed, then make the smallest targeted fix that restores the test(s) to GREEN. Do not modify any named test to make it pass - the tests are the safety net, not the target."
         )
     return (
         f"{instructions}\n\n---\n\n"
@@ -410,6 +426,10 @@ def run_implement_direct_with_refine(
     feedback: str | None = None,
     previous_changed_files: list[str] | None = None,
     retry_policy: RetryPolicy | None = None,
+    allow_compile: bool = False,
+    compile_cmd: str | None = None,
+    reset_on_retry: bool = False,
+    test_commit_sha: str | None = None,
 ) -> list[str]:
     """
     Level 2: direct implementation for a verification="manual" frame -
@@ -443,6 +463,23 @@ def run_implement_direct_with_refine(
                     frame.criterion, frame.plan_context
                 )
         else:
+            prev_changed = sorted(set(all_changed))
+            fresh_start = False
+            if reset_on_retry and test_commit_sha:
+                try:
+                    lib.git_reset_hard(test_commit_sha)
+                    fresh_start = True
+                    log.info(
+                        "-- Fresh-start retry: reset to test commit %s",
+                        test_commit_sha[:8],
+                    )
+                except lib.GitError as e:
+                    lib.die_with_log(
+                        "implement-criterion-direct",
+                        f"git reset --hard {test_commit_sha} failed: {e}",
+                        criterion=frame.criterion,
+                    )
+                all_changed = []
             log.warning(
                 "-- Build failed (attempt %d, %s). Feeding the error back to Direct Implementor to fix.",
                 attempt - 1,
@@ -451,8 +488,9 @@ def run_implement_direct_with_refine(
             prompt = build_implement_criterion_direct_fix_prompt(
                 frame.criterion,
                 frame.plan_context,
-                sorted(set(all_changed)),
+                prev_changed,
                 last_error,
+                fresh_start=fresh_start,
             )
 
         attempt_changed: list[str] = []
@@ -461,10 +499,16 @@ def run_implement_direct_with_refine(
             attempt_changed.clear()
             return run_with_tools(
                 prompt,
-                tools.READ_WRITE_TOOLS,
+                (
+                    tools.READ_WRITE_TOOLS_WITH_COMPILE
+                    if allow_compile
+                    else tools.READ_WRITE_TOOLS
+                ),
                 tools.make_executor(
                     written_paths=attempt_changed,
                     protected_paths=PROTECTED_PIPELINE_PATHS,
+                    allow_compile=allow_compile,
+                    compile_cmd=compile_cmd,
                 ),
                 "implement-criterion-direct",
                 model=model,
@@ -523,6 +567,10 @@ def run_implement_with_refine(
     feedback: str | None = None,
     previous_changed_files: list[str] | None = None,
     retry_policy: RetryPolicy | None = None,
+    allow_compile: bool = False,
+    compile_cmd: str | None = None,
+    reset_on_retry: bool = False,
+    test_commit_sha: str | None = None,
 ) -> list[str]:
     """
     Implement the frame's criterion against its named failing test(s),
@@ -584,6 +632,25 @@ def run_implement_with_refine(
                     frame.criterion, frame.plan_context, test_files, test_names
                 )
         else:
+            prev_changed = sorted(set(all_changed))
+            fresh_start = False
+            if reset_on_retry and test_commit_sha:
+                try:
+                    lib.git_reset_hard(test_commit_sha)
+                    fresh_start = True
+                    log.info(
+                        "-- Fresh-start retry: reset to test commit %s",
+                        test_commit_sha[:8],
+                    )
+                except lib.GitError as e:
+                    lib.die_with_log(
+                        "implement-criterion",
+                        f"git reset --hard {test_commit_sha} failed: {e}",
+                        criterion=frame.criterion,
+                    )
+                all_changed = []
+                still_red = list(test_names)
+                snapshots = snapshot_tests(test_files, test_names)
             log.warning(
                 "-- %s failed (attempt %d, %s). Feeding the error back to Implementor to fix.",
                 "Build" if failure_kind == "compile" else "Green check",
@@ -597,9 +664,10 @@ def run_implement_with_refine(
                     test_files,
                     test_names,
                     still_red,
-                    sorted(set(all_changed)),
+                    prev_changed,
                     failure_kind,
                     last_error,
+                    fresh_start=fresh_start,
                 )
             else:
                 prompt = build_implement_criterion_fix_prompt(
@@ -608,9 +676,10 @@ def run_implement_with_refine(
                     test_files,
                     test_names,
                     still_red,
-                    sorted(set(all_changed)),
+                    prev_changed,
                     failure_kind,
                     last_error,
+                    fresh_start=fresh_start,
                 )
 
         attempt_changed: list[str] = []
@@ -619,10 +688,16 @@ def run_implement_with_refine(
             attempt_changed.clear()
             return run_with_tools(
                 prompt,
-                tools.READ_WRITE_TOOLS,
+                (
+                    tools.READ_WRITE_TOOLS_WITH_COMPILE
+                    if allow_compile
+                    else tools.READ_WRITE_TOOLS
+                ),
                 tools.make_executor(
                     written_paths=attempt_changed,
                     protected_paths=PROTECTED_PIPELINE_PATHS,
+                    allow_compile=allow_compile,
+                    compile_cmd=compile_cmd,
                 ),
                 "implement-criterion",
                 model=model,

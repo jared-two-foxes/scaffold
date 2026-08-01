@@ -28,6 +28,10 @@ def implement(frame, ctx, feedback=None, previous_changed_files=None):
         retry_policy=ctx.retry_policy,
         feedback=feedback,
         previous_changed_files=previous_changed_files,
+        allow_compile=ctx.allow_compile,
+        compile_cmd=ctx.commands.get("build_cmd"),
+        reset_on_retry=ctx.reset_on_retry,
+        test_commit_sha=frame.test_commit_sha,
     )
 
     render.print_line()

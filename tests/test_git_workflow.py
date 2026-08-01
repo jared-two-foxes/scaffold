@@ -99,14 +99,17 @@ class CriterionFrameRoundTripTests(unittest.TestCase):
         )
         self.assertIsNone(frame.base_commit)
         self.assertIsNone(frame.commit_sha)
+        self.assertIsNone(frame.test_commit_sha)
 
         frame.base_commit = "abc123"
         frame.commit_sha = "def456"
+        frame.test_commit_sha = "ghi789"
         lib.save_stack([frame])
         loaded = lib.load_stack()
         self.assertEqual(len(loaded), 1)
         self.assertEqual(loaded[0].base_commit, "abc123")
         self.assertEqual(loaded[0].commit_sha, "def456")
+        self.assertEqual(loaded[0].test_commit_sha, "ghi789")
 
     def test_old_stack_file_without_new_fields_loads(self):
         old_entry = {
@@ -128,6 +131,7 @@ class CriterionFrameRoundTripTests(unittest.TestCase):
         self.assertEqual(len(loaded), 1)
         self.assertIsNone(loaded[0].base_commit)
         self.assertIsNone(loaded[0].commit_sha)
+        self.assertIsNone(loaded[0].test_commit_sha)
 
 
 class GitHelperTests(unittest.TestCase):

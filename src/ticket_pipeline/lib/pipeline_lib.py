@@ -711,7 +711,7 @@ def load_pipeline_config(config_path: Path) -> dict:
     # load_smoke_cmd; the git_workflow.* keys via load_git_config). All
     # other top-level keys stay unknown-key-rejected so a typo in a
     # toolchain command name is still caught loudly.
-    _ALLOWED_EXTRA_KEYS = {"step_models", "smoke_cmd", "retry"} | set(
+    _ALLOWED_EXTRA_KEYS = {"step_models", "smoke_cmd", "retry", "tools"} | set(
         GitConfig.__annotations__
     )
     unknown = set(data) - set(toolchain.commands) - _ALLOWED_EXTRA_KEYS
@@ -1436,6 +1436,8 @@ class StepContext:
     accept_manual: bool = False
     accept_no_test: bool = False
     skip_implementation: bool = False
+    allow_compile: bool = False
+    reset_on_retry: bool = False
     git_cfg: "GitConfig | None" = None
 
 
@@ -1539,6 +1541,13 @@ class CriterionFrame:
     # criterion is popped and committed; stays
     # None for criteria that popped with an
     # empty diff (nothing to stage).
+    test_commit_sha: str | None = None  # git-workflow only. The SHA of
+    # the commit created after WRITE_TEST and
+    # before implementation, so fresh-start
+    # retries can reset back to the test-only
+    # state while preserving the test. None
+    # when git_workflow is off, or before the
+    # criterion has entered implementation.
     feedback: str | None = None
     feedback_target: str | None = None
     feedback_attempts: int = 0
@@ -2920,6 +2929,18 @@ def load_smoke_cmd(config_path: Path) -> str | None:
         data = tomllib.load(f)
     value = data.get("smoke_cmd")
     return value if isinstance(value, str) and value.strip() else None
+
+
+def load_tools_config(config_path: Path) -> dict:
+    """Load the optional [tools] table from the pipeline config."""
+    if not config_path.exists():
+        return {}
+    with config_path.open("rb") as f:
+        data = tomllib.load(f)
+    tools_cfg = data.get("tools")
+    if not isinstance(tools_cfg, dict):
+        return {}
+    return tools_cfg
 
 
 def load_step_models(config_path: Path) -> dict[str, str]:
