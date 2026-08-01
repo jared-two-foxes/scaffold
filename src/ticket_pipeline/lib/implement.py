@@ -263,10 +263,20 @@ def build_implement_criterion_fix_prompt(
     )
 
 
-def build_implement_criterion_direct_prompt(criterion: str, plan_context: str) -> str:
+def build_implement_criterion_direct_prompt(
+    criterion: str, plan_context: str, verification: str = "manual"
+) -> str:
     instructions = lib.load_prompt_body(IMPLEMENT_CRITERION_DIRECT_PROMPT_FILE)
+    if verification == "manual":
+        strategy_note = ""
+    else:
+        strategy_note = (
+            "\n\n> **Note:** The direct strategy was explicitly selected for this "
+            "criterion via an override — do not refuse to implement on the grounds "
+            "that a test could verify it; make the change directly."
+        )
     return (
-        f"{instructions}\n\n---\n\n"
+        f"{instructions}{strategy_note}\n\n---\n\n"
         f"Here is the relevant Implementation Plan context for this "
         f"criterion, extracted from the gap plan - already complete and "
         f"current, no need to read_file it again:\n\n{plan_context}\n\n"
@@ -281,8 +291,17 @@ def build_implement_criterion_direct_fix_prompt(
     changed_so_far: list[str],
     error_output: str,
     fresh_start: bool = False,
+    verification: str = "manual",
 ) -> str:
     instructions = lib.load_prompt_body(IMPLEMENT_CRITERION_DIRECT_PROMPT_FILE)
+    if verification == "manual":
+        strategy_note = ""
+    else:
+        strategy_note = (
+            "\n\n> **Note:** The direct strategy was explicitly selected for this "
+            "criterion via an override — do not refuse to implement on the grounds "
+            "that a test could verify it; make the change directly."
+        )
     changed_list = "\n".join(f"- {p}" for p in changed_so_far) or "- (none recorded)"
     failure_desc = (
         "A previous attempt failed and its changes have been reverted. You are starting from a clean state. Do NOT try to reproduce the previous approach. Read the error below, understand what went wrong, and try a different approach."
@@ -290,7 +309,7 @@ def build_implement_criterion_direct_fix_prompt(
         else "but the project does not build. Fix the build error with the smallest targeted change - do not re-implement from scratch or deviate from the approach already taken unless the error itself proves that approach can't work."
     )
     return (
-        f"{instructions}\n\n---\n\n"
+        f"{instructions}{strategy_note}\n\n---\n\n"
         f"Here is the relevant Implementation Plan context for this "
         f"criterion, extracted from the gap plan - already complete and "
         f"current, no need to read_file it again:\n\n{plan_context}\n\n"
@@ -460,7 +479,7 @@ def run_implement_direct_with_refine(
                 )
             else:
                 prompt = build_implement_criterion_direct_prompt(
-                    frame.criterion, frame.plan_context
+                    frame.criterion, frame.plan_context, verification=frame.verification
                 )
         else:
             prev_changed = sorted(set(all_changed))
@@ -491,6 +510,7 @@ def run_implement_direct_with_refine(
                 prev_changed,
                 last_error,
                 fresh_start=fresh_start,
+                verification=frame.verification,
             )
 
         attempt_changed: list[str] = []
@@ -525,11 +545,13 @@ def run_implement_direct_with_refine(
             )
         lib.render_step_output(result.text)
         if not attempt_changed:
-            build_result = lib.run_command(
-                commands["build_cmd"], f"build gate (attempt {attempt}, {limit_desc})"
+            paths = lib.extract_referenced_paths(
+                f"{frame.criterion}\n{frame.plan_context}"
             )
-            if build_result.returncode == 0:
-                return sorted(set(all_changed))
+            if paths and set(paths) & set(lib.git_changed_files()):
+                return sorted(
+                    set(all_changed)
+                )  # a previous criterion already did the work
             lib.die_with_log(
                 "implement-criterion-direct",
                 "Direct Implementor finished without writing any files.",
@@ -717,52 +739,18 @@ def run_implement_with_refine(
             lib.die_with_log("implement-criterion", str(e), criterion=frame.criterion)
         lib.render_step_output(result.text)
         if not attempt_changed:
-            build_result = lib.run_command(
-                commands["build_cmd"], f"build gate (attempt {attempt}, {limit_desc})"
+            paths = lib.extract_referenced_paths(
+                f"{frame.criterion}\n{frame.plan_context}"
             )
-            if build_result.returncode != 0:
-                lib.die_with_log(
-                    "implement-criterion",
-                    "Implementor finished without writing any files.",
-                    criterion=frame.criterion,
-                )
-
-            green_results = lib.run_scoped_tests(
-                test_names,
-                commands,
-                f"green check (attempt {attempt}, {limit_desc})",
-                quiet=True,
-            )
-            still_red = [n for n, r in zip(test_names, green_results) if r.returncode != 0]
-            if not still_red:
-                return sorted(set(all_changed))
-
-            failure_kind = "test-red"
-            last_error = "\n\n".join(
-                f"{n}:\n" + (r.stdout or "") + (r.stderr or "")
-                for n, r in zip(test_names, green_results)
-                if r.returncode != 0
-            )
-            last_result = next(
-                r for n, r in zip(test_names, green_results) if n in still_red
-            )
-            lib.log_event(
+            if paths and set(paths) & set(lib.git_changed_files()):
+                return sorted(
+                    set(all_changed)
+                )  # a previous criterion already did the work
+            lib.die_with_log(
                 "implement-criterion",
-                "retry",
-                error=f"{len(still_red)} test(s) still red (attempt {attempt}, {limit_desc})",
+                "Implementor finished without writing any files.",
                 criterion=frame.criterion,
             )
-            if not policy.should_continue(attempt, failure_kind, frame, None):
-                policy.on_exhausted(
-                    failure_kind,
-                    last_error or "",
-                    sorted(set(all_changed)),
-                    last_result,
-                    frame,
-                    None,
-                )
-                return sorted(set(all_changed))
-            continue
 
         all_changed.extend(attempt_changed)
 

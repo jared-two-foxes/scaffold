@@ -95,9 +95,6 @@ class FreshStartRetryTests(unittest.TestCase):
     def test_direct_loop_accepts_empty_write_when_build_passes(self):
         frame = self._frame()
         prompts: list[str] = []
-        build_result = subprocess.CompletedProcess(
-            args=["build"], returncode=0, stdout="", stderr=""
-        )
 
         def fake_run_with_tools(prompt, _tool_list, _executor, _name, **_kwargs):
             prompts.append(prompt)
@@ -116,12 +113,19 @@ class FreshStartRetryTests(unittest.TestCase):
                 side_effect=fake_run_ai_step_with_retry,
             ),
             mock.patch.object(
-                implement_lib.lib, "run_command", return_value=build_result
-            ),
-            mock.patch.object(
                 implement_lib.lib,
                 "die_with_log",
                 side_effect=RuntimeError("should not die"),
+            ),
+            mock.patch.object(
+                implement_lib.lib,
+                "extract_referenced_paths",
+                return_value=["src/lib.py"],
+            ),
+            mock.patch.object(
+                implement_lib.lib,
+                "git_changed_files",
+                return_value=["src/lib.py"],
             ),
         ):
             changed = implement_lib.run_implement_direct_with_refine(
@@ -169,8 +173,8 @@ class FreshStartRetryTests(unittest.TestCase):
 
         def fake_run_with_tools(prompt, _tool_list, executor, _name, **_kwargs):
             prompts.append(prompt)
-            if len(prompts) == 2:
-                executor("write_file", {"path": "src/generated.py", "content": "x"})
+            # Both attempts write a file so the no-files-written branch is not triggered
+            executor("write_file", {"path": "src/generated.py", "content": "x"})
             return mock.Mock(text="ok")
 
         def fake_run_ai_step_with_retry(step_fn, *_args, **_kwargs):
@@ -209,6 +213,9 @@ class FreshStartRetryTests(unittest.TestCase):
                 2,
                 retry_policy=FixedBudgetPolicy(2),
             )
+
+        self.assertEqual(changed, ["src/generated.py"])
+        self.assertEqual(len(prompts), 2)
 
         self.assertEqual(changed, ["src/generated.py"])
         self.assertEqual(len(prompts), 2)

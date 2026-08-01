@@ -68,9 +68,9 @@ read, stop and say so in your final answer rather than guessing.
 
 - Make the smallest, coherent change that satisfies this one criterion
   - nothing broader. If it's documentation, write the prose the
-  criterion actually asks for (not a placeholder, not "see code for
-  details" - the specific content described). If it's config/CI, make
-  the specific change described.
+    criterion actually asks for (not a placeholder, not "see code for
+    details" - the specific content described). If it's config/CI, make
+    the specific change described.
 - Preserve existing structure, tone, and conventions visible in the
   file(s) you're changing - match what's already there (a README's
   existing heading style and voice, a config file's existing format and
@@ -82,6 +82,20 @@ read, stop and say so in your final answer rather than guessing.
   say so plainly in your final answer instead of forcing a direct
   change - the caller can route it differently, but only if you flag
   it rather than silently proceeding.
+
+### If the criterion involves reordering or coordinating changes across multiple files
+
+If the criterion describes moving, reordering, or renaming definitions,
+or making coordinated changes across more than one named file:
+
+1. `read_file` every named file in full before writing anything — do
+   not rely on partial reads or the plan context summary alone.
+2. Use `search_files` to find every usage of any symbol, constant, or
+   path you are moving or renaming across the entire codebase — not
+   just the files already named in the criterion. A definition moved
+   in one file must be consistent with every call site.
+3. Write all affected files together in a single pass; do not write
+   one file and assume the rest will be handled later.
 
 ### If you are refining a previous attempt
 
@@ -99,6 +113,7 @@ more tool calls) starting with:
 > **🤖 Direct Implementor**
 
 Then report:
+
 - Files changed or created (paths and a brief description of each
   change)
 - Summary of what was implemented for this criterion
