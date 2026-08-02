@@ -3,7 +3,7 @@ agent_rendering - deterministic artifact and plan-context rendering for
 AgentPlanningStrategy.
 
 Produces:
-  render_agent_full_plan()   → .tdd-plan.md content
+  render_agent_full_plan()   → .implementation-plan.md content
   render_agent_gap_plan()    → .gap-plan.md content
   render_plan_context()      → per-criterion plan_context string
   build_agent_diagnostics()  → tuple[PlanningDiagnostic, ...]
@@ -119,7 +119,7 @@ def _render_criterion_assessment(assessment: AgentCriterionAssessment) -> str:
 
 def render_agent_full_plan(submission: AgentPlanSubmission) -> str:
     """
-    Render the complete agent planning report as .tdd-plan.md content.
+    Render the complete agent planning report as .implementation-plan.md content.
     Deterministic - same submission always produces the same output.
     """
     sections: list[str] = ["# Agent Planning Report", ""]

@@ -26,13 +26,38 @@ GAP_PLAN = (
     "## Acceptance Criteria\n\n"
     "- [ ] Change behavior <!-- why: missing; verify: test; strategy: direct; "
     "existing_test: tests/a.py::test_old -->\n"
-    "- [ ] Refactor docs <!-- why: tidy; verify: manual -->\n"
+    "- [ ] Refactor docs <!-- why: tidy; verify: manual; strategy: manual -->\n"
 )
 
 
 class PlanningModelTests(unittest.TestCase):
-    def test_planned_criterion_defaults(self):
-        item = PlannedCriterion(criterion="- [ ] Do thing", plan_context="Context")
+    def test_planned_criterion_requires_explicit_verification(self):
+        """PlannedCriterion must not silently default verification to 'test'."""
+        with self.assertRaises((TypeError, ValueError)):
+            PlannedCriterion(
+                criterion="- [ ] Do thing",
+                plan_context="Context",
+                implementation_strategy="tdd",
+                # verification deliberately omitted
+            )
+
+    def test_planned_criterion_requires_explicit_implementation_strategy(self):
+        """PlannedCriterion must not silently default implementation_strategy to 'tdd'."""
+        with self.assertRaises((TypeError, ValueError)):
+            PlannedCriterion(
+                criterion="- [ ] Do thing",
+                plan_context="Context",
+                verification="test",
+                # implementation_strategy deliberately omitted
+            )
+
+    def test_planned_criterion_with_explicit_fields_constructs_correctly(self):
+        item = PlannedCriterion(
+            criterion="- [ ] Do thing",
+            plan_context="Context",
+            verification="test",
+            implementation_strategy="tdd",
+        )
         self.assertEqual("test", item.verification)
         self.assertEqual("tdd", item.implementation_strategy)
         self.assertEqual((), item.existing_test_refs)
@@ -43,6 +68,7 @@ class PlanningModelTests(unittest.TestCase):
                 criterion="- [ ] Do thing",
                 plan_context="Context",
                 verification="integration-only",
+                implementation_strategy="tdd",
             )
 
     def test_invalid_strategy_rejected(self):
@@ -50,6 +76,7 @@ class PlanningModelTests(unittest.TestCase):
             PlannedCriterion(
                 criterion="- [ ] Do thing",
                 plan_context="Context",
+                verification="test",
                 implementation_strategy="autonomous",
             )
 
@@ -105,6 +132,7 @@ class FrameFactoryTests(unittest.TestCase):
                 PlannedCriterion(
                     criterion="- [ ] Do thing",
                     plan_context="Context",
+                    verification="test",
                     implementation_strategy="manual",
                 ),
             )
@@ -187,7 +215,7 @@ class MechanicalStrategyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             ticket_file = tmp_path / ".ticket.md"
-            plan_file = tmp_path / ".tdd-plan.md"
+            plan_file = tmp_path / ".implementation-plan.md"
             gap_plan_file = tmp_path / ".gap-plan.md"
 
             def fake_walk(_blocks):
@@ -226,6 +254,8 @@ class ResolveTicketFramesIntegrationTests(unittest.TestCase):
                         PlannedCriterion(
                             criterion="- [ ] Fake criterion",
                             plan_context="Context",
+                            verification="test",
+                            implementation_strategy="tdd",
                         ),
                     )
                 )

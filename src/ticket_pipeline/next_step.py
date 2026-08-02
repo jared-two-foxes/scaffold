@@ -268,8 +268,9 @@ def do_ticket_validate(
         ticket_content = lib.fetch_ticket_text(ticket_id)
         tools.write_file_block(str(lib.TICKET_FILE))(ticket_content)
 
-    if lib.PLAN_FILE.is_file():
-        plan_text = lib.PLAN_FILE.read_text(encoding="utf-8")
+    existing_plan = lib._resolve_plan_file()
+    if existing_plan is not None:
+        plan_text = existing_plan.read_text(encoding="utf-8")
     else:
         plan_text = lib.run_plan_step(ticket_content, plan_model, ticket_id=ticket_id)
 
@@ -295,8 +296,12 @@ def do_ticket_validate(
                 test_names=None,
                 status="pending",
                 origin="validate-missed",
-                verification=lib.extract_verification_mode(criterion),
-                strategy=lib.extract_strategy(criterion),
+                # validate-missed criteria come from a re-narrow over
+                # existing gap-plan text; use the parsed tags when
+                # present, and fall back to "test"/"tdd" for older plans
+                # that predate explicit tagging.
+                verification=lib.extract_verification_mode(criterion) or "test",
+                strategy=lib.extract_strategy(criterion) or "tdd",
                 existing_test_refs=lib.extract_existing_test_refs(criterion),
             )
             for criterion in remaining
@@ -453,7 +458,9 @@ def do_push_review_findings(ticket_id: str, review_text: str) -> None:
             test_names=None,
             status="pending",
             origin="review",
-            strategy=lib.extract_strategy(f"- [ ] {finding}"),
+            # review findings come from reviewer prose and never carry
+            # strategy tags; default to "tdd" for backward compatibility.
+            strategy=lib.extract_strategy(f"- [ ] {finding}") or "tdd",
         )
         for finding in findings
     ]

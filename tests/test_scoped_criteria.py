@@ -46,7 +46,7 @@ SCOPED_SA528_CRITERION = (
 # criterion ("all 11 files") would have matched none of these lines, so
 # scoping makes plan-context extraction *more* precise, not less.
 SCOPED_GAP_PLAN = """\
-<!-- narrowed by Narrower on 2025-01-01 from .tdd-plan.md -->
+<!-- narrowed by Narrower on 2025-01-01 from .implementation-plan.md -->
 
 ## Source
 SA-528
@@ -133,13 +133,15 @@ class ExtractVerificationModeScopedTests(unittest.TestCase):
             lib.extract_verification_mode(SCOPED_SA528_CRITERION),
         )
 
-    def test_parses_test_when_no_tag_present(self):
-        # A scoped criterion without a verify tag still defaults to
-        # "test" - scoping doesn't change the default.
+    def test_returns_none_when_no_tag_present(self):
+        # extract_verification_mode returns None for criteria without
+        # an explicit verify tag - callers in the planning path must
+        # reject None; callers creating CriterionFrame from prose may
+        # supply their own explicit fallback.
         scoped = (
             "- [ ] `foo.rs` uses `Bar`. <!-- why: original covers 3 files; 2 done -->"
         )
-        self.assertEqual("test", lib.extract_verification_mode(scoped))
+        self.assertIsNone(lib.extract_verification_mode(scoped))
 
 
 class ExtractExistingTestRefsScopedTests(unittest.TestCase):

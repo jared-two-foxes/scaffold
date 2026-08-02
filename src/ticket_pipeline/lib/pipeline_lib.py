@@ -69,7 +69,8 @@ SUPPORTED_PLANNING_STRATEGIES = ("mechanical", "agent")
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROMPTS_DIR = files("ticket_pipeline") / "prompts"
 TICKET_FILE = Path(".ticket.md")
-PLAN_FILE = Path(".tdd-plan.md")
+PLAN_FILE = Path(".implementation-plan.md")
+LEGACY_PLAN_FILE = Path(".tdd-plan.md")  # deprecated name; read as fallback during migration
 UPDATED_PLAN_FILE = Path(".updated-plan.md")
 PIPELINE_CONFIG_FILE = Path(".dev-pipeline.toml")
 
@@ -117,6 +118,27 @@ TEST_QUALITY_REVIEW_PROMPT_FILE = PROMPTS_DIR / "review-test-quality.prompt.md"
 RECHECK_CRITERION_PROMPT_FILE = PROMPTS_DIR / "recheck-criterion.prompt.md"
 EXPLORE_CRITERION_PROMPT_FILE = PROMPTS_DIR / "explore-criterion.prompt.md"
 
+
+def _resolve_plan_file() -> Path | None:
+    """Return the current plan file path, falling back to the legacy name.
+
+    Checks for `.implementation-plan.md` first, then falls back to the
+    deprecated `.tdd-plan.md` with a logged warning. Returns None when
+    neither exists.
+    """
+    if PLAN_FILE.is_file():
+        return PLAN_FILE
+    if LEGACY_PLAN_FILE.is_file():
+        log.warning(
+            "-- %s not found; falling back to legacy plan file %s. "
+            "Rename it to %s to silence this warning.",
+            PLAN_FILE,
+            LEGACY_PLAN_FILE,
+            PLAN_FILE,
+        )
+        return LEGACY_PLAN_FILE
+    return None
+
 # Host OS name, injected into every test-criterion and test-quality
 # review prompt so the Tester/Reviewer write tests that compile on the
 # platform actually running the pipeline (see test-criterion.prompt.md's
@@ -128,9 +150,9 @@ _HOST_PLATFORM_NOTE = f"The host platform is {platform.system()} (tests must com
 # since none of these scripts have a path for a human to answer follow-up
 # questions mid-run.
 AUTO_PREAMBLE = (
-    "Before producing the TDD plan, identify any ambiguities or missing details "
+    "Before producing the implementation plan, identify any ambiguities or missing details "
     "in the ticket. For each one, state the question and then answer it with your "
-    "best inference from the ticket context. Then produce the full TDD plan.\n\n"
+    "best inference from the ticket context. Then produce the full implementation plan.\n\n"
 )
 
 DEFAULT_MODEL = "opencode:gpt-5.4-mini"  # ultimate fallback for unlested steps
@@ -655,8 +677,8 @@ def build_planning_blocks(
         ),
         Block(
             name="planner",
-            check=lambda: PLAN_FILE.is_file()
-            and "## Acceptance Criteria" in PLAN_FILE.read_text(encoding="utf-8"),
+            check=lambda: _resolve_plan_file() is not None
+            and "## Acceptance Criteria" in (_resolve_plan_file() or PLAN_FILE).read_text(encoding="utf-8"),
             run=lambda: run_plan_step(
                 TICKET_FILE.read_text(encoding="utf-8"), plan_model, ticket_id=ticket_id
             ),
@@ -667,7 +689,7 @@ def build_planning_blocks(
             and "## Acceptance Criteria" in GAP_PLAN_FILE.read_text(encoding="utf-8"),
             run=lambda: run_narrow_step(
                 TICKET_FILE.read_text(encoding="utf-8"),
-                PLAN_FILE.read_text(encoding="utf-8"),
+                (_resolve_plan_file() or PLAN_FILE).read_text(encoding="utf-8"),
                 narrow_model,
                 ticket_id=ticket_id,
             ),
@@ -954,7 +976,7 @@ def build_plan_prompt(ticket_content: str) -> str:
         f"reason to need, not speculative browsing; every tool call you "
         f"make gets resent in full on every subsequent turn, so prefer one "
         f"targeted search_files call over open-ended directory browsing "
-        f"when you're looking for something specific. Produce a TDD plan "
+        f"when you're looking for something specific. Produce an implementation plan "
         f"in the exact format from Step 4 above. Your final response (no "
         f"further tool calls) must "
         f"be exactly that plan text - the caller writes it to {PLAN_FILE} "
@@ -1112,7 +1134,7 @@ def build_narrow_prompt(
         f"{instructions}\n\n---\n\n"
         f"Here is the original ticket ({TICKET_FILE}) - already complete "
         f"and current, no need to read_file it again:\n\n{ticket_content}\n\n"
-        f"Here is the TDD plan to narrow ({PLAN_FILE}) - already "
+        f"Here is the implementation plan to narrow ({PLAN_FILE}) - already "
         f"complete and current, no need to read_file it again:\n\n"
         f"{plan_content}\n\n"
         f"Here is the current content of the files the plan's "
@@ -1219,7 +1241,7 @@ def run_plan_narrow_step(
     """
     Merged plan+narrow: one model session, one artifact (the gap plan).
     See module-level comment above for why this doesn't also produce
-    PLAN_FILE/.tdd-plan.md the way the two-step path does.
+    PLAN_FILE/.implementation-plan.md the way the two-step path does.
     """
     try:
         result = run_ai_step_with_retry(
@@ -1292,7 +1314,7 @@ STRATEGY_TAG_RE = re.compile(r"strategy:\s*(\w+)\b", re.IGNORECASE)
 KNOWN_STRATEGIES = frozenset({"tdd", "direct", "manual", "refactor"})
 
 
-def extract_verification_mode(criterion: str) -> str:
+def extract_verification_mode(criterion: str) -> str | None:
     """
     Parses a "verify: test|test-refactor|refactor|manual" tag out of a
     criterion's trailing HTML comment (narrow-plan.prompt.md's Final
@@ -1300,41 +1322,42 @@ def extract_verification_mode(criterion: str) -> str:
     its Step 3 - Narrower tags each retained criterion this way at the
     source, rather than a separate classification pass).
 
-    Defaults to "test" - the universal behavior before this
-    classification existed, and the safe default for anything this can't
-    parse a tag from: a review/validate-missed finding (extracted from
-    reviewer prose, never carries this tag at all), a hand-written or
-    foreign criterion, or a criterion from a .gap-plan.md that predates
-    this tag.
+    Returns None when no recognized tag is found. Planning parsers
+    (parse_gap_plan, agent._to_planning_result) reject None as a
+    planning error - every planned criterion must carry an explicit
+    verify tag. Callers that create CriterionFrame objects from prose
+    (validate-missed, review findings) must supply their own explicit
+    default rather than relying on this function to infer one.
     """
     match = VERIFICATION_TAG_RE.search(criterion)
     if match:
         mode = match.group(1).lower()
-        if mode in ("manual", "test-refactor", "refactor"):
+        if mode in ("test", "manual", "test-refactor", "refactor"):
             return mode
-    return "test"
+    return None
 
 
 EXISTING_TEST_TAG_RE = re.compile(r"existing_test:\s*(\S+)")
 
 
-def extract_strategy(criterion: str) -> str:
+def extract_strategy(criterion: str) -> str | None:
     """
     Parses a "strategy: <name>" tag from a criterion's trailing HTML
-    comment. Defaults from the verification mode when no explicit tag is
-    present.
+    comment.
+
+    Returns None when no recognized tag is found. Planning parsers
+    (parse_gap_plan, agent._to_planning_result) reject None as a
+    planning error - every planned criterion must carry an explicit
+    strategy tag. Callers that create CriterionFrame objects from prose
+    (validate-missed, review findings) must supply their own explicit
+    default rather than relying on this function to infer one.
     """
     match = STRATEGY_TAG_RE.search(criterion)
     if match:
         name = match.group(1).lower()
         if name in KNOWN_STRATEGIES:
             return name
-    verification = extract_verification_mode(criterion)
-    if verification == "manual":
-        return "manual"
-    if verification == "refactor":
-        return "refactor"
-    return "tdd"
+    return None
 
 
 def extract_existing_test_refs(criterion: str) -> list[str]:
@@ -1470,36 +1493,19 @@ class CriterionFrame:
     # all origins go through the identical
     # test-write -> implement -> gate cycle.
     verification: str = "test"  # "test" | "test-refactor" | "refactor"
-    # | "manual" - set from the gap plan's own
+    # | "manual" - set from the gap plan's verify: tag (see
+    # extract_verification_mode). These defaults exist solely for backward
+    # compatibility with older stack files that predate explicit tagging;
+    # new criteria must carry explicit values (see parse_gap_plan and
+    # PlannedCriterion). Verification and implementation strategy are
+    # independent: verify:test does not imply strategy:tdd.
     strategy: str = "tdd"  # "tdd" | "direct" | "manual" | "refactor"
     # - records how the criterion should be implemented, independent of
-    # the verification gate. The default stays "tdd" for backwards
-    # compatibility with old stacks and plans that do not carry an
-    # explicit strategy tag.
-    # "verify:" tag (see
-    # extract_verification_mode). "test" is the
-    # default for behavior changes a red/green
-    # test proves (write a failing test ->
-    # implement). "manual" is for criteria with
-    # no meaningful red/green (documentation,
-    # config, CI). "test-refactor" is for
-    # criteria that restructure existing test
-    # code (imports/helpers/utilities) without
-    # changing assertions - the test-writer
-    # rewrites the test, expected GREEN after.
-    # "refactor" is for criteria that
-    # restructure production code without
-    # changing behavior - existing tests are the
-    # safety net (kept GREEN), WRITE_TEST is
-    # skipped.
-    # Defaults to "test" - the universal behavior
-    # before this field existed, and the safe
-    # default for anything the tag-parsing can't
-    # find one on (review/validate-missed
-    # findings, which come from prose rather
-    # than a plan step, and older stack files
-    # from before this field existed - see
-    # load_stack's **entry unpacking).
+    # the verification gate. Defaults to "tdd" solely for backward
+    # compatibility with older stack files that predate explicit strategy
+    # tags. New criteria created through parse_gap_plan must carry an
+    # explicit strategy tag; this default is never inferred from the
+    # verification mode.
     existing_test_refs: list[str] = field(default_factory=list)  # each a
     # "file::test_name" reference, from the gap
     # plan's repeatable "existing_test:" tag (see
@@ -4097,7 +4103,7 @@ def build_review_prompt(changed_files: list[str], plan_text: str) -> str:
     file_list = "\n".join(f"- {p}" for p in changed_files)
     return (
         f"{instructions}\n\n---\n\n"
-        f"Here is the TDD plan ({PLAN_FILE}) - already complete and "
+        f"Here is the implementation plan ({PLAN_FILE}) - already complete and "
         f"current, no need to read_file it again:\n\n{plan_text}\n\n"
         f"The following files were changed or created:\n{file_list}\n\n"
         f"Review these per the steps and rules in your instructions."

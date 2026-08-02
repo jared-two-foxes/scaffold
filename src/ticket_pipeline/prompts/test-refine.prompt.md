@@ -11,7 +11,7 @@ test-writing attempt based on feedback - not rewriting from scratch.
 
 ## Inputs
 
-- Acceptance criteria from .tdd-plan.md - either read from the workspace
+- Acceptance criteria from .implementation-plan.md - either read from the workspace
   root or provided as injected context in the prompt.
 - User feedback about test adequacy (e.g., "these tests don't cover X",
   "this test is too brittle", "missing edge case Y").
@@ -21,16 +21,16 @@ test-writing attempt based on feedback - not rewriting from scratch.
 ## Step 1 - Load acceptance criteria
 
 - Check whether acceptance criteria are provided as context in the prompt
-  (e.g. a #file:.tdd-plan.md block). If present and the ## Acceptance
+  (e.g. a #file:.implementation-plan.md block). If present and the ## Acceptance
   Criteria section has at least one item, use those.
-- Otherwise, read .tdd-plan.md at the workspace root. If it exists and its
+- Otherwise, read .implementation-plan.md at the workspace root. If it exists and its
   ## Acceptance Criteria section has at least one item, use those.
 - **Otherwise: stop.** Do not derive your own criteria. Respond with:
 
   > **🤖 Tester**
   >
   > No acceptance criteria found. Run the plan prompt to generate
-  > .tdd-plan.md from a ticket or prompt, or supply explicit acceptance
+  > .implementation-plan.md from a ticket or prompt, or supply explicit acceptance
   > criteria directly.
 
 ## Step 2 - Refine based on feedback
@@ -74,6 +74,6 @@ Your task: Refine the tests based on this feedback.
 Feedback:
 <!-- Describe what's missing or brittle - e.g., "the tests don't cover edge case X", "this test is too tightly coupled to implementation". -->
 
-#file:${workspaceFolder}/.tdd-plan.md
+#file:${workspaceFolder}/.implementation-plan.md
 
 #file:${workspaceFolder}/.reinjection.md

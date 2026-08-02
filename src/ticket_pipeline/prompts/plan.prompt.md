@@ -3,7 +3,7 @@ name: plan
 description: >
   Single-shot: turns a ticket or plain-language prompt with explicit
   acceptance criteria into an implementation plan, written to
-  .tdd-plan.md - the shared contract for Tester, Implementor, Validator,
+  .implementation-plan.md - the shared contract for Tester, Implementor, Validator,
   and Reviewer. Fails fast if explicit acceptance criteria aren't present.
 ---
 
@@ -72,7 +72,7 @@ unambiguous checklist of done-conditions).
 Your final response (no further tool calls) must be exactly the plan
 below in this exact format - nothing else, no chat header, no
 preamble or trailing commentary. The caller writes this text verbatim
-to .tdd-plan.md, so anything you add outside the format would end up
+to .implementation-plan.md, so anything you add outside the format would end up
 in that file too.
 
 \`\`\`markdown
@@ -103,7 +103,7 @@ trivial | complex
 Mark ## Acceptance Criteria source as "ticket" (this prompt never
 derives criteria, so this is the only source). Edge cases may come from
 .updated-plan.md (written by the Interrogator prompt) in addition to the
-explicit acceptance criteria. Overwrite any existing .tdd-plan.md - it
+explicit acceptance criteria. Overwrite any existing .implementation-plan.md - it
 reflects the current task, not a history. Do not include toolchain
 information (build/test commands) - downstream prompts discover that by
 reading the codebase.

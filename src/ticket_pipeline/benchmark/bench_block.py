@@ -6,7 +6,7 @@ fixture inputs, and report machine-readable pass/fail/cost/duration.
 Always invoked as a subprocess by bench.py, with cwd already set to an
 isolated git worktree (so this script's own relative-path tool reads -
 libs/virtual_assistant_api/... - resolve against a real checkout, and
-concurrent trials never collide on .ticket.md/.tdd-plan.md/.gap-plan.md
+concurrent trials never collide on .ticket.md/.implementation-plan.md/.gap-plan.md
 since each worktree is its own directory).
 
 Deliberately does not import check-ticket.py/resolve-ticket.py - those

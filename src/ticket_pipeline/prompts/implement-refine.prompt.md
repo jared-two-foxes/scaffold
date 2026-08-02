@@ -11,7 +11,7 @@ based on feedback - not re-implementing from scratch.
 
 ## Inputs
 
-- .tdd-plan.md content - either read from the workspace root or provided
+- .implementation-plan.md content - either read from the workspace root or provided
   as injected context in the prompt.
 - User feedback: a compilation/build error, test failure, or runtime
   error from a previous implementation attempt.
@@ -25,7 +25,7 @@ based on feedback - not re-implementing from scratch.
    cause from the provided messages (compilation error, test failure,
    runtime error, etc.).
 2. **Load the plan**: The plan is already in context (e.g.
-   #file:.tdd-plan.md). Treat it as fixed - do not re-derive it.
+   #file:.implementation-plan.md). Treat it as fixed - do not re-derive it.
 3. **Load reentry state**:
    - If a .reinjection.md block is provided in context, use it to
      understand what was attempted, which files were changed, and what
@@ -68,7 +68,7 @@ Your task: Fix the implementation based on this error.
 Feedback:
 <!-- Paste the build error, test failure output, or runtime error here. -->
 
-#file:${workspaceFolder}/.tdd-plan.md
+#file:${workspaceFolder}/.implementation-plan.md
 
 #file:${workspaceFolder}/.reinjection.md
 
