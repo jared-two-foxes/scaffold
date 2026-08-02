@@ -103,6 +103,10 @@ _GROUPS: list[tuple[str, dict[str, _Command]]] = [
                 "Fetch and render a single Linear ticket by id",
                 has_argparse=False,
             ),
+            "benchmark": _Command(
+                "benchmark.cli",
+                "Strategy benchmark framework: planning / implementation / end-to-end / report",
+            ),
             "bench": _Command(
                 "benchmark.bench",
                 "Run a pipeline_lib block N times per model and report pass-rate/cost",

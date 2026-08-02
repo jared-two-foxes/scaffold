@@ -1,0 +1,9 @@
+{
+  "fixture_version": 1,
+  "category": "planning",
+  "suite": "core",
+  "case": "secret-debug-redaction",
+  "target_repo": "jared-two-foxes/VirtualAssistant",
+  "base_ref": "1737072afce89e118a3b4aee5c3a8419718ee8b1",
+  "case_type": "hidden-adjacent-obligation"
+}
