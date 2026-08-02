@@ -60,6 +60,7 @@ from . import verbosity
 from .retry import RetryPolicy
 
 log = verbosity.get_logger(__name__)
+SUPPORTED_PLANNING_STRATEGIES = ("mechanical", "agent")
 
 # ---------------------------------------------------------------------------
 # Config
@@ -711,7 +712,7 @@ def load_pipeline_config(config_path: Path) -> dict:
     # load_smoke_cmd; the git_workflow.* keys via load_git_config). All
     # other top-level keys stay unknown-key-rejected so a typo in a
     # toolchain command name is still caught loudly.
-    _ALLOWED_EXTRA_KEYS = {"step_models", "smoke_cmd", "retry", "tools"} | set(
+    _ALLOWED_EXTRA_KEYS = {"step_models", "smoke_cmd", "retry", "tools", "planning_strategy", "planning_agent"} | set(
         GitConfig.__annotations__
     )
     unknown = set(data) - set(toolchain.commands) - _ALLOWED_EXTRA_KEYS
@@ -2974,6 +2975,52 @@ def load_step_models(config_path: Path) -> dict[str, str]:
     if not isinstance(table, dict):
         return {}
     return {k: v for k, v in table.items() if isinstance(v, str) and v.strip()}
+
+
+def load_planning_strategy(config_path: Path) -> str | None:
+    if not config_path.exists():
+        return None
+    with config_path.open("rb") as f:
+        data = tomllib.load(f)
+    raw = data.get("planning_strategy")
+    if raw is None:
+        return None
+    if not isinstance(raw, str) or not raw.strip():
+        die(
+            f"{config_path}: 'planning_strategy' must be one of "
+            f"{list(SUPPORTED_PLANNING_STRATEGIES)}"
+        )
+    try:
+        return validate_planning_strategy_name(raw)
+    except ValueError as exc:
+        die(str(exc))
+    return None
+
+
+def resolve_planning_strategy_name(
+    project_config_path: Path,
+    cli_planning_strategy: str | None,
+    user_config_path: Path = USER_CONFIG_FILE,
+) -> str:
+    if cli_planning_strategy is not None:
+        return validate_planning_strategy_name(cli_planning_strategy)
+    project_value = load_planning_strategy(project_config_path)
+    if project_value is not None:
+        return project_value
+    user_value = load_planning_strategy(user_config_path)
+    if user_value is not None:
+        return user_value
+    return "mechanical"
+
+
+def validate_planning_strategy_name(name: str) -> str:
+    normalized = name.strip().lower()
+    if normalized not in SUPPORTED_PLANNING_STRATEGIES:
+        raise ValueError(
+            f"Unknown planning strategy {name!r}.\n"
+            f"Supported strategies: {', '.join(SUPPORTED_PLANNING_STRATEGIES)}."
+        )
+    return normalized
 
 
 def run_smoke_gate(smoke_cmd: str | None) -> None:
