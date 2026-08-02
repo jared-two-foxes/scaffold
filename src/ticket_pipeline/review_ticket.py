@@ -76,7 +76,7 @@ REVIEW_PROMPT_FILE = lib.PROMPTS_DIR / "review-ticket.prompt.md"
 # file-not-found error. Mirrors build_plan_prompt's preloaded_paths use
 # of TICKET_FILE, but this script never writes that file to disk -
 # review-ticket is intentionally decoupled from the other scripts'
-# .ticket.md/.tdd-plan.md handoff convention.
+# .ticket.md/.implementation-plan.md handoff convention.
 TICKET_DEDUP_KEY = ".ticket.md"
 
 # Markers used to round-trip the saved file - propose-ticket-edit.py

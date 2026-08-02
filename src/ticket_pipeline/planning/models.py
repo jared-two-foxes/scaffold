@@ -32,17 +32,27 @@ class PlanningRequest:
 class PlannedCriterion:
     criterion: str
     plan_context: str
-    verification: str = "test"
-    implementation_strategy: str = "tdd"
+    verification: str
+    implementation_strategy: str
     existing_test_refs: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         if not self.criterion.strip() or not _criterion_has_meaningful_text(self.criterion):
             raise ValueError("criterion must contain meaningful text")
+        if not self.verification:
+            raise ValueError(
+                "verification must be provided explicitly; "
+                f"expected one of {sorted(VALID_VERIFICATION_MODES)}"
+            )
         if self.verification not in VALID_VERIFICATION_MODES:
             raise ValueError(
                 f"unsupported verification mode {self.verification!r}; "
                 f"expected one of {sorted(VALID_VERIFICATION_MODES)}"
+            )
+        if not self.implementation_strategy:
+            raise ValueError(
+                "implementation_strategy must be provided explicitly; "
+                f"expected one of {sorted(VALID_IMPLEMENTATION_STRATEGIES)}"
             )
         if self.implementation_strategy not in VALID_IMPLEMENTATION_STRATEGIES:
             raise ValueError(

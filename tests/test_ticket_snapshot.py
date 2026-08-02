@@ -29,7 +29,7 @@ Do the thing.
 
 ## Acceptance Criteria
 
-- [ ] The thing is done <!-- why: not done yet; verify: test -->
+- [ ] The thing is done <!-- why: not done yet; verify: test; strategy: direct -->
 """
 
 
@@ -121,7 +121,7 @@ class TestResolveTicketFramesSnapshot(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             ticket_file = tmp_path / ".ticket.md"
-            plan_file = tmp_path / ".tdd-plan.md"
+            plan_file = tmp_path / ".implementation-plan.md"
             gap_plan_file = tmp_path / ".gap-plan.md"
             gap_plan_file.write_text(GAP_PLAN, encoding="utf-8")
 

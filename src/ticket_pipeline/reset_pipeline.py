@@ -22,7 +22,7 @@ What gets removed (default):
                                 push - desirable for a clean slate,
                                 especially after a grounding-check bug
                                 fix that wrongly declined criteria.
-  - .ticket.md, .tdd-plan.md, .updated-plan.md, .gap-plan.md
+  - .ticket.md, .implementation-plan.md, .updated-plan.md, .gap-plan.md
                               - transient scratch push_ticket.py/
                                 next_step.py regenerate fresh on every
                                 run; never read back by a *later*,

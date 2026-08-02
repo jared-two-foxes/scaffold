@@ -18,7 +18,7 @@ Guard-first, not cleanup-first: the re-entrancy check (stack already has
 this ticket) and the clobber check (stack has a *different* ticket, and
 neither --force nor --prepend was passed) both run before any file on
 disk is touched. Only once the guard has passed does this script clear
-its own scratch state (.ticket.md/.tdd-plan.md/.gap-plan.md) and write
+its own scratch state (.ticket.md/.implementation-plan.md/.gap-plan.md) and write
 the new stack.
 
 Pushing a *different* ticket while one is already in progress has two
@@ -40,7 +40,7 @@ exclusive and mean very different things:
              some other, not-yet-built piece needs to exist first.
 
 .criteria-stack.json is the only file this pipeline trusts across
-invocations. .ticket.md/.tdd-plan.md/.gap-plan.md are transient scratch,
+invocations. .ticket.md/.implementation-plan.md/.gap-plan.md are transient scratch,
 regenerated here and again by next_step's TICKET_VALIDATE phase - not
 read back by any later, separate run. Safe to clear on every push
 because each frame carries its own plan_context already extracted at

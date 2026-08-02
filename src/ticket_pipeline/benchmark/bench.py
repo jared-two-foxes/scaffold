@@ -5,7 +5,7 @@ concurrently, each trial isolated in its own git worktree, and report a
 pass-rate/cost/duration table per model.
 
 Why worktrees: pipeline_lib writes fixed-name state files (.ticket.md,
-.tdd-plan.md, .gap-plan.md) into the cwd, and the model's own file-read
+.implementation-plan.md, .gap-plan.md) into the cwd, and the model's own file-read
 tool calls resolve paths relative to cwd too. Two trials sharing a cwd
 would clobber each other's state and could even read each other's
 half-written files mid-run. A git worktree gives each trial its own

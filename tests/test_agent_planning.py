@@ -10,7 +10,7 @@ Covers:
 - Dispositions: required and prohibited fields per disposition
 - Submission validation
 - Result adapter: remaining→frames, satisfied→artifacts, no-gap results
-- Artifact rendering: deterministic .tdd-plan.md and .gap-plan.md
+- Artifact rendering: deterministic .implementation-plan.md and .gap-plan.md
 - Factory: config loading, unknown keys rejected
 - CLI: explore incompatibility with agent strategy
 - Integration: fake model transcript end-to-end
@@ -925,7 +925,7 @@ class FakeTranscriptIntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             ticket_file = tmp_path / ".ticket.md"
-            plan_file = tmp_path / ".tdd-plan.md"
+            plan_file = tmp_path / ".implementation-plan.md"
             gap_plan_file = tmp_path / ".gap-plan.md"
             (tmp_path / "src").mkdir()
             (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
@@ -991,7 +991,7 @@ class FakeTranscriptIntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             ticket_file = tmp_path / ".ticket.md"
-            plan_file = tmp_path / ".tdd-plan.md"
+            plan_file = tmp_path / ".implementation-plan.md"
             gap_plan_file = tmp_path / ".gap-plan.md"
 
             import os
@@ -1066,7 +1066,7 @@ class FakeTranscriptIntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             ticket_file = tmp_path / ".ticket.md"
-            plan_file = tmp_path / ".tdd-plan.md"
+            plan_file = tmp_path / ".implementation-plan.md"
             gap_plan_file = tmp_path / ".gap-plan.md"
 
             import os
@@ -1128,7 +1128,7 @@ class FakeTranscriptIntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             ticket_file = tmp_path / ".ticket.md"
-            plan_file = tmp_path / ".tdd-plan.md"
+            plan_file = tmp_path / ".implementation-plan.md"
             gap_plan_file = tmp_path / ".gap-plan.md"
 
             import os

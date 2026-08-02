@@ -109,8 +109,8 @@ Required: rationale, blocker description. Must NOT have planned_changes.
 
 Choose one of:
 
-- `test`: criterion is verified by automated tests (the normal case).
-- `test-refactor`: existing tests cover the criterion; only refactoring needed.
+- `test`: criterion is verified by automated tests (the normal case for behavior changes).
+- `test-refactor`: existing tests cover the criterion; only refactoring test code is needed.
 - `refactor`: internal restructuring verified by existing test suite.
 - `manual`: criterion can only be verified by human inspection.
 
@@ -118,12 +118,20 @@ Choose one of:
 
 ## Implementation strategy classification
 
-Choose one of:
+Choose one of, **independently of the verification choice**:
 
-- `tdd`: write failing tests first, then implement.
-- `direct`: implement without test-first (e.g. refactors, config).
+- `tdd`: write failing tests first, then implement. Use when a red/green
+  test cycle meaningfully drives the implementation.
+- `direct`: implement first, then verify. A criterion tagged `verification: test`
+  may legitimately use `strategy: direct` — the presence of an automated
+  acceptance test does not require test-first implementation.
 - `manual`: implementation requires human action.
 - `refactor`: restructure existing code without changing behaviour.
+
+**Key rule:** `verification: test` and `strategy: tdd` are independent
+decisions. Automated test verification does not imply TDD implementation.
+Choose the strategy that best fits how the work should be produced, not
+how it will be confirmed.
 
 ---
 

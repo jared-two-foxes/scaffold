@@ -36,6 +36,37 @@ DEFAULT_MAX_INVALID_SUBMISSIONS = 2
 # Configuration key for agent settings in .dev-pipeline.toml
 _AGENT_MODEL_STEP_KEY = "agent_plan"
 
+_VALID_VERIFICATION_MODES = frozenset({"test", "test-refactor", "refactor", "manual"})
+_VALID_IMPLEMENTATION_STRATEGIES = frozenset({"tdd", "direct", "manual", "refactor"})
+
+
+def _require_verification_for_agent(assessment: "AgentCriterionAssessment") -> str:
+    """Require an explicit verification value from an agent assessment."""
+    from ..agent_models import AgentCriterionAssessment  # noqa: F401
+    value = assessment.verification
+    if not value:
+        raise PlanningError(
+            f"Agent submitted a 'remaining' criterion without an explicit "
+            f"verification value. Every remaining criterion must declare "
+            f"verification (one of: {sorted(_VALID_VERIFICATION_MODES)}). "
+            f"Criterion: {assessment.source_criterion!r}"
+        )
+    return value
+
+
+def _require_strategy_for_agent(assessment: "AgentCriterionAssessment") -> str:
+    """Require an explicit implementation_strategy value from an agent assessment."""
+    from ..agent_models import AgentCriterionAssessment  # noqa: F401
+    value = assessment.implementation_strategy
+    if not value:
+        raise PlanningError(
+            f"Agent submitted a 'remaining' criterion without an explicit "
+            f"implementation_strategy value. Every remaining criterion must "
+            f"declare a strategy (one of: {sorted(_VALID_IMPLEMENTATION_STRATEGIES)}). "
+            f"Criterion: {assessment.source_criterion!r}"
+        )
+    return value
+
 
 class AgentPlanningStrategy:
     name = "agent"
@@ -196,8 +227,8 @@ class AgentPlanningStrategy:
             PlannedCriterion(
                 criterion=assessment.source_criterion,
                 plan_context=render_plan_context(assessment),
-                verification=assessment.verification or "test",
-                implementation_strategy=assessment.implementation_strategy or "tdd",
+                verification=_require_verification_for_agent(assessment),
+                implementation_strategy=_require_strategy_for_agent(assessment),
                 existing_test_refs=assessment.existing_test_refs,
             )
             for assessment in submission.criteria
