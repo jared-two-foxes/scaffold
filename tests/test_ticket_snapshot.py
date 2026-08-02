@@ -122,6 +122,7 @@ class TestResolveTicketFramesSnapshot(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             ticket_file = tmp_path / ".ticket.md"
+            plan_file = tmp_path / ".tdd-plan.md"
             gap_plan_file = tmp_path / ".gap-plan.md"
             gap_plan_file.write_text(GAP_PLAN, encoding="utf-8")
 
@@ -129,10 +130,19 @@ class TestResolveTicketFramesSnapshot(unittest.TestCase):
                 patch.object(lib, "fetch_ticket_text", return_value=ticket_content),
                 patch.object(lib, "remove_scratch_files"),
                 patch.object(lib, "TICKET_FILE", ticket_file),
+                patch.object(lib, "PLAN_FILE", plan_file),
                 patch.object(lib, "GAP_PLAN_FILE", gap_plan_file),
-                patch.object(lib, "walk"),
+                patch.object(lib, "walk") as mock_walk,
                 patch.object(lib, "filter_grounded_frames") as mock_filter,
             ):
+                def fake_walk(_blocks):
+                    plan_file.write_text(
+                        "## Acceptance Criteria\n\n- [ ] The thing is done\n",
+                        encoding="utf-8",
+                    )
+
+                mock_walk.side_effect = fake_walk
+
                 def passthrough(candidate_frames):
                     return candidate_frames, [], 0
                 mock_filter.side_effect = passthrough
