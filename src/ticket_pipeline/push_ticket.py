@@ -203,7 +203,10 @@ def resolve_ticket_frames(
         step_models=step_models,
     )
     try:
-        strategy = create_planning_strategy(planning_strategy_name)
+        strategy = create_planning_strategy(
+            planning_strategy_name,
+            config_path=lib.PIPELINE_CONFIG_FILE,
+        )
         result = strategy.plan(request)
     except PlanningError as exc:
         lib.die(str(exc))
@@ -333,6 +336,18 @@ def main() -> None:
     model, step_models = lib.resolve_step_models(lib.PIPELINE_CONFIG_FILE, args.model)
     git_cfg = lib.load_git_config(lib.PIPELINE_CONFIG_FILE)
     ticket_id = args.ticket_id
+
+    # Check --explore incompatibility with the agent planning strategy.
+    # We must do this before touching any files.
+    if args.explore and not args.from_gap_plan and not args.validate_only:
+        resolved_strategy = lib.resolve_planning_strategy_name(
+            lib.PIPELINE_CONFIG_FILE, args.planning_strategy
+        )
+        if resolved_strategy == "agent":
+            lib.die(
+                "--explore is not compatible with the agent planning strategy because "
+                "repository exploration is already part of that strategy."
+            )
 
     # ── Guard: runs before any file is touched ──────────────────────────
     existing = lib.load_stack()

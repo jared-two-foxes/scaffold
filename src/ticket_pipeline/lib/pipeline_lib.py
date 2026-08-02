@@ -712,7 +712,7 @@ def load_pipeline_config(config_path: Path) -> dict:
     # load_smoke_cmd; the git_workflow.* keys via load_git_config). All
     # other top-level keys stay unknown-key-rejected so a typo in a
     # toolchain command name is still caught loudly.
-    _ALLOWED_EXTRA_KEYS = {"step_models", "smoke_cmd", "retry", "tools", "planning_strategy"} | set(
+    _ALLOWED_EXTRA_KEYS = {"step_models", "smoke_cmd", "retry", "tools", "planning_strategy", "planning_agent"} | set(
         GitConfig.__annotations__
     )
     unknown = set(data) - set(toolchain.commands) - _ALLOWED_EXTRA_KEYS
