@@ -32,16 +32,34 @@ jobs:
           pytest --tb=short -q 2>&1 | tee /tmp/pytest-output.txt
           echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
+      - name: Run benchmark (test-suite timings)
+        run: |
+          # Run the benchmark-framework unit tests with full duration reporting.
+          # The --durations=0 flag emits every test's elapsed time so the PR
+          # comment can surface regressions across commits without requiring
+          # external repos or AI API keys.
+          pytest tests/test_benchmark_acceptance.py \
+                 tests/test_benchmark_fixtures.py \
+                 tests/test_benchmark_models.py \
+                 tests/test_benchmark_planning_graders.py \
+                 tests/test_benchmark_reporting.py \
+                 --tb=no -q --durations=0 2>&1 | tee /tmp/bench-output.txt || true
+
       - name: Post status comment
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
             const output = fs.readFileSync('/tmp/pytest-output.txt', 'utf8');
+            const benchOutput = fs.readFileSync('/tmp/bench-output.txt', 'utf8');
             const exitCode = '${{ steps.pytest.outputs.exit_code }}';
             const passed = exitCode === '0';
             const icon = passed ? '✅' : '❌';
             const heading = passed ? 'All tests passed' : 'Tests failed';
+
+            // Extract the durations section from pytest's --durations=0 output
+            const durationsMatch = benchOutput.match(/={3,} slowest durations ={3,}[\s\S]*?(?=={3,}|$)/);
+            const durationsSection = durationsMatch ? durationsMatch[0].trim() : benchOutput.trim();
 
             const body = [
               `## ${icon} Current State — ${heading}`,
@@ -51,6 +69,15 @@ jobs:
               '',
               '```',
               output.trim(),
+              '```',
+              '',
+              '</details>',
+              '',
+              '<details>',
+              '<summary>📊 Benchmark — test-suite timings (benchmark framework tests)</summary>',
+              '',
+              '```',
+              durationsSection || '(no timing data captured)',
               '```',
               '',
               '</details>',
