@@ -1,0 +1,42 @@
+{
+  "required_outcomes": [
+    {
+      "id": "xero-config-added",
+      "critical": true,
+      "description": "XERO_WEBHOOK_KEY env var is parsed into XeroWebhookConfig struct"
+    },
+    {
+      "id": "quickbooks-config-added",
+      "critical": true,
+      "description": "QUICKBOOKS_WEBHOOK_TOKEN env var is parsed into QuickbooksWebhookConfig struct"
+    },
+    {
+      "id": "debug-redaction",
+      "critical": true,
+      "description": "Debug output redacts the secret values for both configs"
+    },
+    {
+      "id": "rocket-state",
+      "critical": true,
+      "description": "Both configs are available as optional Rocket state"
+    }
+  ],
+  "required_existing_paths": [
+    "libs/virtual_assistant_api/src/infra/accounting_webhooks.rs"
+  ],
+  "forbidden_paths": [
+    "libs/virtual_assistant_api/src/infra/xero_webhook_config.rs",
+    "libs/virtual_assistant_api/src/infra/quickbooks_webhook_config.rs"
+  ],
+  "already_satisfied_outcomes": [],
+  "expected_strategy_by_outcome": {
+    "xero-config-added": "tdd",
+    "quickbooks-config-added": "tdd",
+    "debug-redaction": "tdd",
+    "rocket-state": "tdd"
+  },
+  "critical_false_work_patterns": [
+    "xero_webhook_config.rs",
+    "quickbooks_webhook_config.rs"
+  ]
+}
