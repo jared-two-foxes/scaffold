@@ -152,9 +152,17 @@ class StrategySelectionTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 lib.resolve_planning_strategy_name(config, None, config)
 
-    def test_agent_strategy_placeholder_fails_clearly(self):
+    def test_agent_strategy_is_constructable_and_named(self):
         strategy = create_planning_strategy("agent")
-        with self.assertRaises(PlanningError) as ctx:
+        self.assertEqual("agent", strategy.name)
+
+    def test_agent_strategy_raises_planning_error_on_api_failure(self):
+        """
+        The agent strategy attempts a real run; without a live API key it
+        raises PlanningError (wrapping AIError), not an unhandled exception.
+        """
+        strategy = create_planning_strategy("agent")
+        with self.assertRaises(PlanningError):
             strategy.plan(
                 PlanningRequest(
                     ticket_id="TEST-1",
@@ -164,7 +172,6 @@ class StrategySelectionTests(unittest.TestCase):
                     step_models={},
                 )
             )
-        self.assertIn("not implemented", str(ctx.exception))
 
 
 class MechanicalStrategyTests(unittest.TestCase):

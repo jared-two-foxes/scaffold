@@ -1,4 +1,4 @@
-from .factory import SUPPORTED_PLANNING_STRATEGIES, create_planning_strategy
+from .factory import SUPPORTED_PLANNING_STRATEGIES, create_planning_strategy, load_agent_config
 from .frame_factory import build_ticket_frames
 from .models import PlannedCriterion, PlanningDiagnostic, PlanningRequest, PlanningResult
 from .parsing import parse_gap_plan, planning_result_from_gap_plan
@@ -14,6 +14,7 @@ __all__ = [
     "PlanningStrategy",
     "build_ticket_frames",
     "create_planning_strategy",
+    "load_agent_config",
     "parse_gap_plan",
     "planning_result_from_gap_plan",
 ]
