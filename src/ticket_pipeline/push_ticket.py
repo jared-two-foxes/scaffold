@@ -75,7 +75,16 @@ import argparse
 import sys
 from pathlib import Path
 
-from .lib import ai_client, pipeline_lib as lib, render, verbosity
+from .lib import ai_client, render, verbosity
+from .lib import pipeline_lib as lib
+from .planning import (
+    PlanningDiagnostic,
+    PlanningError,
+    PlanningRequest,
+    build_ticket_frames,
+    create_planning_strategy,
+    planning_result_from_gap_plan,
+)
 
 log = verbosity.get_logger(__name__)
 
@@ -158,59 +167,59 @@ def print_declined_criteria(
     )
 
 
+def render_planning_diagnostic(diagnostic: PlanningDiagnostic) -> None:
+    code_prefix = f"[{diagnostic.code}] " if diagnostic.code else ""
+    render.print_line(f"-- Planning {diagnostic.level}: {code_prefix}{diagnostic.message}")
+
+
+def load_ticket_content(ticket_id: str, ticket_file_in: Path | None) -> str:
+    if ticket_file_in is not None:
+        if not ticket_file_in.is_file():
+            lib.die(f"--ticket-file-in {ticket_file_in} not found.")
+        return ticket_file_in.read_text(encoding="utf-8")
+    return lib.fetch_ticket_text(ticket_id)
+
+
 def resolve_ticket_frames(
     ticket_id: str,
     model: str,
     step_models: dict[str, str],
     ticket_file_in: Path | None,
-    strategy_override: str | None = None,
+    implementation_strategy_override: str | None = None,
+    planning_strategy_name: str = "mechanical",
 ) -> list[lib.CriterionFrame]:
     """
     Fetches the ticket, runs plan+narrow, and builds one CriterionFrame
     per remaining acceptance criterion. Returns an empty list if all
     criteria are already satisfied.
     """
-    if ticket_file_in is not None:
-        if not ticket_file_in.is_file():
-            lib.die(f"--ticket-file-in {ticket_file_in} not found.")
-        ticket_content = ticket_file_in.read_text(encoding="utf-8")
-    else:
-        ticket_content = lib.fetch_ticket_text(ticket_id)
-
-    lib.remove_scratch_files((lib.TICKET_FILE, lib.PLAN_FILE, lib.GAP_PLAN_FILE))
-    lib.TICKET_FILE.write_text(ticket_content, encoding="utf-8")
-    lib.walk(
-        lib.build_planning_blocks(
-            ticket_id, model, step_models=step_models, ticket_file_in=lib.TICKET_FILE
-        )
+    ticket_content = load_ticket_content(ticket_id, ticket_file_in)
+    render.print_line(f"-- Planning strategy: {planning_strategy_name}")
+    request = PlanningRequest(
+        ticket_id=ticket_id,
+        ticket_content=ticket_content,
+        project_root=Path.cwd(),
+        model=model,
+        step_models=step_models,
     )
-    gap_plan_content = lib.GAP_PLAN_FILE.read_text(encoding="utf-8")
-
-    criteria = lib.extract_acceptance_criteria(gap_plan_content)
-    if not criteria:
+    try:
+        strategy = create_planning_strategy(planning_strategy_name)
+        result = strategy.plan(request)
+    except PlanningError as exc:
+        lib.die(str(exc))
+    for diagnostic in result.diagnostics:
+        render_planning_diagnostic(diagnostic)
+    if not result.criteria:
         render.print_line(
             f"-- {ticket_id}: no gap found. All acceptance criteria already satisfied."
         )
         return []
-
-    candidate_frames = [
-        lib.CriterionFrame(
-            ticket=ticket_id,
-            criterion=criterion,
-            plan_context=lib.extract_plan_context_for_criterion(
-                criterion, gap_plan_content
-            ),
-            test_files=None,
-            test_names=None,
-            status="pending",
-            origin="ticket",
-            verification=lib.extract_verification_mode(criterion),
-            strategy=strategy_override or lib.extract_strategy(criterion),
-            existing_test_refs=lib.extract_existing_test_refs(criterion),
-            ticket_snapshot=ticket_content,
-        )
-        for criterion in criteria
-    ]
+    candidate_frames = build_ticket_frames(
+        ticket_id=ticket_id,
+        ticket_content=ticket_content,
+        planning_result=result,
+        strategy_override=implementation_strategy_override,
+    )
     frames, newly_declined, skipped_count = lib.filter_grounded_frames(candidate_frames)
     print_declined_criteria(newly_declined)
     if skipped_count:
@@ -298,6 +307,14 @@ def main() -> None:
         help="Strategy for all seeded frames (default: per-criterion tag or 'tdd').",
     )
     parser.add_argument(
+        "--planning-strategy",
+        default=None,
+        choices=["mechanical", "agent"],
+        help="Select how the ticket plan is generated. 'mechanical' runs the fixed "
+        "plan-and-narrow pipeline. 'agent' uses the autonomous planning agent when "
+        "available. Default: configuration value or 'mechanical'.",
+    )
+    parser.add_argument(
         "--log-level",
         default="info",
         choices=list(verbosity.LEVELS),
@@ -310,7 +327,8 @@ def main() -> None:
     verbosity.setup_logging(args.log_level)
     if args.explore and args.validate_only:
         lib.die(
-            "--explore and --validate-only are incompatible: --validate-only pushes no criteria frames."
+            "--explore and --validate-only are incompatible: "
+            "--validate-only pushes no criteria frames."
         )
     model, step_models = lib.resolve_step_models(lib.PIPELINE_CONFIG_FILE, args.model)
     git_cfg = lib.load_git_config(lib.PIPELINE_CONFIG_FILE)
@@ -377,37 +395,31 @@ def main() -> None:
         gap_plan_content = lib.GAP_PLAN_FILE.read_text(encoding="utf-8")
         if "## Acceptance Criteria" not in gap_plan_content:
             lib.die(
-                f"--from-gap-plan given but {lib.GAP_PLAN_FILE} is not a valid gap plan (see output above)."
+                f"--from-gap-plan given but {lib.GAP_PLAN_FILE} is not a valid "
+                "gap plan (see output above)."
             )
         render.print_line(
             f"-- Using existing {lib.GAP_PLAN_FILE} (--from-gap-plan). No fetch, no plan+narrow."
         )
-
-        criteria = lib.extract_acceptance_criteria(gap_plan_content)
-        if not criteria:
+        try:
+            result = planning_result_from_gap_plan(gap_plan_content)
+        except ValueError as exc:
+            lib.die(str(exc))
+        for diagnostic in result.diagnostics:
+            render_planning_diagnostic(diagnostic)
+        if not result.criteria:
             render.print_line()
             render.print_line(
                 "-- No gap found. All acceptance criteria already satisfied. Nothing pushed."
             )
             render.print_line(f"-- Token usage: {ai_client.usage}")
             return
-        candidate_frames = [
-            lib.CriterionFrame(
-                ticket=ticket_id,
-                criterion=criterion,
-                plan_context=lib.extract_plan_context_for_criterion(
-                    criterion, gap_plan_content
-                ),
-                test_files=None,
-                test_names=None,
-                status="pending",
-                origin="ticket",
-                verification=lib.extract_verification_mode(criterion),
-                strategy=strategy_override or lib.extract_strategy(criterion),
-                existing_test_refs=lib.extract_existing_test_refs(criterion),
-            )
-            for criterion in criteria
-        ]
+        candidate_frames = build_ticket_frames(
+            ticket_id=ticket_id,
+            ticket_content=None,
+            planning_result=result,
+            strategy_override=args.strategy,
+        )
         frames, newly_declined, skipped_count = lib.filter_grounded_frames(
             candidate_frames
         )
@@ -419,18 +431,22 @@ def main() -> None:
             )
         if not frames:
             render.print_line(
-                f"-- 0 of {len(criteria)} pushed - all were previously declined or failed "
+                f"-- 0 of {len(result.criteria)} pushed - all were previously declined or failed "
                 f"mechanical grounding this run. See {lib.DECLINED_CRITERIA_FILE}."
             )
             render.print_line(f"-- Token usage: {ai_client.usage}")
             return
     else:
+        planning_strategy_name = lib.resolve_planning_strategy_name(
+            lib.PIPELINE_CONFIG_FILE, args.planning_strategy
+        )
         frames = resolve_ticket_frames(
             ticket_id,
             model,
             step_models,
             args.ticket_file_in,
-            strategy_override=args.strategy,
+            implementation_strategy_override=args.strategy,
+            planning_strategy_name=planning_strategy_name,
         )
         if not frames:
             render.print_line("-- Nothing pushed.")
