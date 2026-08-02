@@ -1,6 +1,6 @@
 from .factory import SUPPORTED_PLANNING_STRATEGIES, create_planning_strategy
 from .frame_factory import build_ticket_frames
-from .models import PlanningDiagnostic, PlannedCriterion, PlanningRequest, PlanningResult
+from .models import PlannedCriterion, PlanningDiagnostic, PlanningRequest, PlanningResult
 from .parsing import parse_gap_plan, planning_result_from_gap_plan
 from .strategy import PlanningError, PlanningStrategy
 

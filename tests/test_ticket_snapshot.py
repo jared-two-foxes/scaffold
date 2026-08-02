@@ -17,7 +17,6 @@ from unittest.mock import patch
 
 from ticket_pipeline.lib import pipeline_lib as lib
 
-
 SAMPLE_TICKET = "# TEST-1 — Sample ticket\n\n## Description\n\nDo something.\n"
 
 GAP_PLAN = """\
@@ -168,7 +167,11 @@ class TestResolveTicketFramesSnapshot(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ticket_file_in = Path(tmp) / "local_ticket.md"
             ticket_file_in.write_text(SAMPLE_TICKET, encoding="utf-8")
-            frames = self._run_resolve("TEST-1", ticket_file_in=ticket_file_in, ticket_content=SAMPLE_TICKET)
+            frames = self._run_resolve(
+                "TEST-1",
+                ticket_file_in=ticket_file_in,
+                ticket_content=SAMPLE_TICKET,
+            )
 
         self.assertTrue(len(frames) > 0, "Expected at least one frame")
         for frame in frames:

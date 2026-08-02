@@ -75,7 +75,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from .lib import ai_client, pipeline_lib as lib, render, verbosity
+from .lib import ai_client, render, verbosity
+from .lib import pipeline_lib as lib
 from .planning import (
     PlanningDiagnostic,
     PlanningError,
@@ -326,7 +327,8 @@ def main() -> None:
     verbosity.setup_logging(args.log_level)
     if args.explore and args.validate_only:
         lib.die(
-            "--explore and --validate-only are incompatible: --validate-only pushes no criteria frames."
+            "--explore and --validate-only are incompatible: "
+            "--validate-only pushes no criteria frames."
         )
     model, step_models = lib.resolve_step_models(lib.PIPELINE_CONFIG_FILE, args.model)
     git_cfg = lib.load_git_config(lib.PIPELINE_CONFIG_FILE)
@@ -393,7 +395,8 @@ def main() -> None:
         gap_plan_content = lib.GAP_PLAN_FILE.read_text(encoding="utf-8")
         if "## Acceptance Criteria" not in gap_plan_content:
             lib.die(
-                f"--from-gap-plan given but {lib.GAP_PLAN_FILE} is not a valid gap plan (see output above)."
+                f"--from-gap-plan given but {lib.GAP_PLAN_FILE} is not a valid "
+                "gap plan (see output above)."
             )
         render.print_line(
             f"-- Using existing {lib.GAP_PLAN_FILE} (--from-gap-plan). No fetch, no plan+narrow."
@@ -428,7 +431,7 @@ def main() -> None:
             )
         if not frames:
             render.print_line(
-                f"-- 0 of {len(criteria)} pushed - all were previously declined or failed "
+                f"-- 0 of {len(result.criteria)} pushed - all were previously declined or failed "
                 f"mechanical grounding this run. See {lib.DECLINED_CRITERIA_FILE}."
             )
             render.print_line(f"-- Token usage: {ai_client.usage}")

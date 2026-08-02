@@ -25,7 +25,9 @@ class MechanicalPlanningStrategy:
         try:
             result = planning_result_from_gap_plan(gap_plan_text)
         except ValueError as exc:
-            raise PlanningError(f"Planning strategy 'mechanical' returned invalid data: {exc}") from exc
+            raise PlanningError(
+                f"Planning strategy 'mechanical' returned invalid data: {exc}"
+            ) from exc
         return PlanningResult(
             criteria=result.criteria,
             plan_text=plan_text,

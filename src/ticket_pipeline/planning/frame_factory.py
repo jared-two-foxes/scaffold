@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from .models import PlanningResult
 from ..lib import pipeline_lib as lib
+from .models import PlanningResult
 
 
 def build_ticket_frames(

@@ -16,23 +16,18 @@ from ticket_pipeline.planning import (
 )
 from ticket_pipeline.planning.strategies.mechanical import MechanicalPlanningStrategy
 
-
-GAP_PLAN = """\
-<!-- narrowed by Narrower -->
-
-## Implementation Plan
-
-### Criterion 1
-Update `src/example.py` and verify behavior.
-
-### Criterion 2
-Touch `tests/test_example.py` only.
-
-## Acceptance Criteria
-
-- [ ] Change behavior <!-- why: missing; verify: test; strategy: direct; existing_test: tests/test_example.py::test_old -->
-- [ ] Refactor docs <!-- why: tidy; verify: manual -->
-"""
+GAP_PLAN = (
+    "<!-- narrowed by Narrower -->\n\n"
+    "## Implementation Plan\n\n"
+    "### Criterion 1\n"
+    "Update `src/example.py` and verify behavior.\n\n"
+    "### Criterion 2\n"
+    "Touch `tests/test_example.py` only.\n\n"
+    "## Acceptance Criteria\n\n"
+    "- [ ] Change behavior <!-- why: missing; verify: test; strategy: direct; "
+    "existing_test: tests/a.py::test_old -->\n"
+    "- [ ] Refactor docs <!-- why: tidy; verify: manual -->\n"
+)
 
 
 class PlanningModelTests(unittest.TestCase):
@@ -66,7 +61,7 @@ class GapPlanParsingTests(unittest.TestCase):
         self.assertEqual("direct", criteria[0].implementation_strategy)
         self.assertEqual("test", criteria[0].verification)
         self.assertEqual(
-            ("tests/test_example.py::test_old",),
+            ("tests/a.py::test_old",),
             criteria[0].existing_test_refs,
         )
         self.assertEqual("manual", criteria[1].verification)
@@ -234,7 +229,11 @@ class ResolveTicketFramesIntegrationTests(unittest.TestCase):
             with (
                 patch.object(push_ticket, "load_ticket_content", return_value="# Ticket"),
                 patch.object(push_ticket, "create_planning_strategy", return_value=FakeStrategy()),
-                patch.object(lib, "filter_grounded_frames", side_effect=lambda frames: (frames, [], 0)),
+                patch.object(
+                    lib,
+                    "filter_grounded_frames",
+                    side_effect=lambda frames: (frames, [], 0),
+                ),
                 patch.object(lib, "GAP_PLAN_FILE", gap_plan_file),
             ):
                 frames = push_ticket.resolve_ticket_frames(

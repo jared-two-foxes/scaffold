@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from .models import PlannedCriterion, PlanningDiagnostic, PlanningResult
 from ..lib import pipeline_lib as lib
+from .models import PlannedCriterion, PlanningDiagnostic, PlanningResult
 
 
 def parse_gap_plan(gap_plan_text: str) -> list[PlannedCriterion]:
