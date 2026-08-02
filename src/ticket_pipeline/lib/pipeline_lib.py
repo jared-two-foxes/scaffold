@@ -70,7 +70,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PROMPTS_DIR = files("ticket_pipeline") / "prompts"
 TICKET_FILE = Path(".ticket.md")
 PLAN_FILE = Path(".implementation-plan.md")
-LEGACY_PLAN_FILE = Path(".tdd-plan.md")  # deprecated name; read as fallback during migration
+LEGACY_PLAN_FILE = Path(
+    ".tdd-plan.md"
+)  # deprecated name; read as fallback during migration
 UPDATED_PLAN_FILE = Path(".updated-plan.md")
 PIPELINE_CONFIG_FILE = Path(".dev-pipeline.toml")
 
@@ -138,6 +140,7 @@ def _resolve_plan_file() -> Path | None:
         )
         return LEGACY_PLAN_FILE
     return None
+
 
 # Host OS name, injected into every test-criterion and test-quality
 # review prompt so the Tester/Reviewer write tests that compile on the
@@ -678,7 +681,8 @@ def build_planning_blocks(
         Block(
             name="planner",
             check=lambda: _resolve_plan_file() is not None
-            and "## Acceptance Criteria" in (_resolve_plan_file() or PLAN_FILE).read_text(encoding="utf-8"),
+            and "## Acceptance Criteria"
+            in (_resolve_plan_file() or PLAN_FILE).read_text(encoding="utf-8"),
             run=lambda: run_plan_step(
                 TICKET_FILE.read_text(encoding="utf-8"), plan_model, ticket_id=ticket_id
             ),
@@ -734,9 +738,14 @@ def load_pipeline_config(config_path: Path) -> dict:
     # load_smoke_cmd; the git_workflow.* keys via load_git_config). All
     # other top-level keys stay unknown-key-rejected so a typo in a
     # toolchain command name is still caught loudly.
-    _ALLOWED_EXTRA_KEYS = {"step_models", "smoke_cmd", "retry", "tools", "planning_strategy", "planning_agent"} | set(
-        GitConfig.__annotations__
-    )
+    _ALLOWED_EXTRA_KEYS = {
+        "step_models",
+        "smoke_cmd",
+        "retry",
+        "tools",
+        "planning_strategy",
+        "planning_agent",
+    } | set(GitConfig.__annotations__)
     unknown = set(data) - set(toolchain.commands) - _ALLOWED_EXTRA_KEYS
     if unknown:
         die(
@@ -1919,8 +1928,9 @@ def check_symbol_grounding(candidates: list[str]) -> list[str]:
 def verify_existing_test_refs_resolve(existing_test_refs: list[str]) -> list[str]:
     """
     For each "file::name" ref, confirms the file exists and that the
-    function name (the last "::"-separated segment of the qualified test
-    name) appears somewhere in it as a whole word - a plain text search,
+    function name (the final bare identifier from the qualified test
+    name, regardless of whether qualifiers use "::" or ".") appears
+    somewhere in it as a whole word - a plain text search,
     not full AST parsing, language-agnostic on purpose (unlike
     lib/implement.py's brace-counting _extract_function_block, this only
     needs to know the name exists *somewhere* plausible, not extract its
@@ -1933,9 +1943,9 @@ def verify_existing_test_refs_resolve(existing_test_refs: list[str]) -> list[str
     "tests::quickbooks_oauth_token_url_uses_production_endpoint"), which
     contains its own "::" separator. Splitting on the FIRST "::"
     (partition, not rpartition) keeps the file path intact while leaving
-    the full qualified name as the test part; the function name (last
-    "::"-separated segment of the qualified name) is what's searched for
-    in the file.
+    the full qualified name as the test part; the function name
+    (terminal segment after splitting on "::" or ".") is what's
+    searched for in the file.
     """
     unresolved = []
     for ref in existing_test_refs:
@@ -1952,7 +1962,10 @@ def verify_existing_test_refs_resolve(existing_test_refs: list[str]) -> list[str
         except OSError as e:
             unresolved.append(f"existing_test ref '{ref}': could not read file ({e})")
             continue
-        func_name = name.rpartition("::")[2] if "::" in name else name
+        # Accept both runner-style separators (e.g. "::") and dotted
+        # class-scoped names by searching only the terminal identifier.
+        name_parts = [part for part in re.split(r"::|\.", name) if part]
+        func_name = name_parts[-1] if name_parts else name
         if not re.search(r"\b" + re.escape(func_name) + r"\b", content):
             unresolved.append(
                 f"existing_test ref '{ref}': no symbol named '{func_name}' found in {file_part}"

@@ -145,6 +145,10 @@ how it will be confirmed.
 When a criterion uses `existing_test_refs`, each entry must be a fully
 qualified test reference in the form `<file>::<qualified_test_name>`. For
 example: `tests/test_git_workflow.py::test_creates_gitignore_with_pipeline_entries`.
+Inside `<qualified_test_name>`, use the target runner's own separator at
+every nesting level. For pytest class-scoped tests, use
+`tests/test_git_workflow.py::EnsureGitignoreTests::test_creates_gitignore_with_pipeline_entries`
+(not dotted `EnsureGitignoreTests.test_creates_gitignore_with_pipeline_entries`).
 Use this field only for tests you explicitly cite as evidence for the
 criterion's current state or planned verification.
 

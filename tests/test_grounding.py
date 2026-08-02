@@ -114,6 +114,27 @@ class VerifyExistingTestRefsResolveTests(unittest.TestCase):
                 )
         self.assertEqual([], reasons)
 
+    def test_nested_colon_colon_qualified_ref_resolves(self):
+        with _TempGitRepo() as root:
+            (root / "tests.rs").write_text("fn test_name() {}\n", encoding="utf-8")
+            with _cwd(root):
+                reasons = lib.verify_existing_test_refs_resolve(
+                    ["tests.rs::mod::test_name"]
+                )
+        self.assertEqual([], reasons)
+
+    def test_dot_separated_class_scoped_ref_resolves(self):
+        with _TempGitRepo() as root:
+            (root / "tests.py").write_text(
+                "class ClassName:\n" "    def method_name(self):\n" "        pass\n",
+                encoding="utf-8",
+            )
+            with _cwd(root):
+                reasons = lib.verify_existing_test_refs_resolve(
+                    ["tests.py::ClassName.method_name"]
+                )
+        self.assertEqual([], reasons)
+
     def test_missing_file_is_flagged(self):
         with _TempGitRepo() as root, _cwd(root):
             reasons = lib.verify_existing_test_refs_resolve(["nope.rs::some_test"])

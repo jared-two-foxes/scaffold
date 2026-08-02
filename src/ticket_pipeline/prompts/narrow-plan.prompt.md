@@ -199,6 +199,7 @@ confirm the outcome:
   documentation, CI config, build declarations, etc.).
 
 Key distinctions:
+
 - A `test` criterion changes observable behavior (the test should be RED
   until the behavior is implemented).
 - A `test-refactor` or `refactor` criterion preserves behavior (tests
@@ -247,6 +248,11 @@ appears on a `manual` criterion (there's no test to point at), and never
 on a `test` criterion that needs genuinely new coverage. Never guess at
 a name to fill this in; an omitted tag correctly tells the implementer
 to write a new test, same as always.
+
+Inside `<test_name>`, use the target test runner's own node-id/filter
+separator at every nesting level. For pytest class-scoped tests, write
+`existing_test: tests/test_git_workflow.py::EnsureGitignoreTests::test_creates_gitignore_with_pipeline_entries`
+and not dotted `existing_test: tests/test_git_workflow.py::EnsureGitignoreTests.test_creates_gitignore_with_pipeline_entries`.
 
 The `existing_test:` tag is also required for `test-refactor` and
 `refactor` criteria: `test-refactor` rewrites those specific existing
