@@ -69,6 +69,13 @@ SUPPORTED_PLANNING_STRATEGIES = ("mechanical", "agent")
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROMPTS_DIR = files("ticket_pipeline") / "prompts"
 TICKET_FILE = Path(".ticket.md")
+# Canonical methodology-neutral artifact name for the implementation plan.
+# The legacy .tdd-plan.md name is supported as a read fallback during the
+# migration period (see load_plan_file). New runs write .implementation-plan.md.
+IMPLEMENTATION_PLAN_FILE = Path(".implementation-plan.md")
+# Retained as a legacy alias so that existing on-disk artifacts and tests
+# that reference .tdd-plan.md by name continue to work during the migration.
+# Deprecated: use IMPLEMENTATION_PLAN_FILE for all new code.
 PLAN_FILE = Path(".tdd-plan.md")
 UPDATED_PLAN_FILE = Path(".updated-plan.md")
 PIPELINE_CONFIG_FILE = Path(".dev-pipeline.toml")
@@ -128,9 +135,9 @@ _HOST_PLATFORM_NOTE = f"The host platform is {platform.system()} (tests must com
 # since none of these scripts have a path for a human to answer follow-up
 # questions mid-run.
 AUTO_PREAMBLE = (
-    "Before producing the TDD plan, identify any ambiguities or missing details "
+    "Before producing the implementation plan, identify any ambiguities or missing details "
     "in the ticket. For each one, state the question and then answer it with your "
-    "best inference from the ticket context. Then produce the full TDD plan.\n\n"
+    "best inference from the ticket context. Then produce the full implementation plan.\n\n"
 )
 
 DEFAULT_MODEL = "opencode:gpt-5.4-mini"  # ultimate fallback for unlested steps
@@ -954,7 +961,7 @@ def build_plan_prompt(ticket_content: str) -> str:
         f"reason to need, not speculative browsing; every tool call you "
         f"make gets resent in full on every subsequent turn, so prefer one "
         f"targeted search_files call over open-ended directory browsing "
-        f"when you're looking for something specific. Produce a TDD plan "
+        f"when you're looking for something specific. Produce an implementation plan "
         f"in the exact format from Step 4 above. Your final response (no "
         f"further tool calls) must "
         f"be exactly that plan text - the caller writes it to {PLAN_FILE} "
@@ -1112,7 +1119,7 @@ def build_narrow_prompt(
         f"{instructions}\n\n---\n\n"
         f"Here is the original ticket ({TICKET_FILE}) - already complete "
         f"and current, no need to read_file it again:\n\n{ticket_content}\n\n"
-        f"Here is the TDD plan to narrow ({PLAN_FILE}) - already "
+        f"Here is the implementation plan to assess ({PLAN_FILE}) - already "
         f"complete and current, no need to read_file it again:\n\n"
         f"{plan_content}\n\n"
         f"Here is the current content of the files the plan's "
@@ -1219,7 +1226,7 @@ def run_plan_narrow_step(
     """
     Merged plan+narrow: one model session, one artifact (the gap plan).
     See module-level comment above for why this doesn't also produce
-    PLAN_FILE/.tdd-plan.md the way the two-step path does.
+    an implementation plan file the way the two-step path does.
     """
     try:
         result = run_ai_step_with_retry(
@@ -1290,9 +1297,10 @@ VERIFICATION_TAG_RE = re.compile(
 )
 STRATEGY_TAG_RE = re.compile(r"strategy:\s*(\w+)\b", re.IGNORECASE)
 KNOWN_STRATEGIES = frozenset({"tdd", "direct", "manual", "refactor"})
+VALID_VERIFICATION_MODES = frozenset({"test", "test-refactor", "refactor", "manual"})
 
 
-def extract_verification_mode(criterion: str) -> str:
+def extract_verification_mode(criterion: str) -> str | None:
     """
     Parses a "verify: test|test-refactor|refactor|manual" tag out of a
     criterion's trailing HTML comment (narrow-plan.prompt.md's Final
@@ -1300,29 +1308,33 @@ def extract_verification_mode(criterion: str) -> str:
     its Step 3 - Narrower tags each retained criterion this way at the
     source, rather than a separate classification pass).
 
-    Defaults to "test" - the universal behavior before this
-    classification existed, and the safe default for anything this can't
-    parse a tag from: a review/validate-missed finding (extracted from
-    reviewer prose, never carries this tag at all), a hand-written or
-    foreign criterion, or a criterion from a .gap-plan.md that predates
-    this tag.
+    Returns None when no valid tag is found. Callers that need a default
+    (e.g. backward-compatible stack loading) must supply one explicitly;
+    shared parsing functions must treat None as a missing-metadata error
+    rather than silently selecting "test".
     """
     match = VERIFICATION_TAG_RE.search(criterion)
     if match:
         mode = match.group(1).lower()
-        if mode in ("manual", "test-refactor", "refactor"):
+        if mode in VALID_VERIFICATION_MODES:
             return mode
-    return "test"
+    return None
 
 
 EXISTING_TEST_TAG_RE = re.compile(r"existing_test:\s*(\S+)")
 
 
-def extract_strategy(criterion: str) -> str:
+def extract_strategy(criterion: str) -> str | None:
     """
     Parses a "strategy: <name>" tag from a criterion's trailing HTML
-    comment. Defaults from the verification mode when no explicit tag is
-    present.
+    comment. Returns None when no explicit tag is present rather than
+    defaulting to "tdd" - verification mode and implementation strategy
+    are independent axes and a missing strategy tag must be treated as
+    a planning error, not silently resolved.
+
+    The only inferences retained are verification=manual -> strategy=manual
+    and verification=refactor -> strategy=refactor, because those mappings
+    are non-TDD and unambiguous; they do not introduce TDD assumptions.
     """
     match = STRATEGY_TAG_RE.search(criterion)
     if match:
@@ -1334,7 +1346,7 @@ def extract_strategy(criterion: str) -> str:
         return "manual"
     if verification == "refactor":
         return "refactor"
-    return "tdd"
+    return None
 
 
 def extract_existing_test_refs(criterion: str) -> list[str]:
@@ -4097,7 +4109,7 @@ def build_review_prompt(changed_files: list[str], plan_text: str) -> str:
     file_list = "\n".join(f"- {p}" for p in changed_files)
     return (
         f"{instructions}\n\n---\n\n"
-        f"Here is the TDD plan ({PLAN_FILE}) - already complete and "
+        f"Here is the implementation plan ({PLAN_FILE}) - already complete and "
         f"current, no need to read_file it again:\n\n{plan_text}\n\n"
         f"The following files were changed or created:\n{file_list}\n\n"
         f"Review these per the steps and rules in your instructions."

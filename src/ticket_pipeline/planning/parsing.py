@@ -5,21 +5,47 @@ from .models import PlannedCriterion, PlanningDiagnostic, PlanningResult
 
 
 def parse_gap_plan(gap_plan_text: str) -> list[PlannedCriterion]:
-    return [
-        PlannedCriterion(
-            criterion=criterion,
-            plan_context=lib.extract_plan_context_for_criterion(criterion, gap_plan_text),
-            verification=lib.extract_verification_mode(criterion),
-            implementation_strategy=lib.extract_strategy(criterion),
-            existing_test_refs=tuple(lib.extract_existing_test_refs(criterion)),
+    criteria = []
+    for criterion in lib.extract_acceptance_criteria(gap_plan_text):
+        verification = lib.extract_verification_mode(criterion)
+        strategy = lib.extract_strategy(criterion)
+        if verification is None or strategy is None:
+            raise ValueError(
+                f"Criterion is missing explicit metadata tags "
+                f"('verify:' or 'strategy:'): {criterion!r}. "
+                "Every criterion in a gap plan must declare an explicit "
+                "verification mode and implementation strategy."
+            )
+        criteria.append(
+            PlannedCriterion(
+                criterion=criterion,
+                plan_context=lib.extract_plan_context_for_criterion(criterion, gap_plan_text),
+                verification=verification,
+                implementation_strategy=strategy,
+                existing_test_refs=tuple(lib.extract_existing_test_refs(criterion)),
+            )
         )
-        for criterion in lib.extract_acceptance_criteria(gap_plan_text)
-    ]
+    return criteria
 
 
 def planning_result_from_gap_plan(gap_plan_text: str) -> PlanningResult:
-    criteria = parse_gap_plan(gap_plan_text)
     diagnostics: list[PlanningDiagnostic] = []
+    try:
+        criteria = parse_gap_plan(gap_plan_text)
+    except ValueError as exc:
+        diagnostics.append(
+            PlanningDiagnostic(
+                level="error",
+                code="missing_strategy_metadata",
+                message=str(exc),
+            )
+        )
+        return PlanningResult(
+            criteria=(),
+            plan_text=None,
+            narrowed_plan_text=gap_plan_text,
+            diagnostics=tuple(diagnostics),
+        )
     for item in criteria:
         if not item.plan_context.strip():
             diagnostics.append(

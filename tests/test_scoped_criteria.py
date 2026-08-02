@@ -134,12 +134,12 @@ class ExtractVerificationModeScopedTests(unittest.TestCase):
         )
 
     def test_parses_test_when_no_tag_present(self):
-        # A scoped criterion without a verify tag still defaults to
-        # "test" - scoping doesn't change the default.
+        # A scoped criterion without a verify tag returns None - the parser
+        # must not silently default to "test".
         scoped = (
             "- [ ] `foo.rs` uses `Bar`. <!-- why: original covers 3 files; 2 done -->"
         )
-        self.assertEqual("test", lib.extract_verification_mode(scoped))
+        self.assertIsNone(lib.extract_verification_mode(scoped))
 
 
 class ExtractExistingTestRefsScopedTests(unittest.TestCase):

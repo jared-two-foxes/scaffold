@@ -32,8 +32,8 @@ class PlanningRequest:
 class PlannedCriterion:
     criterion: str
     plan_context: str
-    verification: str = "test"
-    implementation_strategy: str = "tdd"
+    verification: str
+    implementation_strategy: str
     existing_test_refs: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:

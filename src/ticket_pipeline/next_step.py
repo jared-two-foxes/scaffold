@@ -295,8 +295,11 @@ def do_ticket_validate(
                 test_names=None,
                 status="pending",
                 origin="validate-missed",
-                verification=lib.extract_verification_mode(criterion),
-                strategy=lib.extract_strategy(criterion),
+                # Backward-compat fallback: validate-missed criteria re-read
+                # from the gap plan should carry explicit tags; if a legacy
+                # gap plan predates tag support the frame defaults apply.
+                verification=lib.extract_verification_mode(criterion) or "test",
+                strategy=lib.extract_strategy(criterion) or "tdd",
                 existing_test_refs=lib.extract_existing_test_refs(criterion),
             )
             for criterion in remaining
@@ -453,7 +456,9 @@ def do_push_review_findings(ticket_id: str, review_text: str) -> None:
             test_names=None,
             status="pending",
             origin="review",
-            strategy=lib.extract_strategy(f"- [ ] {finding}"),
+            # Review findings are extracted from prose and never carry
+            # explicit strategy tags; the frame default ("tdd") applies.
+            strategy=lib.extract_strategy(f"- [ ] {finding}") or "tdd",
         )
         for finding in findings
     ]

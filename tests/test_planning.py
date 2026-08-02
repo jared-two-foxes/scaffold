@@ -31,10 +31,31 @@ GAP_PLAN = (
 
 
 class PlanningModelTests(unittest.TestCase):
-    def test_planned_criterion_defaults(self):
-        item = PlannedCriterion(criterion="- [ ] Do thing", plan_context="Context")
+    def test_planned_criterion_requires_explicit_verification(self):
+        """PlannedCriterion must not silently default verification to 'test'."""
+        with self.assertRaises(TypeError):
+            # Missing verification and implementation_strategy - no defaults
+            PlannedCriterion(criterion="- [ ] Do thing", plan_context="Context")
+
+    def test_planned_criterion_requires_explicit_implementation_strategy(self):
+        """PlannedCriterion must not silently default implementation_strategy to 'tdd'."""
+        with self.assertRaises(TypeError):
+            # Missing implementation_strategy - no default
+            PlannedCriterion(
+                criterion="- [ ] Do thing",
+                plan_context="Context",
+                verification="test",
+            )
+
+    def test_planned_criterion_accepts_explicit_values(self):
+        item = PlannedCriterion(
+            criterion="- [ ] Do thing",
+            plan_context="Context",
+            verification="test",
+            implementation_strategy="direct",
+        )
         self.assertEqual("test", item.verification)
-        self.assertEqual("tdd", item.implementation_strategy)
+        self.assertEqual("direct", item.implementation_strategy)
         self.assertEqual((), item.existing_test_refs)
 
     def test_invalid_verification_rejected(self):
@@ -43,6 +64,7 @@ class PlanningModelTests(unittest.TestCase):
                 criterion="- [ ] Do thing",
                 plan_context="Context",
                 verification="integration-only",
+                implementation_strategy="direct",
             )
 
     def test_invalid_strategy_rejected(self):
@@ -50,8 +72,31 @@ class PlanningModelTests(unittest.TestCase):
             PlannedCriterion(
                 criterion="- [ ] Do thing",
                 plan_context="Context",
+                verification="test",
                 implementation_strategy="autonomous",
             )
+
+    def test_test_verification_can_use_direct_implementation(self):
+        """verify:test and strategy:direct is a valid and independent combination."""
+        item = PlannedCriterion(
+            criterion="- [ ] Do thing",
+            plan_context="Context",
+            verification="test",
+            implementation_strategy="direct",
+        )
+        self.assertEqual("test", item.verification)
+        self.assertEqual("direct", item.implementation_strategy)
+
+    def test_test_verification_can_use_tdd_implementation(self):
+        """verify:test and strategy:tdd is also valid."""
+        item = PlannedCriterion(
+            criterion="- [ ] Do thing",
+            plan_context="Context",
+            verification="test",
+            implementation_strategy="tdd",
+        )
+        self.assertEqual("test", item.verification)
+        self.assertEqual("tdd", item.implementation_strategy)
 
 
 class GapPlanParsingTests(unittest.TestCase):
@@ -66,6 +111,50 @@ class GapPlanParsingTests(unittest.TestCase):
         )
         self.assertEqual("manual", criteria[1].verification)
         self.assertEqual("manual", criteria[1].implementation_strategy)
+
+    def test_parser_rejects_missing_strategy_instead_of_defaulting_to_tdd(self):
+        """Parser must fail with a clear error when strategy tag is absent and
+        verification is 'test' (i.e. it must not silently infer 'tdd')."""
+        gap_plan_no_strategy = (
+            "## Acceptance Criteria\n\n"
+            "- [ ] Do something <!-- why: missing; verify: test -->\n"
+        )
+        with self.assertRaises(ValueError) as ctx:
+            parse_gap_plan(gap_plan_no_strategy)
+        self.assertIn("strategy", str(ctx.exception).lower())
+
+    def test_parser_rejects_missing_verification_instead_of_defaulting_to_test(self):
+        """Parser must fail with a clear error when verify tag is absent
+        (i.e. it must not silently infer 'test')."""
+        gap_plan_no_verify = (
+            "## Acceptance Criteria\n\n"
+            "- [ ] Do something <!-- why: missing; strategy: direct -->\n"
+        )
+        with self.assertRaises(ValueError) as ctx:
+            parse_gap_plan(gap_plan_no_verify)
+        self.assertIn("verify", str(ctx.exception).lower())
+
+    def test_parser_accepts_explicit_test_verify_with_direct_strategy(self):
+        """verify:test + strategy:direct must parse without errors."""
+        gap_plan = (
+            "## Acceptance Criteria\n\n"
+            "- [ ] Do something <!-- why: missing; verify: test; strategy: direct -->\n"
+        )
+        criteria = parse_gap_plan(gap_plan)
+        self.assertEqual(1, len(criteria))
+        self.assertEqual("test", criteria[0].verification)
+        self.assertEqual("direct", criteria[0].implementation_strategy)
+
+    def test_direct_strategy_does_not_require_test_references(self):
+        """A direct-strategy criterion with no existing_test refs is valid."""
+        gap_plan = (
+            "## Acceptance Criteria\n\n"
+            "- [ ] Add feature <!-- why: missing; verify: test; strategy: direct -->\n"
+        )
+        criteria = parse_gap_plan(gap_plan)
+        self.assertEqual(1, len(criteria))
+        self.assertEqual("direct", criteria[0].implementation_strategy)
+        self.assertEqual((), criteria[0].existing_test_refs)
 
 
 class FrameFactoryTests(unittest.TestCase):
@@ -105,6 +194,7 @@ class FrameFactoryTests(unittest.TestCase):
                 PlannedCriterion(
                     criterion="- [ ] Do thing",
                     plan_context="Context",
+                    verification="manual",
                     implementation_strategy="manual",
                 ),
             )
@@ -216,6 +306,13 @@ class MechanicalStrategyTests(unittest.TestCase):
             self.assertIn("## Acceptance Criteria", result.plan_text or "")
             self.assertEqual(GAP_PLAN, result.narrowed_plan_text)
 
+    def test_legacy_tdd_plan_filename_is_supported_during_migration(self):
+        """The .tdd-plan.md filename must remain readable during the migration period."""
+        # PLAN_FILE (legacy) still points to .tdd-plan.md and is usable
+        self.assertEqual(".tdd-plan.md", lib.PLAN_FILE.name)
+        # IMPLEMENTATION_PLAN_FILE is the new neutral name
+        self.assertEqual(".implementation-plan.md", lib.IMPLEMENTATION_PLAN_FILE.name)
+
 
 class ResolveTicketFramesIntegrationTests(unittest.TestCase):
     def test_fake_strategy_can_seed_frames_without_gap_plan_artifact(self):
@@ -226,6 +323,8 @@ class ResolveTicketFramesIntegrationTests(unittest.TestCase):
                         PlannedCriterion(
                             criterion="- [ ] Fake criterion",
                             plan_context="Context",
+                            verification="test",
+                            implementation_strategy="direct",
                         ),
                     )
                 )

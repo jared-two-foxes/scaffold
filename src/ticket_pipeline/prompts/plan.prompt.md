@@ -103,7 +103,7 @@ trivial | complex
 Mark ## Acceptance Criteria source as "ticket" (this prompt never
 derives criteria, so this is the only source). Edge cases may come from
 .updated-plan.md (written by the Interrogator prompt) in addition to the
-explicit acceptance criteria. Overwrite any existing .tdd-plan.md - it
+explicit acceptance criteria. Overwrite any existing plan file - it
 reflects the current task, not a history. Do not include toolchain
 information (build/test commands) - downstream prompts discover that by
 reading the codebase.

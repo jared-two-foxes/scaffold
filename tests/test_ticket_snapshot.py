@@ -29,7 +29,7 @@ Do the thing.
 
 ## Acceptance Criteria
 
-- [ ] The thing is done <!-- why: not done yet; verify: test -->
+- [ ] The thing is done <!-- why: not done yet; verify: test; strategy: tdd -->
 """
 
 
