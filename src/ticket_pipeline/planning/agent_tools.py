@@ -99,7 +99,12 @@ SUBMIT_PLAN_SCHEMA = {
                             },
                             "disposition": {
                                 "type": "string",
-                                "enum": ["remaining", "satisfied", "not_applicable", "blocked"],
+                                "enum": [
+                                    "remaining",
+                                    "satisfied",
+                                    "not_applicable",
+                                    "blocked",
+                                ],
                             },
                             "rationale": {
                                 "type": "string",
@@ -142,6 +147,7 @@ SUBMIT_PLAN_SCHEMA = {
                             "existing_test_refs": {
                                 "type": "array",
                                 "items": {"type": "string"},
+                                "description": "Each entry must be in 'file::qualified_test_name' shape.",
                             },
                             "plan_context": {
                                 "type": "string",

@@ -68,10 +68,10 @@ from ticket_pipeline.planning.models import (
 )
 from ticket_pipeline.planning.strategies.agent import AgentPlanningStrategy
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_submission(
     criteria=None,
@@ -84,7 +84,9 @@ def _make_submission(
                 source_criterion="Do the thing",
                 disposition="remaining",
                 rationale="Not yet implemented.",
-                planned_changes=(PlannedChange(path="src/foo.py", description="Add foo"),),
+                planned_changes=(
+                    PlannedChange(path="src/foo.py", description="Add foo"),
+                ),
                 verification="test",
                 implementation_strategy="tdd",
             ),
@@ -125,6 +127,7 @@ def _minimal_submit_args(criteria=None):
 # ---------------------------------------------------------------------------
 # 1. Agent models
 # ---------------------------------------------------------------------------
+
 
 class AgentModelsTests(unittest.TestCase):
     def test_valid_dispositions(self):
@@ -178,6 +181,7 @@ class AgentModelsTests(unittest.TestCase):
 # 2. Terminal tool schemas
 # ---------------------------------------------------------------------------
 
+
 class AgentToolsTests(unittest.TestCase):
     def test_terminal_tool_names(self):
         self.assertIn(SUBMIT_PLAN_TOOL_NAME, TERMINAL_TOOL_NAMES)
@@ -195,27 +199,40 @@ class AgentToolsTests(unittest.TestCase):
 
     def test_forbidden_write_tools_absent(self):
         names = {s["function"]["name"] for s in AGENT_PLANNING_TOOLS}
-        for forbidden in ("write_file", "edit_file", "delete_file", "run_command",
-                          "git_commit", "git_checkout"):
+        for forbidden in (
+            "write_file",
+            "edit_file",
+            "delete_file",
+            "run_command",
+            "git_commit",
+            "git_checkout",
+        ):
             self.assertNotIn(forbidden, names)
 
     def test_summarize_submit_plan(self):
-        summary = summarize_agent_tool_call(SUBMIT_PLAN_TOOL_NAME, {"criteria": [{}, {}]})
+        summary = summarize_agent_tool_call(
+            SUBMIT_PLAN_TOOL_NAME, {"criteria": [{}, {}]}
+        )
         self.assertIn("submit_plan", summary)
         self.assertIn("2", summary)
 
     def test_summarize_planning_failed(self):
-        summary = summarize_agent_tool_call(PLANNING_FAILED_TOOL_NAME, {"reason": "oops"})
+        summary = summarize_agent_tool_call(
+            PLANNING_FAILED_TOOL_NAME, {"reason": "oops"}
+        )
         self.assertIn("oops", summary)
 
     def test_summarize_ask_user_input(self):
-        summary = summarize_agent_tool_call(ASK_USER_INPUT_TOOL_NAME, {"question": "What?"})
+        summary = summarize_agent_tool_call(
+            ASK_USER_INPUT_TOOL_NAME, {"question": "What?"}
+        )
         self.assertIn("What?", summary)
 
 
 # ---------------------------------------------------------------------------
 # 3. Read-only executor
 # ---------------------------------------------------------------------------
+
 
 class ReadOnlyExecutorTests(unittest.TestCase):
     def test_rejects_write_file(self):
@@ -236,11 +253,14 @@ class ReadOnlyExecutorTests(unittest.TestCase):
 
     def test_infer_mode_returns_recommendation(self):
         exec_ = make_read_only_executor(user_input_mode="infer")
-        result = exec_(ASK_USER_INPUT_TOOL_NAME, {
-            "question": "Which approach?",
-            "why_needed": "unclear",
-            "recommended_option": "option A",
-        })
+        result = exec_(
+            ASK_USER_INPUT_TOOL_NAME,
+            {
+                "question": "Which approach?",
+                "why_needed": "unclear",
+                "recommended_option": "option A",
+            },
+        )
         self.assertIn("option A", result)
 
     def test_fail_mode_raises_planning_input_required(self):
@@ -251,7 +271,10 @@ class ReadOnlyExecutorTests(unittest.TestCase):
 
     def test_deduplicates_reads(self):
         exec_ = make_read_only_executor()
-        with patch("ticket_pipeline.planning.agent_runner.tool_lib.read_file", return_value="content") as mock_read:
+        with patch(
+            "ticket_pipeline.planning.agent_runner.tool_lib.read_file",
+            return_value="content",
+        ) as mock_read:
             exec_("read_file", {"path": "src/a.py"})
             result = exec_("read_file", {"path": "src/a.py"})
         mock_read.assert_called_once()
@@ -259,7 +282,9 @@ class ReadOnlyExecutorTests(unittest.TestCase):
 
     def test_preloaded_paths_not_re_read(self):
         exec_ = make_read_only_executor(preloaded_paths={"src/b.py"})
-        with patch("ticket_pipeline.planning.agent_runner.tool_lib.read_file") as mock_read:
+        with patch(
+            "ticket_pipeline.planning.agent_runner.tool_lib.read_file"
+        ) as mock_read:
             result = exec_("read_file", {"path": "src/b.py"})
         mock_read.assert_not_called()
         self.assertIn("duplicate", result)
@@ -268,6 +293,7 @@ class ReadOnlyExecutorTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 4. Agent runner: terminal completion and protocol
 # ---------------------------------------------------------------------------
+
 
 def _make_fake_post(responses):
     """
@@ -283,7 +309,9 @@ def _make_fake_post(responses):
         call_index[0] += 1
         resp = responses[idx]
         if resp is None:
-            return {"choices": [{"message": {"content": "plain text", "tool_calls": None}}]}
+            return {
+                "choices": [{"message": {"content": "plain text", "tool_calls": None}}]
+            }
         return {"choices": [{"message": {"content": None, "tool_calls": resp}}]}
 
     return fake_post
@@ -346,7 +374,10 @@ class AgentRunnerTests(unittest.TestCase):
             [_make_tool_call("read_file", {"path": "src/x.py"})],
             [_make_tool_call(SUBMIT_PLAN_TOOL_NAME, submit_args)],
         ]
-        with patch("ticket_pipeline.planning.agent_runner.tool_lib.read_file", return_value="content"):
+        with patch(
+            "ticket_pipeline.planning.agent_runner.tool_lib.read_file",
+            return_value="content",
+        ):
             result = self._run(responses)
         self.assertEqual(SUBMIT_PLAN_TOOL_NAME, result.tool_name)
         self.assertEqual(2, result.turn_count)
@@ -369,12 +400,14 @@ class AgentRunnerTests(unittest.TestCase):
 
     def test_turn_ceiling_raises_step_budget_exceeded(self):
         from ticket_pipeline.lib.ai_client import StepBudgetExceeded
+
         # All turns are ordinary tool calls, never terminal.
-        responses = [
-            [_make_tool_call("list_dir", {})]
-        ] * 5
+        responses = [[_make_tool_call("list_dir", {})]] * 5
         with (
-            patch("ticket_pipeline.planning.agent_runner.tool_lib.list_dir", return_value="x"),
+            patch(
+                "ticket_pipeline.planning.agent_runner.tool_lib.list_dir",
+                return_value="x",
+            ),
             self.assertRaises(StepBudgetExceeded),
         ):
             self._run(responses, max_turns=3)
@@ -385,10 +418,14 @@ class AgentRunnerTests(unittest.TestCase):
         responses = [
             [
                 _make_tool_call(SUBMIT_PLAN_TOOL_NAME, submit_args, call_id="c1"),
-                _make_tool_call("read_file", {"path": "should_not_be_called.py"}, call_id="c2"),
+                _make_tool_call(
+                    "read_file", {"path": "should_not_be_called.py"}, call_id="c2"
+                ),
             ],
         ]
-        with patch("ticket_pipeline.planning.agent_runner.tool_lib.read_file") as mock_read:
+        with patch(
+            "ticket_pipeline.planning.agent_runner.tool_lib.read_file"
+        ) as mock_read:
             result = self._run(responses)
         mock_read.assert_not_called()
         self.assertEqual(SUBMIT_PLAN_TOOL_NAME, result.tool_name)
@@ -397,6 +434,7 @@ class AgentRunnerTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 5. Criterion coverage and submission validation
 # ---------------------------------------------------------------------------
+
 
 class SubmissionValidationTests(unittest.TestCase):
     def test_valid_remaining_criterion(self):
@@ -423,10 +461,12 @@ class SubmissionValidationTests(unittest.TestCase):
         self.assertTrue(errors)
 
     def test_duplicate_criterion_id_rejected(self):
-        args = _minimal_submit_args([
-            _minimal_remaining_args("AC-1"),
-            _minimal_remaining_args("AC-1"),
-        ])
+        args = _minimal_submit_args(
+            [
+                _minimal_remaining_args("AC-1"),
+                _minimal_remaining_args("AC-1"),
+            ]
+        )
         _, errors = validate_submission(args, ["AC-1"])
         self.assertTrue(any("duplicate" in e.lower() for e in errors))
 
@@ -461,6 +501,15 @@ class SubmissionValidationTests(unittest.TestCase):
         criterion = {**_minimal_remaining_args(), "verification": "banana"}
         _, errors = validate_submission(_minimal_submit_args([criterion]), ["AC-1"])
         self.assertTrue(any("verification" in e.lower() for e in errors))
+
+    def test_existing_test_refs_without_shape_rejected(self):
+        criterion = {
+            **_minimal_remaining_args(),
+            "existing_test_refs": ["tests/test_x.py"],
+        }
+        _, errors = validate_submission(_minimal_submit_args([criterion]), ["AC-1"])
+        self.assertTrue(any("existing_test_refs" in e.lower() for e in errors))
+        self.assertTrue(any("file::qualified_test_name" in e for e in errors))
 
     def test_satisfied_without_evidence_rejected(self):
         criterion = {
@@ -527,7 +576,9 @@ class SubmissionValidationTests(unittest.TestCase):
             "rationale": "Already done.",
             "evidence": [{"observation": "present at src/x.py", "path": "src/x.py"}],
         }
-        submission, errors = validate_submission(_minimal_submit_args([criterion]), ["AC-1"])
+        submission, errors = validate_submission(
+            _minimal_submit_args([criterion]), ["AC-1"]
+        )
         self.assertIsNotNone(submission)
         self.assertEqual([], errors)
 
@@ -540,7 +591,9 @@ class SubmissionValidationTests(unittest.TestCase):
             "rationale": "Done.",
             "evidence": [{"observation": "found", "path": "src/x.py"}],
         }
-        submission, errors = validate_submission(_minimal_submit_args([criterion]), ["AC-1"])
+        submission, errors = validate_submission(
+            _minimal_submit_args([criterion]), ["AC-1"]
+        )
         self.assertIsNotNone(submission)
         self.assertEqual([], errors)
         assert submission is not None
@@ -557,6 +610,7 @@ class SubmissionValidationTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 6. Result adapter
 # ---------------------------------------------------------------------------
+
 
 class ResultAdapterTests(unittest.TestCase):
     def _make_strategy(self):
@@ -642,13 +696,13 @@ class ResultAdapterTests(unittest.TestCase):
         submission = _make_submission(criteria=(remaining,))
         strategy = self._make_strategy()
         result = strategy._to_planning_result(submission, "plan", "gap")
-        self.assertEqual(("tests/test_x.py::test_old",), result.criteria[0].existing_test_refs)
+        self.assertEqual(
+            ("tests/test_x.py::test_old",), result.criteria[0].existing_test_refs
+        )
 
     def test_assumptions_become_diagnostics(self):
         submission = _make_submission(
-            assumptions=(
-                AgentAssumption(question="Q?", answer="A", basis="repo"),
-            ),
+            assumptions=(AgentAssumption(question="Q?", answer="A", basis="repo"),),
         )
         diagnostics = build_agent_diagnostics(submission)
         self.assertTrue(any(d.code == "agent_assumption" for d in diagnostics))
@@ -658,14 +712,13 @@ class ResultAdapterTests(unittest.TestCase):
 # 7. Artifact rendering
 # ---------------------------------------------------------------------------
 
+
 class ArtifactRenderingTests(unittest.TestCase):
     def _submission_with_remaining_and_satisfied(self):
         return AgentPlanSubmission(
             ticket_summary="Ticket X",
             approach_summary="Use approach Y",
-            assumptions=(
-                AgentAssumption(question="Q?", answer="A", basis="B"),
-            ),
+            assumptions=(AgentAssumption(question="Q?", answer="A", basis="B"),),
             repository_findings=(
                 AgentEvidence(path="src/main.py", observation="main file"),
             ),
@@ -675,7 +728,9 @@ class ArtifactRenderingTests(unittest.TestCase):
                     source_criterion="Do the thing",
                     disposition="remaining",
                     rationale="not done",
-                    planned_changes=(PlannedChange(path="src/x.py", description="add x"),),
+                    planned_changes=(
+                        PlannedChange(path="src/x.py", description="add x"),
+                    ),
                     verification="test",
                     implementation_strategy="tdd",
                     plan_context="Some context",
@@ -764,9 +819,13 @@ class ArtifactRenderingTests(unittest.TestCase):
 # 8. Factory: config loading
 # ---------------------------------------------------------------------------
 
+
 class FactoryConfigTests(unittest.TestCase):
     def test_create_mechanical_strategy(self):
-        from ticket_pipeline.planning.strategies.mechanical import MechanicalPlanningStrategy
+        from ticket_pipeline.planning.strategies.mechanical import (
+            MechanicalPlanningStrategy,
+        )
+
         s = create_planning_strategy("mechanical")
         self.assertIsInstance(s, MechanicalPlanningStrategy)
 
@@ -831,6 +890,7 @@ class FactoryConfigTests(unittest.TestCase):
 # 9. Criterion extraction and ID assignment
 # ---------------------------------------------------------------------------
 
+
 class CriterionExtractionTests(unittest.TestCase):
     def test_extracts_from_acceptance_criteria_section(self):
         ticket = (
@@ -845,11 +905,7 @@ class CriterionExtractionTests(unittest.TestCase):
         self.assertIn("Second criterion", criteria[1])
 
     def test_case_insensitive_section_match(self):
-        ticket = (
-            "# Ticket\n\n"
-            "## acceptance criteria\n\n"
-            "- [ ] Thing\n"
-        )
+        ticket = "# Ticket\n\n" "## acceptance criteria\n\n" "- [ ] Thing\n"
         criteria = extract_acceptance_criteria(ticket)
         self.assertEqual(1, len(criteria))
 
@@ -859,12 +915,15 @@ class CriterionExtractionTests(unittest.TestCase):
 
     def test_assign_criterion_ids_stable(self):
         ids = assign_criterion_ids(["First", "Second", "Third"])
-        self.assertEqual([("AC-1", "First"), ("AC-2", "Second"), ("AC-3", "Third")], ids)
+        self.assertEqual(
+            [("AC-1", "First"), ("AC-2", "Second"), ("AC-3", "Third")], ids
+        )
 
 
 # ---------------------------------------------------------------------------
 # 10. Integration: fake model transcript
 # ---------------------------------------------------------------------------
+
 
 class FakeTranscriptIntegrationTests(unittest.TestCase):
     """
@@ -931,6 +990,7 @@ class FakeTranscriptIntegrationTests(unittest.TestCase):
             (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
 
             import os
+
             old_cwd = os.getcwd()
             try:
                 os.chdir(tmp_path)
@@ -995,10 +1055,12 @@ class FakeTranscriptIntegrationTests(unittest.TestCase):
             gap_plan_file = tmp_path / ".gap-plan.md"
 
             import os
+
             old_cwd = os.getcwd()
             try:
                 os.chdir(tmp_path)
                 from ticket_pipeline.lib import pipeline_lib as lib
+
                 fake_post = _make_fake_post(responses)
                 with (
                     patch(
@@ -1070,10 +1132,12 @@ class FakeTranscriptIntegrationTests(unittest.TestCase):
             gap_plan_file = tmp_path / ".gap-plan.md"
 
             import os
+
             old_cwd = os.getcwd()
             try:
                 os.chdir(tmp_path)
                 from ticket_pipeline.lib import pipeline_lib as lib
+
                 with (
                     patch(
                         "ticket_pipeline.planning.agent_runner._post_chat_completion",
@@ -1121,9 +1185,18 @@ class FakeTranscriptIntegrationTests(unittest.TestCase):
         }
 
         def fake_post(payload, label):
-            return {"choices": [{"message": {"content": None, "tool_calls": [
-                _make_tool_call(SUBMIT_PLAN_TOOL_NAME, invalid_args)
-            ]}}]}
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": None,
+                            "tool_calls": [
+                                _make_tool_call(SUBMIT_PLAN_TOOL_NAME, invalid_args)
+                            ],
+                        }
+                    }
+                ]
+            }
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1132,10 +1205,12 @@ class FakeTranscriptIntegrationTests(unittest.TestCase):
             gap_plan_file = tmp_path / ".gap-plan.md"
 
             import os
+
             old_cwd = os.getcwd()
             try:
                 os.chdir(tmp_path)
                 from ticket_pipeline.lib import pipeline_lib as lib
+
                 with (
                     patch(
                         "ticket_pipeline.planning.agent_runner._post_chat_completion",
@@ -1168,6 +1243,7 @@ class FakeTranscriptIntegrationTests(unittest.TestCase):
 # 11. CLI: explore incompatibility
 # ---------------------------------------------------------------------------
 
+
 class CLIExploreIncompatibilityTests(unittest.TestCase):
     def test_explore_with_agent_strategy_exits(self):
         import sys
@@ -1180,15 +1256,14 @@ class CLIExploreIncompatibilityTests(unittest.TestCase):
             config_file.write_text('planning_strategy = "agent"\n', encoding="utf-8")
 
             import os
+
             old_cwd = os.getcwd()
             try:
                 os.chdir(tmp_path)
                 from ticket_pipeline.lib import pipeline_lib as lib
 
                 # resolve_planning_strategy_name should return 'agent'
-                strategy_name = lib.resolve_planning_strategy_name(
-                    config_file, None
-                )
+                strategy_name = lib.resolve_planning_strategy_name(config_file, None)
                 self.assertEqual("agent", strategy_name)
 
                 # Simulate the check that push_ticket does

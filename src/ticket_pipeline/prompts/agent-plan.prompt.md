@@ -61,6 +61,7 @@ Before assessing each criterion, explore the repository to understand:
 - What is already implemented vs. what is genuinely missing.
 
 Suggested order:
+
 1. `list_dir` the project root to understand top-level structure.
 2. Search for key symbols, types, or function names the ticket mentions.
 3. Read relevant source files and test files.
@@ -74,21 +75,25 @@ Suggested order:
 Classify each criterion as exactly one of:
 
 ### `remaining`
+
 The repository does not yet satisfy this criterion. Changes are needed.
 Required: rationale, at least one planned_change with path and description,
 verification mode, implementation strategy.
 
 ### `satisfied`
+
 The repository already satisfies this criterion. No changes needed.
 Required: rationale, at least one evidence item with a concrete repository
 path and observation. Must NOT have planned_changes.
 
 ### `not_applicable`
+
 The criterion does not apply given repository-specific facts. Use rarely
 and justify strongly.
 Required: rationale. Must NOT have planned_changes.
 
 ### `blocked`
+
 A safe plan cannot be produced because material information is unavailable.
 Normally use `ask_user_input` first. If user input is unavailable or
 insufficient, use `planning_failed`.
@@ -135,6 +140,16 @@ how it will be confirmed.
 
 ---
 
+## Existing test references
+
+When a criterion uses `existing_test_refs`, each entry must be a fully
+qualified test reference in the form `<file>::<qualified_test_name>`. For
+example: `tests/test_git_workflow.py::test_creates_gitignore_with_pipeline_entries`.
+Use this field only for tests you explicitly cite as evidence for the
+criterion's current state or planned verification.
+
+---
+
 ## Ambiguity rules
 
 Material product or implementation decisions that cannot be resolved from
@@ -158,6 +173,7 @@ Plain text without a terminal tool call is a protocol violation.
 is returned to you, continue planning and eventually call `submit_plan`.
 
 Do not call `submit_plan` until you have:
+
 - Assessed every criterion with exactly one assessment.
 - Verified that satisfied claims have concrete evidence.
 - Verified that remaining criteria have actionable changes, verification,

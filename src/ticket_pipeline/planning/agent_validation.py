@@ -114,7 +114,9 @@ def validate_submission(
             )
 
         if not source or not source.strip():
-            criterion_errors.append("source_criterion is required and must be non-empty.")
+            criterion_errors.append(
+                "source_criterion is required and must be non-empty."
+            )
 
         if not disposition:
             criterion_errors.append("disposition is required.")
@@ -132,8 +134,15 @@ def validate_submission(
         verification = item.get("verification")
         impl_strategy = item.get("implementation_strategy")
         existing_test_refs = tuple(
-            r for r in item.get("existing_test_refs", []) if isinstance(r, str) and r.strip()
+            r
+            for r in item.get("existing_test_refs", [])
+            if isinstance(r, str) and r.strip()
         )
+        for ref in existing_test_refs:
+            if "::" not in ref:
+                criterion_errors.append(
+                    f"{cid}: existing_test_refs entries must be in 'file::qualified_test_name' shape (got {ref!r})."
+                )
         plan_context = item.get("plan_context")
         blocker = item.get("blocker")
 
@@ -144,7 +153,9 @@ def validate_submission(
                     f"{cid}: remaining criteria must have at least one planned_change."
                 )
             if not verification:
-                criterion_errors.append(f"{cid}: remaining criteria must specify verification.")
+                criterion_errors.append(
+                    f"{cid}: remaining criteria must specify verification."
+                )
             elif verification not in VALID_VERIFICATION_MODES:
                 criterion_errors.append(
                     f"{cid}: verification {verification!r} is not valid; "
