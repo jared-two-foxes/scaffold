@@ -86,7 +86,7 @@ REVIEW_FILE_REPORT_MARKER = "## Ticket Review"
 
 
 def review_file_path(ticket_id: str) -> Path:
-    return Path(f".ticket-review-{ticket_id}.md")
+    return lib.SCAFFOLD_TEMP_DIR / f"ticket-review-{ticket_id}.md"
 
 
 def save_review(ticket_id: str, ticket_content: str, report: str) -> Path:

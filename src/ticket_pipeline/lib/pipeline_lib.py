@@ -68,17 +68,19 @@ SUPPORTED_PLANNING_STRATEGIES = ("mechanical", "agent")
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROMPTS_DIR = files("ticket_pipeline") / "prompts"
-TICKET_FILE = Path(".ticket.md")
-PLAN_FILE = Path(".implementation-plan.md")
+SCAFFOLD_TEMP_DIR = Path(".scaffold")
+
+TICKET_FILE = SCAFFOLD_TEMP_DIR / ".ticket.md"
+PLAN_FILE = SCAFFOLD_TEMP_DIR / ".implementation-plan.md"
 LEGACY_PLAN_FILE = Path(
     ".tdd-plan.md"
 )  # deprecated name; read as fallback during migration
-UPDATED_PLAN_FILE = Path(".updated-plan.md")
+UPDATED_PLAN_FILE = SCAFFOLD_TEMP_DIR / ".updated-plan.md"
 PIPELINE_CONFIG_FILE = Path(".dev-pipeline.toml")
 
 # Transient scratch artifacts, not cross-invocation state: push_ticket
 # writes these once to seed the stack, and next_step's TICKET_VALIDATE
-# phase rewrites them fresh at validation time. .criteria-stack.json
+# phase rewrites them fresh at validation time. .scaffold/criteria-stack.json
 # (CRITERIA_STACK_FILE, below) is the only file either script trusts
 # across invocations - nothing here is read back by a later run the way
 # the old STALE_FILES/RESETTABLE_FILES scripts relied on. Cleanup of
@@ -87,19 +89,19 @@ PIPELINE_CONFIG_FILE = Path(".dev-pipeline.toml")
 # serving callers with different lifecycles is exactly what caused a
 # real ordering bug in an earlier draft of this pipeline (a cleanup step
 # deleting the stack file before a re-entrancy guard could check it).
-GAP_PLAN_FILE = Path(".gap-plan.md")
-PIPELINE_LOG_FILE = Path(".pipeline-log.jsonl")
+GAP_PLAN_FILE = SCAFFOLD_TEMP_DIR / ".gap-plan.md"
+PIPELINE_LOG_FILE = SCAFFOLD_TEMP_DIR / ".pipeline-log.jsonl"
 
 # The pipeline's canonical work-queue and sole cross-invocation source
 # of truth - see CriterionFrame/load_stack/save_stack below.
-CRITERIA_STACK_FILE = Path(".criteria-stack.json")
+CRITERIA_STACK_FILE = SCAFFOLD_TEMP_DIR / ".criteria-stack.json"
 
 # Ledger of criteria a mechanical grounding check rejected before they
 # ever became a stack frame - see verify_criterion_grounding/
 # filter_grounded_frames. Append-only, never read back into the stack
 # itself; its existence is what makes a decline sticky across repeated
 # next_step/push_ticket calls (see DeclinedCriterion/is_declined).
-DECLINED_CRITERIA_FILE = Path(".declined-criteria.json")
+DECLINED_CRITERIA_FILE = SCAFFOLD_TEMP_DIR / ".declined-criteria.json"
 
 # Per-ticket git-workflow state (base_branch recorded at push-ticket time,
 # read at TICKET_VALIDATE merge/PR time). A sidecar rather than a frame
@@ -107,8 +109,8 @@ DECLINED_CRITERIA_FILE = Path(".declined-criteria.json")
 # sentinel frame that would carry it is popped *before* the merge runs.
 # Gitignored like every other pipeline state file (see
 # ensure_gitignore_entries) so `git reset --hard` never touches it.
-GIT_STATE_FILE = Path(".pipeline-git-state.json")
-SCAFFOLD_TEMP_DIR = Path(".scaffold")
+GIT_STATE_FILE = SCAFFOLD_TEMP_DIR / ".pipeline-git-state.json"
+
 
 PLAN_PROMPT_FILE = PROMPTS_DIR / "plan.prompt.md"
 NARROW_PROMPT_FILE = PROMPTS_DIR / "narrow-plan.prompt.md"
@@ -140,6 +142,16 @@ def _resolve_plan_file() -> Path | None:
         )
         return LEGACY_PLAN_FILE
     return None
+
+
+def _load_state_file_with_legacy_fallback(current_file: Path) -> tuple[Path | None, str | None]:
+    """Read a scaffold state file, falling back to its root legacy name."""
+    legacy_file = Path(current_file.name)
+    if current_file.is_file():
+        return current_file, current_file.read_text(encoding="utf-8").strip()
+    if legacy_file.is_file():
+        return legacy_file, legacy_file.read_text(encoding="utf-8").strip()
+    return None, None
 
 
 # Host OS name, injected into every test-criterion and test-quality
@@ -395,6 +407,7 @@ def log_event(
         "tokens_completion": tokens_completion,
         "cost_usd": cost_usd,
     }
+    SCAFFOLD_TEMP_DIR.mkdir(parents=True, exist_ok=True)
     with PIPELINE_LOG_FILE.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
 
@@ -1596,15 +1609,13 @@ def load_stack() -> list[CriterionFrame]:
     other field on this dataclass was additive (a new field with a
     default), not a rename.
     """
-    if not CRITERIA_STACK_FILE.is_file():
-        return []
-    text = CRITERIA_STACK_FILE.read_text(encoding="utf-8").strip()
-    if not text:
+    source_file, text = _load_state_file_with_legacy_fallback(CRITERIA_STACK_FILE)
+    if source_file is None or not text:
         return []
     try:
         raw = json.loads(text)
     except json.JSONDecodeError as e:
-        die_with_log("stack", f"{CRITERIA_STACK_FILE} is not valid JSON: {e}")
+        die_with_log("stack", f"{source_file} is not valid JSON: {e}")
     for entry in raw:
         if "test_file" in entry or "test_name" in entry:
             old_file = entry.pop("test_file", None)
@@ -1617,12 +1628,16 @@ def load_stack() -> list[CriterionFrame]:
                 "existing_test_refs", [old_ref] if old_ref is not None else []
             )
     try:
-        return [CriterionFrame(**entry) for entry in raw]
+        frames = [CriterionFrame(**entry) for entry in raw]
     except TypeError as e:
         die_with_log(
             "stack",
-            f"{CRITERIA_STACK_FILE} does not match the expected frame schema: {e}",
+            f"{source_file} does not match the expected frame schema: {e}",
         )
+    if source_file != CRITERIA_STACK_FILE:
+        save_stack(frames)
+        source_file.unlink()
+    return frames
 
 
 def save_stack(frames: list[CriterionFrame]) -> None:
@@ -1771,22 +1786,28 @@ def load_declined() -> list[DeclinedCriterion]:
     or is empty. Same hard-stop-on-corruption stance as load_stack - a
     malformed ledger is worth a human's attention, not a silent reset.
     """
-    if not DECLINED_CRITERIA_FILE.is_file():
-        return []
-    text = DECLINED_CRITERIA_FILE.read_text(encoding="utf-8").strip()
-    if not text:
+    source_file, text = _load_state_file_with_legacy_fallback(DECLINED_CRITERIA_FILE)
+    if source_file is None or not text:
         return []
     try:
         raw = json.loads(text)
     except json.JSONDecodeError as e:
-        die_with_log("grounding", f"{DECLINED_CRITERIA_FILE} is not valid JSON: {e}")
+        die_with_log("grounding", f"{source_file} is not valid JSON: {e}")
     try:
-        return [DeclinedCriterion(**entry) for entry in raw]
+        entries = [DeclinedCriterion(**entry) for entry in raw]
     except TypeError as e:
         die_with_log(
             "grounding",
-            f"{DECLINED_CRITERIA_FILE} does not match the expected schema: {e}",
+            f"{source_file} does not match the expected schema: {e}",
         )
+    if source_file != DECLINED_CRITERIA_FILE:
+        SCAFFOLD_TEMP_DIR.mkdir(parents=True, exist_ok=True)
+        DECLINED_CRITERIA_FILE.write_text(
+            json.dumps([asdict(e) for e in entries], indent=2) + "\n",
+            encoding="utf-8",
+        )
+        source_file.unlink()
+    return entries
 
 
 def is_declined(ticket: str, criterion: str) -> bool:
@@ -1819,6 +1840,7 @@ def record_declined(
             ts=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         )
     )
+    SCAFFOLD_TEMP_DIR.mkdir(parents=True, exist_ok=True)
     DECLINED_CRITERIA_FILE.write_text(
         json.dumps([asdict(e) for e in entries], indent=2) + "\n", encoding="utf-8"
     )
@@ -2569,16 +2591,18 @@ def ticket_branch_name(cfg: GitConfig, ticket_id: str) -> str:
 
 
 def load_git_state() -> dict[str, str]:
-    if not GIT_STATE_FILE.is_file():
-        return {}
-    text = GIT_STATE_FILE.read_text(encoding="utf-8").strip()
-    if not text:
+    source_file, text = _load_state_file_with_legacy_fallback(GIT_STATE_FILE)
+    if source_file is None or not text:
         return {}
     try:
         raw = json.loads(text)
     except json.JSONDecodeError:
         return {}
-    return {k: v for k, v in raw.items() if isinstance(k, str) and isinstance(v, str)}
+    state = {k: v for k, v in raw.items() if isinstance(k, str) and isinstance(v, str)}
+    if source_file != GIT_STATE_FILE:
+        save_git_state(state)
+        source_file.unlink()
+    return state
 
 
 def save_git_state(state: dict[str, str]) -> None:
@@ -2916,14 +2940,6 @@ def post_validate_git(
 
 _GITIGNORE_ENTRIES = (
     ".scaffold/",
-    str(CRITERIA_STACK_FILE),
-    str(GIT_STATE_FILE),
-    str(DECLINED_CRITERIA_FILE),
-    str(PIPELINE_LOG_FILE),
-    str(TICKET_FILE),
-    str(PLAN_FILE),
-    str(UPDATED_PLAN_FILE),
-    str(GAP_PLAN_FILE),
 )
 
 

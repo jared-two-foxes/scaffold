@@ -133,6 +133,24 @@ class CriterionFrameRoundTripTests(unittest.TestCase):
         self.assertIsNone(loaded[0].commit_sha)
         self.assertIsNone(loaded[0].test_commit_sha)
 
+    def test_legacy_root_stack_file_migrates(self):
+        old_entry = {
+            "ticket": "SA-1",
+            "criterion": "- [ ] x",
+            "plan_context": "",
+            "test_files": None,
+            "test_names": None,
+            "status": "pending",
+            "origin": "ticket",
+        }
+        Path(".criteria-stack.json").write_text(
+            json.dumps([old_entry]) + "\n", encoding="utf-8"
+        )
+        loaded = lib.load_stack()
+        self.assertEqual(len(loaded), 1)
+        self.assertTrue(lib.CRITERIA_STACK_FILE.is_file())
+        self.assertFalse(Path(".criteria-stack.json").exists())
+
 
 class GitHelperTests(unittest.TestCase):
     def setUp(self):
@@ -254,6 +272,14 @@ class GitStateSidecarTests(unittest.TestCase):
         lib.clear_git_base_branch("SA-1")
         self.assertIsNone(lib.lookup_git_base_branch("SA-1"))
         self.assertEqual(lib.lookup_git_base_branch("SA-2"), "dev")
+
+    def test_legacy_root_git_state_file_migrates(self):
+        Path(".pipeline-git-state.json").write_text(
+            json.dumps({"SA-1": "main"}) + "\n", encoding="utf-8"
+        )
+        self.assertEqual(lib.load_git_state(), {"SA-1": "main"})
+        self.assertTrue(lib.GIT_STATE_FILE.is_file())
+        self.assertFalse(Path(".pipeline-git-state.json").exists())
 
 
 class CommitCriterionTests(unittest.TestCase):
@@ -390,6 +416,55 @@ class LoadPipelineConfigAllowsGitKeysTests(unittest.TestCase):
         # Should not die on unknown keys.
         cmds = lib.load_pipeline_config(Path(self._tmp.name) / "cfg.toml")
         self.assertEqual(cmds["test_cmd"], "pytest")
+
+
+class ResetPipelineTests(unittest.TestCase):
+    def setUp(self):
+        self._cwd = os.getcwd()
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        os.chdir(self.root)
+
+    def tearDown(self):
+        os.chdir(self._cwd)
+        self._tmp.cleanup()
+
+    def _run(self, argv):
+        import importlib
+        from ticket_pipeline import reset_pipeline
+
+        importlib.reload(reset_pipeline)
+        sys.argv = ["reset-pipeline"] + argv
+        try:
+            reset_pipeline.main()
+            return 0
+        except SystemExit as e:
+            return e.code
+
+    def test_yes_clears_scaffold_scratch_files_and_preserves_config(self):
+        scaffold = self.root / ".scaffold"
+        scaffold.mkdir()
+        lib.TICKET_FILE.write_text("ticket\n", encoding="utf-8")
+        lib.PLAN_FILE.write_text("plan\n", encoding="utf-8")
+        (scaffold / "ticket-review-123.md").write_text("review\n", encoding="utf-8")
+        (scaffold / "ticket-proposed-123.md").write_text(
+            "proposed\n", encoding="utf-8"
+        )
+        (self.root / ".ticket-review-123.md").write_text(
+            "root review\n", encoding="utf-8"
+        )
+        config = self.root / ".dev-pipeline.toml"
+        config.write_text('test_cmd = "true"\n', encoding="utf-8")
+
+        code = self._run(["--yes", "--log-level", "warning"])
+
+        self.assertEqual(code, 0)
+        self.assertFalse(lib.TICKET_FILE.exists())
+        self.assertFalse(lib.PLAN_FILE.exists())
+        self.assertFalse((scaffold / "ticket-review-123.md").exists())
+        self.assertFalse((scaffold / "ticket-proposed-123.md").exists())
+        self.assertTrue((self.root / ".ticket-review-123.md").exists())
+        self.assertTrue(config.exists())
 
 
 class ResetWorkflowTests(unittest.TestCase):

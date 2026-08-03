@@ -190,7 +190,7 @@ def mechanical_complexity_check(
 # ---------------------------------------------------------------------------
 
 def split_file_path(ticket_id: str) -> Path:
-    return Path(f".ticket-split-{ticket_id}.md")
+    return lib.SCAFFOLD_TEMP_DIR / f"ticket-split-{ticket_id}.md"
 
 
 def save_split(ticket_id: str, ticket_content: str, report: str) -> Path:

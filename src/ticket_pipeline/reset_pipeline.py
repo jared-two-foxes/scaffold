@@ -27,7 +27,7 @@ What gets removed (default):
                                 next_step.py regenerate fresh on every
                                 run; never read back by a *later*,
                                 separate invocation.
-  - .ticket-review-*.md, .ticket-proposed-*.md
+  - .scaffold/ticket-review-*.md, .scaffold/ticket-proposed-*.md
                               - review-ticket/propose-
                                 ticket-edit's per-ticket
                                 working files (their *default* output
@@ -35,7 +35,7 @@ What gets removed (default):
                                 elsewhere isn't matched by this glob and
                                 is left alone, same as any other file
                                 this pipeline doesn't own).
-  - .ticket-split-*.md, .ticket-children-*.json
+  - .scaffold/ticket-split-*.md, .scaffold/ticket-children-*.json
                               - split-ticket.py's report and create-
                                 child-tickets.py's created-children
                                 manifest.
@@ -81,11 +81,10 @@ FIXED_SCRATCH_FILES = (
 # elsewhere, and a file at a custom path is left alone here, same as any
 # file this pipeline doesn't itself own.
 SCRATCH_GLOBS = (
-    ".ticket-review-*.md",
-    ".ticket-proposed-*.md",
-    ".ticket-explored-*.md",
-    ".ticket-split-*.md",
-    ".ticket-children-*.json",
+    "ticket-review-*.md",
+    "ticket-proposed-*.md",
+    "ticket-split-*.md",
+    "ticket-children-*.json",
 )
 
 
@@ -102,7 +101,7 @@ def find_targets(keep_stack: bool, include_log: bool) -> list[Path]:
     if not keep_stack and lib.CRITERIA_STACK_FILE.exists():
         targets.append(lib.CRITERIA_STACK_FILE)
     for pattern in SCRATCH_GLOBS:
-        targets.extend(sorted(Path(".").glob(pattern)))
+        targets.extend(sorted(lib.SCAFFOLD_TEMP_DIR.glob(pattern)))
     return targets
 
 

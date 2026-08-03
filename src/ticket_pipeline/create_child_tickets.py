@@ -51,11 +51,11 @@ DEPENDS_RE = re.compile(r"\*\*Depends on:\*\*\s*(.+?)\s*$", re.MULTILINE)
 
 
 def split_file_path(ticket_id: str) -> Path:
-    return Path(f".ticket-split-{ticket_id}.md")
+    return lib.SCAFFOLD_TEMP_DIR / f"ticket-split-{ticket_id}.md"
 
 
 def children_file_path(ticket_id: str) -> Path:
-    return Path(f".ticket-children-{ticket_id}.json")
+    return lib.SCAFFOLD_TEMP_DIR / f"ticket-children-{ticket_id}.json"
 
 
 @dataclass

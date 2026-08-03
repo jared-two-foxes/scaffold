@@ -1,3 +1,4 @@
+import json
 import subprocess
 import unittest
 from pathlib import Path
@@ -231,6 +232,28 @@ class DeclinedLedgerTests(unittest.TestCase):
 
             entries = lib.load_declined()
             self.assertEqual(2, len(entries))
+
+    def test_legacy_root_declined_file_migrates(self):
+        with _TempGitRepo() as root, _cwd(root):
+            Path(".declined-criteria.json").write_text(
+                json.dumps(
+                    [
+                        {
+                            "ticket": "SA-1",
+                            "criterion": "criterion one",
+                            "origin": "ticket",
+                            "reasons": ["reason a"],
+                            "ts": "2024-01-01T00:00:00+00:00",
+                        }
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            entries = lib.load_declined()
+            self.assertEqual(1, len(entries))
+            self.assertTrue(lib.DECLINED_CRITERIA_FILE.is_file())
+            self.assertFalse(Path(".declined-criteria.json").exists())
 
     def test_declined_file_is_in_scaffolding_paths(self):
         self.assertIn(str(lib.DECLINED_CRITERIA_FILE), lib._SCAFFOLDING_PATHS)
