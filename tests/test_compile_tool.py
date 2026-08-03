@@ -1,4 +1,7 @@
+import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from ticket_pipeline.lib import pipeline_lib as lib
@@ -51,3 +54,78 @@ class CompileToolTests(unittest.TestCase):
 
     def test_summarize_compile_call(self):
         self.assertEqual(tools.summarize_tool_call("compile", {}), "Compile project")
+
+    def test_edit_file_replaces_unique_match_and_invalidates_cache(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_cwd = os.getcwd()
+            os.chdir(tmpdir)
+            try:
+                path = Path("sample.txt")
+                path.write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
+                written_paths = []
+                executor = tools.make_executor(written_paths=written_paths)
+
+                first = executor("read_file", {"path": "sample.txt"})
+                self.assertIn("beta", first)
+
+                result = executor(
+                    "edit_file",
+                    {"path": "sample.txt", "old_text": "beta\n", "new_text": "BETA\n"},
+                )
+
+                self.assertIn("edited", result.lower())
+                self.assertEqual(
+                    path.read_text(encoding="utf-8"), "alpha\nBETA\ngamma\n"
+                )
+                self.assertEqual(written_paths, ["sample.txt"])
+
+                second = executor("read_file", {"path": "sample.txt"})
+                self.assertIn("BETA", second)
+                self.assertNotIn("duplicate read_file", second)
+            finally:
+                os.chdir(original_cwd)
+
+    def test_edit_file_rejects_missing_or_ambiguous_targets(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_cwd = os.getcwd()
+            os.chdir(tmpdir)
+            try:
+                path = Path("sample.txt")
+                path.write_text("alpha\nalpha\n", encoding="utf-8")
+                executor = tools.make_executor()
+
+                missing = executor(
+                    "edit_file",
+                    {"path": "sample.txt", "old_text": "beta", "new_text": "BETA"},
+                )
+                self.assertIn("ERROR", missing)
+                self.assertIn("not found", missing.lower())
+
+                ambiguous = executor(
+                    "edit_file",
+                    {"path": "sample.txt", "old_text": "alpha", "new_text": "BETA"},
+                )
+                self.assertIn("ERROR", ambiguous)
+                self.assertIn("multiple", ambiguous.lower())
+            finally:
+                os.chdir(original_cwd)
+
+    def test_edit_file_refuses_protected_paths(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_cwd = os.getcwd()
+            os.chdir(tmpdir)
+            try:
+                path = Path("sample.txt")
+                path.write_text("alpha\n", encoding="utf-8")
+                executor = tools.make_executor(protected_paths={"sample.txt"})
+
+                result = executor(
+                    "edit_file",
+                    {"path": "sample.txt", "old_text": "alpha", "new_text": "BETA"},
+                )
+
+                self.assertIn("ERROR", result)
+                self.assertIn("protected", result.lower())
+                self.assertEqual(path.read_text(encoding="utf-8"), "alpha\n")
+            finally:
+                os.chdir(original_cwd)

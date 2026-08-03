@@ -207,6 +207,27 @@ def write_file(path: str, content: str) -> str:
     return f"wrote {path} ({len(content)} bytes)"
 
 
+def edit_file(path: str, old_text: str, new_text: str) -> str:
+    resolved = _safe_path(path)
+    if not resolved.is_file():
+        raise ToolError(f"not found: {path}")
+    if not old_text:
+        raise ToolError("old_text must be non-empty")
+
+    current = resolved.read_text(encoding="utf-8", errors="replace")
+    count = current.count(old_text)
+    if count == 0:
+        raise ToolError(f"old_text not found in {path}")
+    if count > 1:
+        raise ToolError(
+            f"old_text matched multiple occurrences ({count}) in {path}; expected exactly once"
+        )
+
+    updated = current.replace(old_text, new_text, 1)
+    resolved.write_text(updated, encoding="utf-8")
+    return f"edited {path} ({len(updated)} bytes)"
+
+
 def write_file_block(path: str) -> Callable[[str], str]:
     """
     Returns a block (str -> str) that writes its input to `path` via
@@ -270,6 +291,8 @@ def summarize_tool_call(name: str, args: dict) -> str:
         return f"Read {path} (lines {start or 1}-{end or '?'})"
     if name == "write_file":
         return f"Write {path}" if path else "Write file"
+    if name == "edit_file":
+        return f"Edit {path}" if path else "Edit file"
     if name == "list_dir":
         return f"List {path or '.'}"
     if name == "search_files":
@@ -395,6 +418,31 @@ WRITE_FILE_SCHEMA = {
                 "content": {"type": "string"},
             },
             "required": ["path", "content"],
+        },
+    },
+}
+
+EDIT_FILE_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "edit_file",
+        "description": (
+            "Replace one exact text span in an existing file with new text. "
+            "The old_text must match the file's current content exactly once; "
+            "if it is missing or appears multiple times, the call fails with "
+            "a recoverable error instead of guessing. Prefer this for a "
+            "localized change to an existing file, especially a large one; "
+            "use write_file for a new file or a small file being rewritten "
+            "wholesale."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "old_text": {"type": "string"},
+                "new_text": {"type": "string"},
+            },
+            "required": ["path", "old_text", "new_text"],
         },
     },
 }
@@ -531,6 +579,7 @@ READ_WRITE_TOOLS = [
     LIST_DIR_SCHEMA,
     SEARCH_FILES_SCHEMA,
     WRITE_FILE_SCHEMA,
+    EDIT_FILE_SCHEMA,
     ASK_USER_PROMPT_SCHEMA,
     RUN_COMMAND_SCHEMA,
 ]
@@ -540,6 +589,7 @@ READ_WRITE_TOOLS_WITH_COMPILE = [
     LIST_DIR_SCHEMA,
     SEARCH_FILES_SCHEMA,
     WRITE_FILE_SCHEMA,
+    EDIT_FILE_SCHEMA,
     ASK_USER_PROMPT_SCHEMA,
     RUN_COMMAND_SCHEMA,
     COMPILE_SCHEMA,
@@ -709,6 +759,20 @@ def make_executor(
                 if protected_paths and path in protected_paths:
                     return f"ERROR: refused to overwrite protected file: {path}"
                 result = write_file(path, args["content"])
+                full_read_paths.discard(path)
+                partial_ranges.difference_update(
+                    {key for key in partial_ranges if key[0] == path}
+                )
+                if written_paths is not None:
+                    written_paths.append(path)
+                return result
+            if name == "edit_file":
+                if not allow_write:
+                    return "ERROR: edit_file is not available in this step"
+                path = args["path"]
+                if protected_paths and path in protected_paths:
+                    return f"ERROR: refused to overwrite protected file: {path}"
+                result = edit_file(path, args["old_text"], args["new_text"])
                 full_read_paths.discard(path)
                 partial_ranges.difference_update(
                     {key for key in partial_ranges if key[0] == path}

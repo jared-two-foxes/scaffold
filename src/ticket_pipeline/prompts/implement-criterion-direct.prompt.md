@@ -25,6 +25,10 @@ change.
 - `search_files(query)` - search file contents across the project.
 - `write_file(path, content)` - write a file's complete content,
   overwriting it. Always pass the full file content, never a diff.
+- `edit_file(path, old_text, new_text)` - replace one exact text span
+  in an existing file with new text. Prefer this for a localized change
+  to an existing file, especially a large one; use `write_file` for a
+  new file or a small file being rewritten wholesale.
 - `ask_user_prompt(question)` - last resort only. This pipeline is
   single-shot and non-interactive: calling this immediately aborts the
   entire run with your question as the failure reason. There is no
@@ -75,8 +79,10 @@ read, stop and say so in your final answer rather than guessing.
   file(s) you're changing - match what's already there (a README's
   existing heading style and voice, a config file's existing format and
   ordering).
-- Use `write_file` for every file you change or create, with its
-  complete resulting content - never a partial file or diff.
+- Use `edit_file` for a localized change to an existing file when you
+  can target a single exact span without rewriting the whole file.
+  Use `write_file` for every file you change or create when you need
+  to replace the file wholesale or create a new file.
 - If this criterion turns out to actually need something a real test
   could verify (i.e. it doesn't belong in this untested path at all),
   say so plainly in your final answer instead of forcing a direct
