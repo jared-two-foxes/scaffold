@@ -1,8 +1,6 @@
 """Tests for the benchmark planning graders module."""
-import json
-import tempfile
+
 import unittest
-from pathlib import Path
 
 from ticket_pipeline.benchmark.fixtures import (
     FixtureMeta,
@@ -79,9 +77,7 @@ class SchemaValidGraderTests(unittest.TestCase):
         self.assertTrue(gate.critical)
 
     def test_invalid_strategy_fails(self):
-        criteria = [
-            PlannedCriterion.__new__(PlannedCriterion)
-        ]
+        [PlannedCriterion.__new__(PlannedCriterion)]
         # Use object.__setattr__ since PlannedCriterion is frozen
         # Instead, test via a result that bypasses validation
         # We'll just test the grader with a valid result for now
@@ -113,12 +109,12 @@ class StrategyNamesGraderTests(unittest.TestCase):
 
 class RequiredOutcomesGraderTests(unittest.TestCase):
     def test_covered_outcome_passes(self):
-        result = _make_result(
-            plan_text="The config field is added and loaded into the struct"
-        )
+        result = _make_result(plan_text="The config field is added and loaded into the struct")
         fixture = _make_fixture(
             required_outcomes=[
-                RequiredOutcome(id="field-added", description="config field is added", critical=True)
+                RequiredOutcome(
+                    id="field-added", description="config field is added", critical=True
+                )
             ]
         )
         gate = grade_required_outcomes(result, fixture)

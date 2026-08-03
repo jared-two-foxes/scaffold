@@ -19,8 +19,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import toolchains
-from . import tools
+from . import toolchains, tools
 
 DEFAULT_TREE_DEPTH = 3
 
@@ -56,9 +55,7 @@ TICKET_EVIDENCE_MAX_CHARS = 6000
 
 BACKTICK_TOKEN_RE = re.compile(r"`([^`\n]+)`")
 ENV_VAR_RE = re.compile(r"\b[A-Z][A-Z0-9_]{2,}\b")
-DOTTED_SYMBOL_RE = re.compile(
-    r"\b[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+\b"
-)
+DOTTED_SYMBOL_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+\b")
 PASCAL_SYMBOL_RE = re.compile(r"\b[A-Z][A-Za-z0-9]*[a-z][A-Za-z0-9]*\b")
 SNAKE_SYMBOL_RE = re.compile(r"\b[a-z][a-z0-9]+(?:_[a-z0-9]+)+\b")
 
@@ -100,8 +97,19 @@ NOISY_TICKET_TOKENS = {
 NOISY_BACKTICK_PREFIXES = ("cargo ", "npm ", "npx ", "bazel ", "ctest ", "fmt ", "clippy ")
 
 PATH_SUFFIXES = (
-    ".rs", ".py", ".ts", ".tsx", ".js", ".jsx", ".svelte", ".toml",
-    ".json", ".yaml", ".yml", ".md", ".sql",
+    ".rs",
+    ".py",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".svelte",
+    ".toml",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".md",
+    ".sql",
 )
 
 
@@ -138,11 +146,7 @@ def _pushd(path: Path):
 
 
 def _is_path_like(token: str) -> bool:
-    return (
-        "/" in token
-        or "\\" in token
-        or token.endswith(PATH_SUFFIXES)
-    )
+    return "/" in token or "\\" in token or token.endswith(PATH_SUFFIXES)
 
 
 def _clean_ticket_token(token: str) -> str | None:
@@ -207,9 +211,7 @@ def _build_tree_lines(root: Path, depth: int, prefix: str = "") -> list[str]:
     if depth <= 0:
         return []
     try:
-        entries = sorted(
-            root.iterdir(), key=lambda p: (p.is_file(), p.name.lower())
-        )
+        entries = sorted(root.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
     except OSError:
         return []
     lines = []
@@ -250,7 +252,9 @@ def _gather_convention_docs(root: Path) -> list[tuple[str, str]]:
         content = path.read_text(encoding="utf-8", errors="replace")
         if len(content) > CONVENTION_DOC_MAX_CHARS:
             omitted = len(content) - CONVENTION_DOC_MAX_CHARS
-            content = content[:CONVENTION_DOC_MAX_CHARS] + f"\n... (truncated, {omitted} chars omitted)"
+            content = (
+                content[:CONVENTION_DOC_MAX_CHARS] + f"\n... (truncated, {omitted} chars omitted)"
+            )
         docs.append((filename, content))
     return docs
 
@@ -294,9 +298,7 @@ def gather_ticket_evidence_seed(
 
 
 def render_repo_context_block(ctx: RepoContext, depth: int = DEFAULT_TREE_DEPTH) -> str:
-    module_roots_line = (
-        ", ".join(ctx.module_roots) if ctx.module_roots else "(none found)"
-    )
+    module_roots_line = ", ".join(ctx.module_roots) if ctx.module_roots else "(none found)"
     block = (
         f"## Repo Context\n"
         f"Toolchain: {ctx.toolchain_name}\n"

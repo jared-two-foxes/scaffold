@@ -115,9 +115,7 @@ class ParseTestRefactorAssertionsTests(unittest.TestCase):
         positives, negatives = lib._parse_test_refactor_assertions(
             "module imports `EnvVarGuard` and `env_test_lock` from `crate::test_support`"
         )
-        self.assertEqual(
-            positives, ["crate::test_support", "EnvVarGuard", "env_test_lock"]
-        )
+        self.assertEqual(positives, ["crate::test_support", "EnvVarGuard", "env_test_lock"])
         self.assertEqual([], negatives)
 
     def test_no_local_struct_clause_yields_struct_negative(self):
@@ -280,7 +278,9 @@ mod tests {
     def test_unparseable_wording_returns_false(self):
         # A criterion with no recognized structural pattern -> no
         # assertions parsed -> inconclusive (False), never vacuously True.
-        criterion = "- [ ] `src/lib.rs` test still acquires the shared env lock and behaves correctly"
+        criterion = (
+            "- [ ] `src/lib.rs` test still acquires the shared env lock and behaves correctly"
+        )
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             _write(root, "src/lib.rs", "fn main() {}\n")
@@ -312,12 +312,8 @@ mod tests {
 
 class FindRecheckVerdictTests(unittest.TestCase):
     def test_bare_verdict_on_final_line(self):
-        self.assertEqual(
-            "SATISFIED", lib._find_recheck_verdict("evidence...\nSATISFIED")
-        )
-        self.assertEqual(
-            "NOT SATISFIED", lib._find_recheck_verdict("evidence\nNOT SATISFIED")
-        )
+        self.assertEqual("SATISFIED", lib._find_recheck_verdict("evidence...\nSATISFIED"))
+        self.assertEqual("NOT SATISFIED", lib._find_recheck_verdict("evidence\nNOT SATISFIED"))
         self.assertEqual("UNKNOWN", lib._find_recheck_verdict("evidence\nUNKNOWN"))
 
     def test_verdict_after_label_with_markdown_emphasis(self):
@@ -343,12 +339,8 @@ class RecheckSingleCriterionTests(unittest.TestCase):
     """Mock pipeline_lib.run_with_tools so no network is touched."""
 
     def _run(self, ai_text):
-        with mock.patch.object(
-            lib, "run_with_tools", return_value=AIResult(text=ai_text)
-        ):
-            return lib.recheck_single_criterion(
-                "criterion", "context", "model", ticket_id="SA-1"
-            )
+        with mock.patch.object(lib, "run_with_tools", return_value=AIResult(text=ai_text)):
+            return lib.recheck_single_criterion("criterion", "context", "model", ticket_id="SA-1")
 
     def test_parses_satisfied(self):
         with (
@@ -359,9 +351,7 @@ class RecheckSingleCriterionTests(unittest.TestCase):
 
     def test_parses_not_satisfied(self):
         with tempfile.TemporaryDirectory() as d, _chdir(Path(d)):
-            self.assertEqual(
-                "NOT SATISFIED", self._run("missing import\nNOT SATISFIED")
-            )
+            self.assertEqual("NOT SATISFIED", self._run("missing import\nNOT SATISFIED"))
 
     def test_parses_unknown(self):
         with tempfile.TemporaryDirectory() as d, _chdir(Path(d)):
@@ -387,16 +377,12 @@ class RunTesterStepNoFilesTests(unittest.TestCase):
         with mock.patch.object(lib, "run_with_tools", return_value=AIResult(text="")):
             with tempfile.TemporaryDirectory() as d, _chdir(Path(d)):
                 with self.assertRaises(SystemExit):
-                    lib._run_tester_step(
-                        "p", "model", None, "c", no_files_is_fatal=True
-                    )
+                    lib._run_tester_step("p", "model", None, "c", no_files_is_fatal=True)
 
     def test_no_files_is_fatal_false_returns_none_sentinel(self):
         with mock.patch.object(lib, "run_with_tools", return_value=AIResult(text="")):
             with tempfile.TemporaryDirectory() as d, _chdir(Path(d)):
-                result = lib._run_tester_step(
-                    "p", "model", None, "c", no_files_is_fatal=False
-                )
+                result = lib._run_tester_step("p", "model", None, "c", no_files_is_fatal=False)
         self.assertEqual((None, None), result)
 
 
@@ -482,33 +468,25 @@ class HandleNoTestWrittenTests(unittest.TestCase):
         self.assertEqual("done", frame.status)
 
     def test_recheck_satisfied_pops_frame(self):
-        frame = self._frame(
-            criterion="- [ ] `nope.rs` behavioral criterion", verification="test"
-        )
+        frame = self._frame(criterion="- [ ] `nope.rs` behavioral criterion", verification="test")
         stack = [frame]
         with (
             mock.patch.object(lib, "check_test_refactor_satisfied", return_value=False),
             mock.patch.object(lib, "load_stack", return_value=stack),
             mock.patch.object(lib, "save_stack"),
-            mock.patch.object(
-                lib, "recheck_single_criterion", return_value="SATISFIED"
-            ),
+            mock.patch.object(lib, "recheck_single_criterion", return_value="SATISFIED"),
         ):
             tdd._handle_no_test_written(stack, frame, self._ctx())
         self.assertEqual("done", frame.status)
 
     def test_recheck_not_satisfied_pauses(self):
-        frame = self._frame(
-            criterion="- [ ] `nope.rs` behavioral criterion", verification="test"
-        )
+        frame = self._frame(criterion="- [ ] `nope.rs` behavioral criterion", verification="test")
         stack = [frame]
         with (
             mock.patch.object(lib, "check_test_refactor_satisfied", return_value=False),
             mock.patch.object(lib, "load_stack", return_value=stack),
             mock.patch.object(lib, "save_stack"),
-            mock.patch.object(
-                lib, "recheck_single_criterion", return_value="NOT SATISFIED"
-            ),
+            mock.patch.object(lib, "recheck_single_criterion", return_value="NOT SATISFIED"),
         ):
             with self.assertRaises(SystemExit) as cm:
                 tdd._handle_no_test_written(stack, frame, self._ctx())
@@ -518,9 +496,7 @@ class HandleNoTestWrittenTests(unittest.TestCase):
     def test_resume_skip_ai_does_not_call_recheck_and_pauses(self):
         # skip_ai=True (the resume path): mechanical check inconclusive
         # -> pause, and recheck must NOT be called.
-        frame = self._frame(
-            criterion="- [ ] `nope.rs` behavioral criterion", verification="test"
-        )
+        frame = self._frame(criterion="- [ ] `nope.rs` behavioral criterion", verification="test")
         stack = [frame]
         with (
             mock.patch.object(lib, "check_test_refactor_satisfied", return_value=False),
@@ -546,9 +522,7 @@ class HandleNoTestWrittenTests(unittest.TestCase):
             mock.patch.object(lib, "save_stack"),
             mock.patch.object(lib, "recheck_single_criterion") as recheck,
         ):
-            tdd._handle_no_test_written(
-                stack, frame, self._ctx(accept_no_test=True), skip_ai=True
-            )
+            tdd._handle_no_test_written(stack, frame, self._ctx(accept_no_test=True), skip_ai=True)
         recheck.assert_not_called()
         self.assertEqual("done", frame.status)
 

@@ -11,7 +11,6 @@ purely file reads and git status. Safe to run at any time.
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 from ticket_pipeline.lib import pipeline_lib as lib
@@ -20,9 +19,9 @@ from ticket_pipeline.lib import render
 # Status constants — mirror next_step.py's definitions. Duplicated as
 # literals rather than imported to avoid next_step's import-time side
 # effects (it pulls in ai_client, tools, subprocess gates, etc.).
-_VALIDATING = lib.VALIDATING_STATUS          # "validating"
-_GREEN_UNCONFIRMED = "green-unconfirmed"      # GREEN_UNCONFIRMED_STATUS
-_MANUAL_PENDING = "awaiting-manual-impl"      # MANUAL_PENDING_STATUS
+_VALIDATING = lib.VALIDATING_STATUS  # "validating"
+_GREEN_UNCONFIRMED = "green-unconfirmed"  # GREEN_UNCONFIRMED_STATUS
+_MANUAL_PENDING = "awaiting-manual-impl"  # MANUAL_PENDING_STATUS
 _FEEDBACK_READY = lib.FEEDBACK_READY_STATUS
 
 
@@ -111,7 +110,9 @@ def show_status(show_log: bool = False) -> None:
     vtag = "manual" if frame.verification == "manual" else "test"
 
     _print_section("▶ Current criterion:")
-    render.print_line(f"  [{vtag} | {frame.status}] {_strip_html_comment(frame.criterion)}")
+    render.print_line(
+        f"  [{vtag} | {frame.status}] {_strip_html_comment(frame.criterion)}"
+    )
 
     # Show plan context if available (truncated)
     if frame.plan_context:
@@ -165,101 +166,127 @@ def _dispatch_guidance(frame: "lib.CriterionFrame", ticket: str) -> None:
 
     # --- Validating (ticket validation in progress) ---
     if status == _VALIDATING:
-        _print_guidance([
-            "Run 'scaffold next-step' to continue ticket validation.",
-            "(Re-fetch + re-narrow + lint + full test suite + code review)",
-        ])
+        _print_guidance(
+            [
+                "Run 'scaffold next-step' to continue ticket validation.",
+                "(Re-fetch + re-narrow + lint + full test suite + code review)",
+            ]
+        )
         return
 
     if status == _FEEDBACK_READY:
         target = frame.feedback_target or "unknown"
         if target == lib.FEEDBACK_TARGET_TESTER:
-            _print_guidance([
-                "Run 'scaffold next-step' to roll back the previous test-writing attempt",
-                "and re-run the Tester with your queued feedback.",
-            ])
+            _print_guidance(
+                [
+                    "Run 'scaffold next-step' to roll back the previous test-writing attempt",
+                    "and re-run the Tester with your queued feedback.",
+                ]
+            )
             return
         if target == lib.FEEDBACK_TARGET_IMPLEMENTOR:
-            _print_guidance([
-                "Run 'scaffold next-step' to re-run the Implementor with your queued feedback.",
-            ])
+            _print_guidance(
+                [
+                    "Run 'scaffold next-step' to re-run the Implementor with your queued feedback.",
+                ]
+            )
             return
-        _print_guidance([
-            "This criterion has human-only feedback queued.",
-            "Fix it by hand, then continue with the normal next command for this criterion.",
-        ])
+        _print_guidance(
+            [
+                "This criterion has human-only feedback queued.",
+                "Fix it by hand, then continue with the normal next command for this criterion.",
+            ]
+        )
         return
 
     # --- Green-unconfirmed ---
     if status == _GREEN_UNCONFIRMED:
-        _print_guidance([
-            "Tests are green but were not confirmed legitimate",
-            f"(origin: {frame.origin}).",
-            "Inspect the unconfirmed test(s) above, then either:",
-            "  scaffold next-step --accept-green   (confirm and advance)",
-            "  scaffold next-step                  (re-check; will pause if still green)",
-        ])
+        _print_guidance(
+            [
+                "Tests are green but were not confirmed legitimate",
+                f"(origin: {frame.origin}).",
+                "Inspect the unconfirmed test(s) above, then either:",
+                "  scaffold next-step --accept-green   (confirm and advance)",
+                "  scaffold next-step                  (re-check; will pause if still green)",
+            ]
+        )
         return
 
     # --- Manual criteria ---
     if verification == "manual" and status in ("pending", _MANUAL_PENDING):
-        paths = lib.extract_referenced_paths(
-            f"{frame.criterion}\n{frame.plan_context}"
-        )
+        paths = lib.extract_referenced_paths(f"{frame.criterion}\n{frame.plan_context}")
         if paths:
             files_str = ", ".join(paths)
-            _print_guidance([
-                f"Make the change to: {files_str}",
-                "Then run: scaffold next-step",
-                "(If the file(s) are still unchanged, that rerun lets the pipeline attempt the change automatically.)",
-            ])
+            _print_guidance(
+                [
+                    f"Make the change to: {files_str}",
+                    "Then run: scaffold next-step",
+                    "(If the file(s) are still unchanged, that rerun lets the "
+                    "pipeline attempt the change automatically.)",
+                ]
+            )
         else:
-            _print_guidance([
-                "Make the change described in the criterion, or re-run scaffold next-step to let the pipeline try it.",
-                "Afterward, run: scaffold next-step --accept-manual",
-                "(No specific file could be identified for mechanical checking.)",
-            ])
+            _print_guidance(
+                [
+                    "Make the change described in the criterion, or re-run "
+                    "scaffold next-step to let the pipeline try it.",
+                    "Afterward, run: scaffold next-step --accept-manual",
+                    "(No specific file could be identified for mechanical checking.)",
+                ]
+            )
         return
 
     # --- Test criteria: pending (WRITE_TEST not yet run) ---
     if status == "pending":
-        _print_guidance([
-            "Run: scaffold next-step",
-            "(Writes a failing test for this criterion, then AI-implements automatically when needed.)",
-            "Or skip test generation and hand directly to the Implementor:",
-            "  scaffold next-step --skip-test",
-            "Or write the test by hand, then run:",
-            "  scaffold next-step --manual-test --manual-test-ref <file>::<qualified_test_name>",
-            "  (replace placeholders with the real test reference)",
-        ])
+        _print_guidance(
+            [
+                "Run: scaffold next-step",
+                "(Writes a failing test for this criterion, then AI-implements "
+                "automatically when needed.)",
+                "Or skip test generation and hand directly to the Implementor:",
+                "  scaffold next-step --skip-test",
+                "Or write the test by hand, then run:",
+                "  scaffold next-step --manual-test --manual-test-ref "
+                "<file>::<qualified_test_name>",
+                "  (replace placeholders with the real test reference)",
+            ]
+        )
         return
 
     # --- Test criteria: test-written (awaiting implementation or re-check) ---
     if status == "test-written":
         if not frame.test_files or not frame.test_names:
-            _print_guidance([
-                "Run: scaffold next-step",
-                "(Test metadata is missing — will retry WRITE_TEST.)",
-            ])
+            _print_guidance(
+                [
+                    "Run: scaffold next-step",
+                    "(Test metadata is missing — will retry WRITE_TEST.)",
+                ]
+            )
             return
-        _print_guidance([
-            "Run: scaffold next-step    (if still red, AI implements; if green, it advances)",
-            "Or require manual implementation:",
-            "  scaffold next-step --skip-implementation",
-        ])
+        _print_guidance(
+            [
+                "Run: scaffold next-step    (if still red, AI implements; if green, it advances)",
+                "Or require manual implementation:",
+                "  scaffold next-step --skip-implementation",
+            ]
+        )
         return
 
     # --- Done (shouldn't normally be seen, but handle gracefully) ---
     if status == "done":
-        _print_guidance([
-            "Criterion is done. Run: scaffold next-step  (pops and advances)",
-        ])
+        _print_guidance(
+            [
+                "Criterion is done. Run: scaffold next-step  (pops and advances)",
+            ]
+        )
         return
 
     # --- Unknown status ---
-    _print_guidance([
-        f"Unrecognized status '{status}'. Run: scaffold next-step",
-    ])
+    _print_guidance(
+        [
+            f"Unrecognized status '{status}'. Run: scaffold next-step",
+        ]
+    )
 
 
 def main() -> None:

@@ -3,7 +3,9 @@
 import sys
 
 from .. import next_step
-from ..lib import ai_client, implement as implement_lib, pipeline_lib as lib, render
+from ..lib import ai_client, render
+from ..lib import implement as implement_lib
+from ..lib import pipeline_lib as lib
 
 PHASES = ["pending", "manual-pending", "done"]
 MANUAL_PENDING_STATUS = "awaiting-manual-impl"
@@ -58,7 +60,9 @@ def do_manual_criterion(
 def implement(frame, ctx, feedback=None, previous_changed_files=None):
     if frame.status not in ("pending", "awaiting-manual-impl"):
         render.print_line(
-            f"-- Top frame is a manual-verification criterion but its status ({frame.status!r}) isn't awaiting implementation. Run 'next_step' first."
+            "-- Top frame is a manual-verification criterion but its status "
+            f"({frame.status!r}) isn't awaiting implementation. Run 'next_step' "
+            "first."
         )
         sys.exit(1)
 

@@ -32,7 +32,9 @@ import difflib
 import re
 from pathlib import Path
 
-from .lib import fetch_ticket as ticket_source, pipeline_lib as lib, render, verbosity
+from .lib import fetch_ticket as ticket_source
+from .lib import pipeline_lib as lib
+from .lib import render, verbosity
 
 log = verbosity.get_logger(__name__)
 
@@ -60,22 +62,29 @@ def main() -> None:
     )
     parser.add_argument("ticket_id", help="Linear ticket ID, e.g. NEB-42")
     parser.add_argument(
-        "--ticket-file-in", type=Path, default=lib.TICKET_FILE,
+        "--ticket-file-in",
+        type=Path,
+        default=lib.TICKET_FILE,
         help=f"Local ticket file to push (default: {lib.TICKET_FILE}).",
     )
     parser.add_argument(
-        "--yes", action="store_true",
+        "--yes",
+        action="store_true",
         help="Actually apply the update. Without this, only prints a dry-run diff.",
     )
     parser.add_argument(
-        "--log-level", default="info", choices=list(verbosity.LEVELS),
+        "--log-level",
+        default="info",
+        choices=list(verbosity.LEVELS),
         help="Console verbosity (default: info).",
     )
     args = parser.parse_args()
     verbosity.setup_logging(args.log_level)
 
     if not args.ticket_file_in.exists():
-        lib.die(f"{args.ticket_file_in} not found - nothing to push. Run propose-ticket-edit.py first.")
+        lib.die(
+            f"{args.ticket_file_in} not found - nothing to push. Run propose-ticket-edit.py first."
+        )
     local_text = args.ticket_file_in.read_text(encoding="utf-8")
     new_title, new_description = parse_local_ticket(local_text)
     if new_title is None and new_description is None:
@@ -121,7 +130,9 @@ def main() -> None:
 
     if not args.yes:
         render.print_line()
-        render.print_line("-- Dry run only - nothing was sent to Linear. Re-run with --yes to apply.")
+        render.print_line(
+            "-- Dry run only - nothing was sent to Linear. Re-run with --yes to apply."
+        )
         return
 
     render.print_line()

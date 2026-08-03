@@ -74,9 +74,7 @@ class CompileToolTests(unittest.TestCase):
                 )
 
                 self.assertIn("edited", result.lower())
-                self.assertEqual(
-                    path.read_text(encoding="utf-8"), "alpha\nBETA\ngamma\n"
-                )
+                self.assertEqual(path.read_text(encoding="utf-8"), "alpha\nBETA\ngamma\n")
                 self.assertEqual(written_paths, ["sample.txt"])
 
                 second = executor("read_file", {"path": "sample.txt"})

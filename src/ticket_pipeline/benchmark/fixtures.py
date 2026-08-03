@@ -27,7 +27,6 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-
 # ---------------------------------------------------------------------------
 # Shared fixture metadata
 # ---------------------------------------------------------------------------
@@ -46,7 +45,7 @@ class FixtureMeta:
     case_type: str = ""
 
     @classmethod
-    def from_dict(cls, d: dict) -> "FixtureMeta":
+    def from_dict(cls, d: dict) -> FixtureMeta:
         return cls(
             fixture_version=d.get("fixture_version", 1),
             category=d["category"],
@@ -58,7 +57,7 @@ class FixtureMeta:
         )
 
     @classmethod
-    def load(cls, fixture_dir: Path) -> "FixtureMeta":
+    def load(cls, fixture_dir: Path) -> FixtureMeta:
         meta_path = fixture_dir / "fixture.json"
         if not meta_path.is_file():
             raise FileNotFoundError(f"Missing fixture.json in {fixture_dir}")
@@ -89,7 +88,7 @@ class PlanningFixture:
     critical_false_work_patterns: tuple[str, ...]
 
     @classmethod
-    def load(cls, fixture_dir: Path) -> "PlanningFixture":
+    def load(cls, fixture_dir: Path) -> PlanningFixture:
         meta = FixtureMeta.load(fixture_dir)
 
         ticket_path = fixture_dir / "ticket.md"
@@ -117,13 +116,9 @@ class PlanningFixture:
             required_outcomes=required_outcomes,
             required_existing_paths=tuple(expected.get("required_existing_paths", [])),
             forbidden_paths=tuple(expected.get("forbidden_paths", [])),
-            already_satisfied_outcomes=tuple(
-                expected.get("already_satisfied_outcomes", [])
-            ),
+            already_satisfied_outcomes=tuple(expected.get("already_satisfied_outcomes", [])),
             expected_strategy_by_outcome=expected.get("expected_strategy_by_outcome", {}),
-            critical_false_work_patterns=tuple(
-                expected.get("critical_false_work_patterns", [])
-            ),
+            critical_false_work_patterns=tuple(expected.get("critical_false_work_patterns", [])),
         )
 
 
@@ -144,7 +139,7 @@ class GradingConfig:
     forbid_ignored_tests: bool = True
 
     @classmethod
-    def from_dict(cls, d: dict) -> "GradingConfig":
+    def from_dict(cls, d: dict) -> GradingConfig:
         return cls(
             build_cmd=d.get("build_cmd", ""),
             required_test_cmd=d.get("required_test_cmd", ""),
@@ -175,7 +170,7 @@ class ImplementationFixture:
     grading: GradingConfig
 
     @classmethod
-    def load(cls, fixture_dir: Path) -> "ImplementationFixture":
+    def load(cls, fixture_dir: Path) -> ImplementationFixture:
         meta = FixtureMeta.load(fixture_dir)
 
         ticket_path = fixture_dir / "ticket.md"
@@ -226,9 +221,7 @@ def discover_fixtures(benchmarks_dir: Path, category: str, suite: str) -> list[P
     suite_dir = benchmarks_dir / category / suite
     if not suite_dir.is_dir():
         return []
-    return sorted(
-        p for p in suite_dir.iterdir() if p.is_dir() and (p / "fixture.json").is_file()
-    )
+    return sorted(p for p in suite_dir.iterdir() if p.is_dir() and (p / "fixture.json").is_file())
 
 
 def resolve_base_ref(fixture_dir: Path, override: str | None = None) -> str:

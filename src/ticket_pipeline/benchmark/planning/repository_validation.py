@@ -11,8 +11,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from ..models import GateResult
 from ...planning.models import PlanningResult
+from ..models import GateResult
 
 
 def check_referenced_paths_exist(
@@ -62,9 +62,7 @@ def check_forbidden_paths_absent(
     Verify that none of the fixture-defined forbidden paths are referenced
     in the plan.
     """
-    triggered = [
-        p for p in forbidden_paths if Path(p).name.lower() in plan_text_lower
-    ]
+    triggered = [p for p in forbidden_paths if Path(p).name.lower() in plan_text_lower]
     if triggered:
         return GateResult(
             gate="forbidden_paths_absent",

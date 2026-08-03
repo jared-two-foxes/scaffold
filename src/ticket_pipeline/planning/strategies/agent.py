@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import logging
-import os
 
 from ...lib import pipeline_lib as lib
 from ...lib.ai_client import AIError, StepBudgetExceeded
-from ..agent_models import AgentPlanSubmission
-from ..agent_prompt import assign_criterion_ids, build_agent_plan_prompt, extract_acceptance_criteria
+from ..agent_models import AgentCriterionAssessment, AgentPlanSubmission
+from ..agent_prompt import (
+    assign_criterion_ids,
+    build_agent_plan_prompt,
+    extract_acceptance_criteria,
+)
 from ..agent_rendering import (
     build_agent_diagnostics,
     render_agent_full_plan,
@@ -14,14 +17,12 @@ from ..agent_rendering import (
     render_plan_context,
 )
 from ..agent_runner import (
-    PlanningInputRequired,
     make_read_only_executor,
     run_agent_until_terminal,
 )
 from ..agent_tools import (
     AGENT_PLANNING_TOOLS,
     PLANNING_FAILED_TOOL_NAME,
-    SUBMIT_PLAN_TOOL_NAME,
     TERMINAL_TOOL_NAMES,
 )
 from ..agent_validation import validate_submission
@@ -40,9 +41,8 @@ _VALID_VERIFICATION_MODES = frozenset({"test", "test-refactor", "refactor", "man
 _VALID_IMPLEMENTATION_STRATEGIES = frozenset({"tdd", "direct", "manual", "refactor"})
 
 
-def _require_verification_for_agent(assessment: "AgentCriterionAssessment") -> str:
+def _require_verification_for_agent(assessment: AgentCriterionAssessment) -> str:
     """Require an explicit verification value from an agent assessment."""
-    from ..agent_models import AgentCriterionAssessment  # noqa: F401
     value = assessment.verification
     if not value:
         raise PlanningError(
@@ -54,9 +54,8 @@ def _require_verification_for_agent(assessment: "AgentCriterionAssessment") -> s
     return value
 
 
-def _require_strategy_for_agent(assessment: "AgentCriterionAssessment") -> str:
+def _require_strategy_for_agent(assessment: AgentCriterionAssessment) -> str:
     """Require an explicit implementation_strategy value from an agent assessment."""
-    from ..agent_models import AgentCriterionAssessment  # noqa: F401
     value = assessment.implementation_strategy
     if not value:
         raise PlanningError(
@@ -87,7 +86,9 @@ class AgentPlanningStrategy:
         self.max_invalid_submissions = max_invalid_submissions
 
     def plan(self, request: PlanningRequest) -> PlanningResult:
-        log.info("-- Agent planning strategy: starting session for %s", request.ticket_id)
+        log.info(
+            "-- Agent planning strategy: starting session for %s", request.ticket_id
+        )
 
         # Write ticket snapshot
         lib.TICKET_FILE.write_text(request.ticket_content, encoding="utf-8")
@@ -171,9 +172,7 @@ class AgentPlanningStrategy:
                     label=label,
                 )
             except (AIError, StepBudgetExceeded) as exc:
-                raise PlanningError(
-                    f"Agent planning session failed: {exc}"
-                ) from exc
+                raise PlanningError(f"Agent planning session failed: {exc}") from exc
 
             if result.tool_name == PLANNING_FAILED_TOOL_NAME:
                 args = result.arguments
@@ -186,9 +185,7 @@ class AgentPlanningStrategy:
                 )
 
             # submit_plan - validate the payload
-            submission, errors = validate_submission(
-                result.arguments, expected_ids
-            )
+            submission, errors = validate_submission(result.arguments, expected_ids)
             if submission is not None:
                 return submission
 
@@ -203,8 +200,7 @@ class AgentPlanningStrategy:
             # Feed errors back to the same session by appending to the prompt
             error_msg = (
                 "Your submit_plan call had validation errors. Please correct them "
-                "and call submit_plan again:\n\n"
-                + "\n".join(f"- {e}" for e in errors)
+                "and call submit_plan again:\n\n" + "\n".join(f"- {e}" for e in errors)
             )
             log.warning(
                 "   %s: invalid submission (attempt %d/%d) - returning errors to agent.",

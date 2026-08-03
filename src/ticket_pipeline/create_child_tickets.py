@@ -39,14 +39,18 @@ import urllib.error
 from dataclasses import dataclass
 from pathlib import Path
 
-from .lib import fetch_ticket as ticket_source, pipeline_lib as lib, render, verbosity
+from .lib import fetch_ticket as ticket_source
+from .lib import pipeline_lib as lib
+from .lib import render, verbosity
 
 log = verbosity.get_logger(__name__)
 
 VERDICT_RE = re.compile(r"^###\s*Verdict\s*\n+(\S+)", re.MULTILINE)
 CHILD_HEADER_RE = re.compile(r"^####\s*Child\s+\d+:\s*(.+?)\s*$", re.MULTILINE)
 DESCRIPTION_RE = re.compile(r"\*\*Description:\*\*\s*(.+?)(?:\n\*\*|\Z)", re.DOTALL)
-CRITERIA_RE = re.compile(r"\*\*Acceptance Criteria:\*\*\s*\n((?:^\s*-.*(?:\n|\Z))+)", re.MULTILINE)
+CRITERIA_RE = re.compile(
+    r"\*\*Acceptance Criteria:\*\*\s*\n((?:^\s*-.*(?:\n|\Z))+)", re.MULTILINE
+)
 DEPENDS_RE = re.compile(r"\*\*Depends on:\*\*\s*(.+?)\s*$", re.MULTILINE)
 
 
@@ -119,7 +123,9 @@ def build_child_body(child: ChildTicket) -> str:
     """
     lines = [child.description, "", "## Acceptance Criteria"]
     for criterion in child.criteria:
-        checkboxed = criterion if CHECKBOX_PREFIX_RE.match(criterion) else f"[ ] {criterion}"
+        checkboxed = (
+            criterion if CHECKBOX_PREFIX_RE.match(criterion) else f"[ ] {criterion}"
+        )
         lines.append(f"- {checkboxed}")
     if child.depends_on:
         lines += ["", f"**Depends on:** {child.depends_on}"]
@@ -159,7 +165,10 @@ def create_children(ticket_id: str, children: list[ChildTicket]) -> ChildCreatio
         render.print_line(f"-- Creating child {i}/{len(children)}: {child.title} ...")
         try:
             result = ticket_source.create_ticket(
-                team_id, child.title, build_child_body(child), parent_id=parent_internal_id,
+                team_id,
+                child.title,
+                build_child_body(child),
+                parent_id=parent_internal_id,
             )
         except urllib.error.HTTPError as e:
             failure = f"HTTP {e.code}: {e.read().decode()}"
@@ -183,18 +192,25 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument("ticket_id", help="The split (parent) ticket's Linear ID, e.g. NEB-42")
     parser.add_argument(
-        "--split-file-in", type=Path, default=None,
+        "ticket_id", help="The split (parent) ticket's Linear ID, e.g. NEB-42"
+    )
+    parser.add_argument(
+        "--split-file-in",
+        type=Path,
+        default=None,
         help="split-ticket.py report to read (default: .ticket-split-{ticket-id}.md).",
     )
     parser.add_argument(
-        "--yes", action="store_true",
+        "--yes",
+        action="store_true",
         help="Actually create the child tickets in Linear. Without this, prints "
-             "what would be created and exits without calling Linear at all.",
+        "what would be created and exits without calling Linear at all.",
     )
     parser.add_argument(
-        "--log-level", default="info", choices=list(verbosity.LEVELS),
+        "--log-level",
+        default="info",
+        choices=list(verbosity.LEVELS),
         help="Console verbosity (default: info).",
     )
     args = parser.parse_args()
@@ -215,12 +231,18 @@ def main() -> None:
 
     children = parse_child_tickets(report_text)
     if not children:
-        lib.die(f"Verdict is '{verdict}' but no '#### Child N:' blocks were found in {split_file}.")
+        lib.die(
+            f"Verdict is '{verdict}' but no '#### Child N:' blocks were found in {split_file}."
+        )
 
-    render.print_line(f"-- {len(children)} proposed child ticket(s) for {args.ticket_id} (verdict: {verdict}):")
+    render.print_line(
+        f"-- {len(children)} proposed child ticket(s) for {args.ticket_id} (verdict: {verdict}):"
+    )
     for i, child in enumerate(children, 1):
         depends_note = f" - depends on: {child.depends_on}" if child.depends_on else ""
-        render.print_line(f"   {i}. {child.title} ({len(child.criteria)} criteria){depends_note}")
+        render.print_line(
+            f"   {i}. {child.title} ({len(child.criteria)} criteria){depends_note}"
+        )
 
     if not args.yes:
         render.print_line()
@@ -233,10 +255,15 @@ def main() -> None:
     result = create_children(args.ticket_id, children)
 
     manifest_path = children_file_path(args.ticket_id)
-    manifest_path.write_text(json.dumps(result.created, indent=2) + "\n", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(result.created, indent=2) + "\n", encoding="utf-8"
+    )
 
     if result.failure is not None:
-        render.print_line(f"\n-- Saved {len(result.created)}/{len(children)} successfully-created child(ren) to {manifest_path}.")
+        render.print_line(
+            f"\n-- Saved {len(result.created)}/{len(children)} "
+            f"successfully-created child(ren) to {manifest_path}."
+        )
         lib.die(
             f"Creating '{children[len(result.created)].title}' failed: {result.failure}. "
             f"The {len(result.created)} child(ren) already created above were not rolled back - "
@@ -244,7 +271,9 @@ def main() -> None:
             f"remaining children, or clean up manually in Linear before retrying."
         )
 
-    render.print_line(f"\n-- Created {len(result.created)} child ticket(s), saved to {manifest_path}.")
+    render.print_line(
+        f"\n-- Created {len(result.created)} child ticket(s), saved to {manifest_path}."
+    )
 
 
 if __name__ == "__main__":

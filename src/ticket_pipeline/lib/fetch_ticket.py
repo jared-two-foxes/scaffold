@@ -11,10 +11,10 @@ This file's __main__ block is just a thin CLI wrapper around the same
 two functions, for manual/standalone use.
 """
 
-import sys
 import json
-import urllib.request
+import sys
 import urllib.error
+import urllib.request
 from pathlib import Path
 
 
@@ -133,8 +133,8 @@ def render(data: dict) -> str:
     lines = [
         f"# {issue['identifier']} — {issue['title']}",
         "",
-        f"| Field    | Value |",
-        f"|----------|-------|",
+        "| Field    | Value |",
+        "|----------|-------|",
         f"| State    | {issue['state']['name']} |",
         f"| Priority | {priority} |",
         f"| Assignee | {assignee} |",

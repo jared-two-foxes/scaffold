@@ -1,4 +1,5 @@
 """Tests for the benchmark fixtures module."""
+
 import json
 import tempfile
 import unittest

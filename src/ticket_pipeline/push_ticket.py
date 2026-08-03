@@ -131,9 +131,7 @@ def prepare_git_branch(ticket_id: str, cfg: "lib.GitConfig", force: bool) -> Non
         lib.git_checkout(branch)
     else:
         lib.git_create_branch(branch)
-        render.print_line(
-            f"-- git_workflow: created branch {branch} from {base_branch}."
-        )
+        render.print_line(f"-- git_workflow: created branch {branch} from {base_branch}.")
     lib.record_git_base_branch(ticket_id, base_branch)
 
 
@@ -154,9 +152,7 @@ def print_declined_criteria(
         return
     render.print_line()
     noun = "criterion" if len(newly_declined) == 1 else "criteria"
-    render.print_line(
-        f"-- {len(newly_declined)} {noun} failed mechanical grounding - NOT pushed:"
-    )
+    render.print_line(f"-- {len(newly_declined)} {noun} failed mechanical grounding - NOT pushed:")
     for frame, reasons in newly_declined:
         render.print_line(f"   {frame.criterion}")
         for reason in reasons:
@@ -398,9 +394,7 @@ def main() -> None:
         lib.ensure_validating_sentinel(ticket_id)
         render.print_line()
         render.print_line(f"-- Pushed a validation-pending marker for {ticket_id}.")
-        render.print_line(
-            "-- Run 'next_step' to run the full ticket validation gate now."
-        )
+        render.print_line("-- Run 'next_step' to run the full ticket validation gate now.")
         return
 
     if args.from_gap_plan:
@@ -435,9 +429,7 @@ def main() -> None:
             planning_result=result,
             strategy_override=args.strategy,
         )
-        frames, newly_declined, skipped_count = lib.filter_grounded_frames(
-            candidate_frames
-        )
+        frames, newly_declined, skipped_count = lib.filter_grounded_frames(candidate_frames)
         print_declined_criteria(newly_declined)
         if skipped_count:
             render.print_line(
@@ -496,9 +488,7 @@ def main() -> None:
     else:
         lib.save_stack(frames)
         render.print_line()
-        render.print_line(
-            f"-- Pushed {len(frames)} frame(s) for {ticket_id} onto the stack."
-        )
+        render.print_line(f"-- Pushed {len(frames)} frame(s) for {ticket_id} onto the stack.")
         for frame in frames:
             render.print_line(f"   {frame.criterion}")
         render.print_line("-- Run 'next_step' to begin.")

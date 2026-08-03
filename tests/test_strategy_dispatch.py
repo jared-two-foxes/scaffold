@@ -1,5 +1,5 @@
-import unittest
 import inspect
+import unittest
 from unittest import mock
 
 from ticket_pipeline import next_step
@@ -28,9 +28,7 @@ class StrategyDispatchTests(unittest.TestCase):
             mock.patch.object(lib, "load_stack", return_value=[frame]),
             mock.patch.object(tdd_strategy, "do_write_test") as write_test,
         ):
-            next_step.step(
-                "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
-            )
+            next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
         write_test.assert_called_once()
 
     def test_tdd_strategy_dispatches_test_written_to_recheck(self):
@@ -39,9 +37,7 @@ class StrategyDispatchTests(unittest.TestCase):
             mock.patch.object(lib, "load_stack", return_value=[frame]),
             mock.patch.object(tdd_strategy, "recheck_test_frame") as recheck,
         ):
-            next_step.step(
-                "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
-            )
+            next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
         recheck.assert_called_once()
 
     def test_direct_strategy_dispatches_pending_to_implement(self):
@@ -54,9 +50,7 @@ class StrategyDispatchTests(unittest.TestCase):
             ),
         ):
             with self.assertRaises(SystemExit):
-                next_step.step(
-                    "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
-                )
+                next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
 
     def test_manual_strategy_uses_manual_handler(self):
         frame = self._frame(strategy="manual", status="pending", verification="manual")
@@ -64,26 +58,18 @@ class StrategyDispatchTests(unittest.TestCase):
             mock.patch.object(lib, "load_stack", return_value=[frame]),
             mock.patch.object(lib, "extract_referenced_paths", return_value=[]),
             mock.patch.object(lib, "git_changed_files", return_value=[]),
-            mock.patch(
-                "ticket_pipeline.strategies.manual.do_await_manual_impl"
-            ) as manual_pause,
+            mock.patch("ticket_pipeline.strategies.manual.do_await_manual_impl") as manual_pause,
         ):
-            next_step.step(
-                "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
-            )
+            next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
         manual_pause.assert_called_once()
 
     def test_refactor_strategy_uses_refactor_handler(self):
-        frame = self._frame(
-            strategy="refactor", status="pending", verification="refactor"
-        )
+        frame = self._frame(strategy="refactor", status="pending", verification="refactor")
         with (
             mock.patch.object(lib, "load_stack", return_value=[frame]),
             mock.patch.object(refactor_strategy, "do_refactor_setup") as refactor,
         ):
-            next_step.step(
-                "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
-            )
+            next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
         refactor.assert_called_once()
 
     def test_unknown_strategy_dies(self):
@@ -93,9 +79,7 @@ class StrategyDispatchTests(unittest.TestCase):
             mock.patch.object(lib, "die_with_log", side_effect=RuntimeError("boom")),
         ):
             with self.assertRaises(RuntimeError):
-                next_step.step(
-                    "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
-                )
+                next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
 
     def test_manual_test_refused_for_direct_strategy(self):
         frame = self._frame(strategy="direct", status="pending", verification="test")

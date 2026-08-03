@@ -27,14 +27,14 @@ import time
 import uuid
 from pathlib import Path
 
+from ...planning.factory import create_planning_strategy
+from ...planning.models import PlanningRequest, PlanningResult
+from ...planning.strategy import PlanningError
 from ..acceptance import build_acceptance_result
 from ..fixtures import PlanningFixture, resolve_base_ref
 from ..models import BenchmarkResult, GateResult
 from ..worktrees import create_worktree, remove_worktree
 from .graders import run_generic_planning_gates
-from ...planning.factory import create_planning_strategy
-from ...planning.models import PlanningRequest, PlanningResult
-from ...planning.strategy import PlanningError
 
 
 def run_planning_trial(

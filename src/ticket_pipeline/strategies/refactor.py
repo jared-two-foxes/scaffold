@@ -3,7 +3,9 @@
 import sys
 
 from .. import next_step
-from ..lib import ai_client, implement as implement_lib, pipeline_lib as lib, render
+from ..lib import ai_client, render
+from ..lib import implement as implement_lib
+from ..lib import pipeline_lib as lib
 
 PHASES = ["pending", "baseline-confirmed", "done"]
 IMPL_AWAITING_STATUS = "baseline-confirmed"
@@ -133,7 +135,8 @@ def implement(frame, ctx, feedback=None, previous_changed_files=None):
         sys.exit(1)
     if not frame.test_files or not frame.test_names:
         render.print_line(
-            "-- Refactor frame is baseline-confirmed but has no safety-net test(s) recorded. Run 'next_step' to re-run refactor setup."
+            "-- Refactor frame is baseline-confirmed but has no safety-net "
+            "test(s) recorded. Run 'next_step' to re-run refactor setup."
         )
         sys.exit(1)
 
@@ -145,7 +148,9 @@ def implement(frame, ctx, feedback=None, previous_changed_files=None):
     ]
     if red_names:
         render.print_line(
-            "-- Safety-net test(s) are RED - the refactor cannot proceed until they are GREEN again (the safety net must hold before and after the refactor). Fix them first, then re-run."
+            "-- Safety-net test(s) are RED - the refactor cannot proceed "
+            "until they are GREEN again (the safety net must hold before and "
+            "after the refactor). Fix them first, then re-run."
         )
         for n in red_names:
             render.print_line("   RED: " + n)

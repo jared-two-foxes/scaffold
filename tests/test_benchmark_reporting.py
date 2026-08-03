@@ -1,12 +1,12 @@
 """Tests for the benchmark reporting module."""
+
 import io
 import json
 import unittest
 
-from ticket_pipeline.benchmark.models import AcceptanceResult, BenchmarkResult, GateResult
+from ticket_pipeline.benchmark.models import AcceptanceResult, BenchmarkResult
 from ticket_pipeline.benchmark.reporting import (
     acceptance_rate_summary,
-    load_results,
     print_summary,
     wilson_ci,
     write_result,
@@ -61,7 +61,7 @@ class WriteResultTests(unittest.TestCase):
         for v in ["accepted", "rejected", "indeterminate"]:
             write_result(_make_result(v), buf)
         buf.seek(0)
-        lines = [l for l in buf.read().splitlines() if l]
+        lines = [line for line in buf.read().splitlines() if line]
         self.assertEqual(len(lines), 3)
 
 
@@ -119,6 +119,7 @@ class PrintSummaryTests(unittest.TestCase):
         # Just verify it doesn't raise
         buf = io.StringIO()
         import sys
+
         old = sys.stdout
         sys.stdout = buf
         try:
@@ -133,6 +134,7 @@ class PrintSummaryTests(unittest.TestCase):
         ]
         buf = io.StringIO()
         import sys
+
         old = sys.stdout
         sys.stdout = buf
         try:

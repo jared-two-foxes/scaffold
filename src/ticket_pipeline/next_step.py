@@ -37,12 +37,13 @@ Usage:
 """
 
 import argparse
-from dataclasses import replace
 import sys
-from pathlib import Path
 import tomllib
+from dataclasses import replace
+from pathlib import Path
 
-from .lib import ai_client, pipeline_lib as lib, render, tools, verbosity
+from .lib import ai_client, render, tools, verbosity
+from .lib import pipeline_lib as lib
 from .lib.retry import resolve_retry_policy
 from .strategies.registry import resolve_strategy
 
@@ -164,7 +165,8 @@ def _run_feedback_retry(
 
     lib.die_with_log(
         "feedback",
-        f"Human-targeted feedback is not an automated retry path for verification={frame.verification!r}.",
+        "Human-targeted feedback is not an automated retry path for "
+        f"verification={frame.verification!r}.",
         criterion=frame.criterion,
         ticket=frame.ticket,
     )
@@ -735,18 +737,24 @@ def main() -> None:
     parser.add_argument(
         "--no-compile-tool",
         action="store_true",
-        help="Disable the AI 'compile' tool for this run. By default it is enabled and runs build_cmd during the model turn for in-turn compile checks.",
+        help=(
+            "Disable the AI 'compile' tool for this run. By default it is "
+            "enabled and runs build_cmd during the model turn for in-turn "
+            "compile checks."
+        ),
     )
     parser.add_argument(
         "--no-reset-on-retry",
         action="store_true",
-        help="Disable fresh-start retries for this run. By default retries reset to the test commit when available.",
+        help="Disable fresh-start retries for this run. By default retries "
+        "reset to the test commit when available.",
     )
     parser.add_argument(
         "--strategy",
         default=None,
         choices=["tdd", "direct"],
-        help="Override the top frame's strategy for this run. Defaults to the frame's own strategy or the plan tag.",
+        help="Override the top frame's strategy for this run. Defaults to "
+        "the frame's own strategy or the plan tag.",
     )
     parser.add_argument(
         "--log-level",

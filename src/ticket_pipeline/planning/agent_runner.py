@@ -12,17 +12,14 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
 
 from ..lib import ai_client
-from ..lib.ai_client import AIError, StepBudgetExceeded, _post_chat_completion
 from ..lib import tools as tool_lib
+from ..lib.ai_client import AIError, StepBudgetExceeded, _post_chat_completion
 from .agent_tools import (
-    SUBMIT_PLAN_TOOL_NAME,
-    PLANNING_FAILED_TOOL_NAME,
     ASK_USER_INPUT_TOOL_NAME,
-    TERMINAL_TOOL_NAMES,
     summarize_agent_tool_call,
 )
 from .strategy import PlanningError
@@ -223,7 +220,10 @@ def make_read_only_executor(
             return (
                 answer
                 if answer
-                else f"(no answer given - proceed with recommended option: {recommended or 'your best judgement'})"
+                else (
+                    "(no answer given - proceed with recommended option: "
+                    f"{recommended or 'your best judgement'})"
+                )
             )
 
         try:
@@ -258,8 +258,15 @@ def make_read_only_executor(
                 )
 
             # Forbidden write tools.
-            if name in {"write_file", "edit_file", "delete_file", "run_command",
-                        "apply_patch", "git_commit", "git_checkout"}:
+            if name in {
+                "write_file",
+                "edit_file",
+                "delete_file",
+                "run_command",
+                "apply_patch",
+                "git_commit",
+                "git_checkout",
+            }:
                 return (
                     f"ERROR: {name} is not available during planning - "
                     "the planning agent must not modify the repository. "

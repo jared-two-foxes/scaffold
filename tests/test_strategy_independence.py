@@ -10,18 +10,16 @@ Covers the acceptance criteria from:
 import unittest
 from unittest import mock
 
+from ticket_pipeline import next_step
 from ticket_pipeline.lib import pipeline_lib as lib
 from ticket_pipeline.planning import (
     PlannedCriterion,
     PlanningError,
     parse_gap_plan,
 )
-from ticket_pipeline.planning.parsing import _require_verification, _require_strategy
-from ticket_pipeline import next_step
-from ticket_pipeline.strategies import tdd as tdd_strategy
-from ticket_pipeline.strategies import direct as direct_strategy
 from ticket_pipeline.strategies import manual as manual_strategy
 from ticket_pipeline.strategies import refactor as refactor_strategy
+from ticket_pipeline.strategies import tdd as tdd_strategy
 
 # ---------------------------------------------------------------------------
 # Model-level independence
@@ -95,18 +93,14 @@ _GAP_PLAN_WITH_TAGS = (
 )
 
 _GAP_PLAN_MISSING_STRATEGY = (
-    "## Acceptance Criteria\n\n"
-    "- [ ] Feature A works <!-- why: not yet; verify: test -->\n"
+    "## Acceptance Criteria\n\n- [ ] Feature A works <!-- why: not yet; verify: test -->\n"
 )
 
 _GAP_PLAN_MISSING_VERIFICATION = (
-    "## Acceptance Criteria\n\n"
-    "- [ ] Feature A works <!-- why: not yet; strategy: direct -->\n"
+    "## Acceptance Criteria\n\n- [ ] Feature A works <!-- why: not yet; strategy: direct -->\n"
 )
 
-_GAP_PLAN_NO_TAGS = (
-    "## Acceptance Criteria\n\n" "- [ ] Feature A works <!-- why: not yet -->\n"
-)
+_GAP_PLAN_NO_TAGS = "## Acceptance Criteria\n\n- [ ] Feature A works <!-- why: not yet -->\n"
 
 
 class ParserRejectsImplicitDefaultsTests(unittest.TestCase):
@@ -143,9 +137,7 @@ class ExtractFunctionsReturnNoneForMissingTagsTests(unittest.TestCase):
         self.assertIsNone(lib.extract_verification_mode(criterion))
 
     def test_extract_strategy_returns_none_when_no_tag(self):
-        criterion = (
-            "- [ ] Criterion without a strategy tag <!-- why: missing; verify: test -->"
-        )
+        criterion = "- [ ] Criterion without a strategy tag <!-- why: missing; verify: test -->"
         self.assertIsNone(lib.extract_strategy(criterion))
 
     def test_extract_verification_parses_test_tag(self):
@@ -199,9 +191,7 @@ class DirectStrategyIndependenceTests(unittest.TestCase):
             ),
         ):
             try:
-                next_step.step(
-                    "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
-                )
+                next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
             except SystemExit:
                 pass
 
@@ -220,9 +210,7 @@ class DirectStrategyIndependenceTests(unittest.TestCase):
             mock.patch.object(tdd_strategy, "do_write_test") as write_test_mock,
         ):
             try:
-                next_step.step(
-                    "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
-                )
+                next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
             except SystemExit:
                 pass
 
@@ -239,9 +227,7 @@ class DirectStrategyIndependenceTests(unittest.TestCase):
             ) as impl_mock,
         ):
             try:
-                next_step.step(
-                    "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
-                )
+                next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
             except SystemExit:
                 pass
 
@@ -253,17 +239,13 @@ class RefactorStrategyIndependenceTests(unittest.TestCase):
 
     def test_refactor_strategy_does_not_generate_a_failing_test(self):
         """Refactor strategy invokes do_refactor_setup, not TDD write-test."""
-        frame = _make_frame(
-            strategy="refactor", status="pending", verification="refactor"
-        )
+        frame = _make_frame(strategy="refactor", status="pending", verification="refactor")
         with (
             mock.patch.object(lib, "load_stack", return_value=[frame]),
             mock.patch.object(refactor_strategy, "do_refactor_setup") as refactor_mock,
             mock.patch.object(tdd_strategy, "do_write_test") as write_test_mock,
         ):
-            next_step.step(
-                "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
-            )
+            next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
 
         refactor_mock.assert_called_once()
         write_test_mock.assert_not_called()
@@ -285,9 +267,7 @@ class ManualStrategyIndependenceTests(unittest.TestCase):
             ) as impl_mock,
             mock.patch.object(tdd_strategy, "do_write_test") as write_test_mock,
         ):
-            next_step.step(
-                "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
-            )
+            next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
 
         await_mock.assert_called_once()
         impl_mock.assert_not_called()
@@ -304,9 +284,7 @@ class TDDStrategyRetentionTests(unittest.TestCase):
             mock.patch.object(lib, "load_stack", return_value=[frame]),
             mock.patch.object(tdd_strategy, "do_write_test") as write_test_mock,
         ):
-            next_step.step(
-                "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
-            )
+            next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
 
         write_test_mock.assert_called_once()
 
@@ -428,9 +406,7 @@ class EndToEndDirectWithTestVerificationTests(unittest.TestCase):
             ),
         ):
             try:
-                next_step.step(
-                    "model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE
-                )
+                next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
             except SystemExit:
                 pass
 

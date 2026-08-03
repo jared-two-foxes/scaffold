@@ -46,9 +46,7 @@ class ResolveFeedbackTargetTests(unittest.TestCase):
     def test_test_refactor_defaults_to_tester(self):
         self.assertEqual(
             lib.FEEDBACK_TARGET_TESTER,
-            lib.resolve_feedback_target(
-                self._frame(verification="test-refactor"), "auto"
-            ),
+            lib.resolve_feedback_target(self._frame(verification="test-refactor"), "auto"),
         )
 
     def test_refactor_defaults_to_implementor(self):
@@ -151,9 +149,7 @@ class FeedbackRetryTests(unittest.TestCase):
             git_cfg=git_cfg,
         )
         with (
-            mock.patch.object(
-                lib, "git_changed_files", return_value=["tests/test_example.py"]
-            ),
+            mock.patch.object(lib, "git_changed_files", return_value=["tests/test_example.py"]),
             mock.patch.object(lib, "git_reset_hard") as reset_hard,
             mock.patch.object(lib, "save_stack"),
             mock.patch("ticket_pipeline.strategies.tdd.do_write_test") as do_write_test,
@@ -196,9 +192,7 @@ class FeedbackRetryTests(unittest.TestCase):
             seen_statuses.append(frame.status)
 
         with (
-            mock.patch.object(
-                lib, "git_changed_files", return_value=["src/example.py"]
-            ),
+            mock.patch.object(lib, "git_changed_files", return_value=["src/example.py"]),
             mock.patch.object(lib, "save_stack"),
             mock.patch(
                 "ticket_pipeline.strategies.tdd.implement", side_effect=_record_status
@@ -208,12 +202,8 @@ class FeedbackRetryTests(unittest.TestCase):
             next_step._run_feedback_retry(stack, frame, ctx)
         implement.assert_called_once()
         self.assertEqual(["test-written"], seen_statuses)
-        self.assertEqual(
-            "fix only the failing branch", implement.call_args.kwargs["feedback"]
-        )
-        self.assertEqual(
-            ["src/example.py"], implement.call_args.kwargs["previous_changed_files"]
-        )
+        self.assertEqual("fix only the failing branch", implement.call_args.kwargs["feedback"])
+        self.assertEqual(["src/example.py"], implement.call_args.kwargs["previous_changed_files"])
         impl_ctx = implement.call_args.args[1]
         self.assertFalse(impl_ctx.accept_green)
         self.assertFalse(impl_ctx.accept_manual)

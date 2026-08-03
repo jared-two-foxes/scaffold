@@ -15,7 +15,6 @@ from pathlib import Path
 
 from ..models import GateResult
 
-
 # Patterns that indicate a test has been ignored or disabled
 _IGNORE_PATTERNS = [
     re.compile(r"#\[ignore\]", re.IGNORECASE),

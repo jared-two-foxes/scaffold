@@ -6,10 +6,14 @@ import sys
 from .. import next_step
 from ..lib import (
     ai_client,
-    implement as implement_lib,
-    pipeline_lib as lib,
     render,
     verbosity,
+)
+from ..lib import (
+    implement as implement_lib,
+)
+from ..lib import (
+    pipeline_lib as lib,
 )
 
 log = verbosity.get_logger(__name__)
@@ -91,7 +95,8 @@ def do_await_green_unconfirmed(frame: "lib.CriterionFrame") -> None:
         f"than the gap genuinely having disappeared. Either:"
     )
     render.print_line(
-        "     - inspect the unconfirmed test(s) and fix them if they're not testing the right thing,"
+        "     - inspect the unconfirmed test(s) and fix them if they're not "
+        "testing the right thing,"
     )
     render.print_line(
         "       then run 'next_step' again (a now-red test resumes the normal flow), or"
@@ -181,8 +186,7 @@ def do_write_test(
             )
             sys.exit(0)
         log.info(
-            "-- Test(s) passed without implementation - this criterion's "
-            "gap didn't reproduce."
+            "-- Test(s) passed without implementation - this criterion's gap didn't reproduce."
         )
         frame.status = "done"
         frame.unconfirmed_tests = []
@@ -213,8 +217,7 @@ def _handle_no_test_written(
 ) -> None:
     if ctx.accept_no_test:
         log.info(
-            "-- --accept-no-test: accepting %s as satisfied despite the "
-            "tester writing nothing.",
+            "-- --accept-no-test: accepting %s as satisfied despite the tester writing nothing.",
             frame.criterion,
         )
         frame.status = "done"
@@ -223,8 +226,7 @@ def _handle_no_test_written(
         return
     if lib.check_test_refactor_satisfied(frame.criterion, frame.existing_test_refs):
         log.info(
-            "-- Criterion already satisfied (mechanical check) - popping "
-            "without a written test."
+            "-- Criterion already satisfied (mechanical check) - popping without a written test."
         )
         frame.status = "done"
         frame.unconfirmed_tests = []
@@ -353,8 +355,7 @@ def _parse_manual_test_refs(
         if not sep or not file_path or not test_name:
             lib.die_with_log(
                 "manual-test",
-                f"Invalid manual test reference {ref!r}. Expected "
-                "<file>::<qualified_test_name>.",
+                f"Invalid manual test reference {ref!r}. Expected <file>::<qualified_test_name>.",
                 criterion=frame.criterion,
                 ticket=frame.ticket,
             )
@@ -441,12 +442,14 @@ def skip_test_implementation(
 def implement(frame, ctx, feedback=None, previous_changed_files=None):
     if frame.status != "test-written":
         render.print_line(
-            f"-- Top frame is not awaiting implementation (status: {frame.status!r}). Run 'next_step' first."
+            "-- Top frame is not awaiting implementation (status: "
+            f"{frame.status!r}). Run 'next_step' first."
         )
         sys.exit(1)
     if not frame.test_files or not frame.test_names:
         render.print_line(
-            f"-- Top frame is not awaiting implementation (status: {frame.status!r}, no test recorded). Run 'next_step' first."
+            "-- Top frame is not awaiting implementation (status: "
+            f"{frame.status!r}, no test recorded). Run 'next_step' first."
         )
         sys.exit(1)
     if frame.verification == "test-refactor":
@@ -471,7 +474,8 @@ def implement(frame, ctx, feedback=None, previous_changed_files=None):
     still_red = [n for n, r in zip(frame.test_names, red_results) if r.returncode != 0]
     if not still_red:
         render.print_line(
-            f"-- All {len(frame.test_names)} test(s) already green. Nothing to implement. Run 'next_step' to pop this criterion."
+            f"-- All {len(frame.test_names)} test(s) already green. Nothing to "
+            "implement. Run 'next_step' to pop this criterion."
         )
         sys.exit(0)
 

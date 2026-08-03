@@ -46,7 +46,8 @@ import sys
 import time
 from pathlib import Path
 
-from ..lib import ai_client, pipeline_lib as lib
+from ..lib import ai_client
+from ..lib import pipeline_lib as lib
 
 
 def grade_sa452_no_file_split(plan_text: str) -> tuple[bool, str]:
@@ -231,7 +232,8 @@ def grade_sa502_already_implemented(plan_text: str) -> tuple[bool, str]:
     if proposes_new_work:
         return (
             False,
-            "plan proposes new validation logic/struct/file instead of recognizing existing behavior",
+            "plan proposes new validation logic/struct/file instead of "
+            "recognizing existing behavior",
         )
     if not recognizes_done:
         return (

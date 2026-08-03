@@ -1,4 +1,5 @@
 """Tests for the benchmark acceptance module."""
+
 import unittest
 
 from ticket_pipeline.benchmark.acceptance import build_acceptance_result, determine_verdict

@@ -82,11 +82,14 @@ _GROUPS: list[tuple[str, dict[str, _Command]]] = [
             ),
             "reset-criterion": _Command(
                 "reset_criterion",
-                "Roll the top criterion back: git reset --hard to its pre-WRITE_TEST commit, return the frame to pending (git_workflow only)",
+                "Roll the top criterion back: git reset --hard to its "
+                "pre-WRITE_TEST commit, return the frame to pending "
+                "(git_workflow only)",
             ),
             "reset-workflow": _Command(
                 "reset_workflow",
-                "Abandon the current ticket: revert to base branch, delete ticket/<id>, clear all pipeline state (dry-run by default)",
+                "Abandon the current ticket: revert to base branch, delete "
+                "ticket/<id>, clear all pipeline state (dry-run by default)",
             ),
         },
     ),

@@ -71,7 +71,9 @@ def main() -> None:
                 },
             )
         except urllib.error.HTTPError as e:
-            print(f"error: token request failed: HTTP {e.code}: {e.read().decode()}", file=sys.stderr)
+            print(
+                f"error: token request failed: HTTP {e.code}: {e.read().decode()}", file=sys.stderr
+            )
             sys.exit(1)
 
         error = result.get("error")

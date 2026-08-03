@@ -35,9 +35,7 @@ def load_agent_config(config_path: Path) -> dict:
     if section is None:
         return {}
     if not isinstance(section, dict):
-        raise PlanningError(
-            f"{config_path}: [planning_agent] must be a TOML table."
-        )
+        raise PlanningError(f"{config_path}: [planning_agent] must be a TOML table.")
     allowed = {"user_input", "max_turns", "max_invalid_submissions"}
     unknown = set(section) - allowed
     if unknown:

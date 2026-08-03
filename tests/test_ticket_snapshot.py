@@ -134,6 +134,7 @@ class TestResolveTicketFramesSnapshot(unittest.TestCase):
                 patch.object(lib, "walk") as mock_walk,
                 patch.object(lib, "filter_grounded_frames") as mock_filter,
             ):
+
                 def fake_walk(_blocks):
                     plan_file.write_text(
                         "## Acceptance Criteria\n\n- [ ] The thing is done\n",
@@ -144,6 +145,7 @@ class TestResolveTicketFramesSnapshot(unittest.TestCase):
 
                 def passthrough(candidate_frames):
                     return candidate_frames, [], 0
+
                 mock_filter.side_effect = passthrough
 
                 return push_ticket.resolve_ticket_frames(

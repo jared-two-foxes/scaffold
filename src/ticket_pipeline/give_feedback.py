@@ -21,7 +21,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from .lib import pipeline_lib as lib, render, verbosity
+from .lib import pipeline_lib as lib
+from .lib import render, verbosity
 
 
 def main() -> None:
@@ -46,7 +47,9 @@ def main() -> None:
         choices=list(verbosity.LEVELS),
         help="Console verbosity (default: info).",
     )
-    parser.add_argument("feedback", nargs="+", help="Feedback text to attach to the top criterion.")
+    parser.add_argument(
+        "feedback", nargs="+", help="Feedback text to attach to the top criterion."
+    )
     args = parser.parse_args()
     verbosity.setup_logging(args.log_level)
 
@@ -57,7 +60,9 @@ def main() -> None:
 
     frame = stack[0]
     if frame.status == lib.VALIDATING_STATUS:
-        lib.die("The top frame is the validation sentinel; there is no criterion to redirect.")
+        lib.die(
+            "The top frame is the validation sentinel; there is no criterion to redirect."
+        )
 
     try:
         target = lib.resolve_feedback_target(frame, args.target)
@@ -72,21 +77,29 @@ def main() -> None:
         )
     if frame.feedback_attempts >= lib.FEEDBACK_MAX_RETRIES:
         lib.die(
-            f"Feedback retry limit already reached ({lib.FEEDBACK_MAX_RETRIES}) for the top criterion."
+            "Feedback retry limit already reached "
+            f"({lib.FEEDBACK_MAX_RETRIES}) for the top criterion."
         )
-    if target == lib.FEEDBACK_TARGET_TESTER and (not git_cfg.git_workflow or frame.base_commit is None):
+    if target == lib.FEEDBACK_TARGET_TESTER and (
+        not git_cfg.git_workflow or frame.base_commit is None
+    ):
         lib.die(
             "Tester feedback requires git_workflow = true and a recorded base_commit so the "
             "previous test-writing attempt can be rolled back safely."
         )
     if target == lib.FEEDBACK_TARGET_IMPLEMENTOR:
-        if frame.verification == "refactor" and frame.status != lib.BASELINE_CONFIRMED_STATUS:
+        if (
+            frame.verification == "refactor"
+            and frame.status != lib.BASELINE_CONFIRMED_STATUS
+        ):
             lib.die(
                 "Implementor feedback for a refactor criterion requires the frame to be in the "
                 "baseline-confirmed pause state first."
             )
         if frame.verification == "test" and (
-            frame.status != "test-written" or not frame.test_files or not frame.test_names
+            frame.status != "test-written"
+            or not frame.test_files
+            or not frame.test_names
         ):
             lib.die(
                 "Implementor feedback for a test criterion requires a test-written frame with "

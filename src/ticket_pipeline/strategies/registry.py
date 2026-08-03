@@ -18,7 +18,8 @@ def resolve_strategy(frame: "lib.CriterionFrame"):
     if module_path is None:
         lib.die_with_log(
             "strategy",
-            f"Unknown strategy {frame.strategy!r}. Known strategies: {', '.join(sorted(_REGISTRY))}.",
+            "Unknown strategy "
+            f"{frame.strategy!r}. Known strategies: {', '.join(sorted(_REGISTRY))}.",
             criterion=frame.criterion,
             ticket=frame.ticket,
         )

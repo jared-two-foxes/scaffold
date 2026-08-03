@@ -15,8 +15,8 @@ stage attribution (spec §17.3)::
 
 from __future__ import annotations
 
-from ..models import AcceptanceResult, BenchmarkResult, GateResult
 from ..acceptance import build_acceptance_result
+from ..models import AcceptanceResult, GateResult
 
 
 def end_to_end_not_implemented() -> AcceptanceResult:

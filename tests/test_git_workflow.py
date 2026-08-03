@@ -11,9 +11,7 @@ from ticket_pipeline.lib import pipeline_lib as lib
 
 def init_git_repo(root: Path) -> None:
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@example.com"], cwd=root, check=True
-    )
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
     subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
 
 
@@ -124,9 +122,7 @@ class CriterionFrameRoundTripTests(unittest.TestCase):
             "existing_test_refs": [],
             "unconfirmed_tests": [],
         }
-        lib.CRITERIA_STACK_FILE.write_text(
-            json.dumps([old_entry]) + "\n", encoding="utf-8"
-        )
+        lib.CRITERIA_STACK_FILE.write_text(json.dumps([old_entry]) + "\n", encoding="utf-8")
         loaded = lib.load_stack()
         self.assertEqual(len(loaded), 1)
         self.assertIsNone(loaded[0].base_commit)
@@ -143,9 +139,7 @@ class CriterionFrameRoundTripTests(unittest.TestCase):
             "status": "pending",
             "origin": "ticket",
         }
-        Path(".criteria-stack.json").write_text(
-            json.dumps([old_entry]) + "\n", encoding="utf-8"
-        )
+        Path(".criteria-stack.json").write_text(json.dumps([old_entry]) + "\n", encoding="utf-8")
         loaded = lib.load_stack()
         self.assertEqual(len(loaded), 1)
         self.assertTrue(lib.CRITERIA_STACK_FILE.is_file())
@@ -180,9 +174,7 @@ class GitHelperTests(unittest.TestCase):
         self.assertFalse(lib.git_user_is_dirty())
         # Pipeline state files and .gitignore don't count as user work.
         lib.CRITERIA_STACK_FILE.write_text("[]\n", encoding="utf-8")
-        (self.root / ".gitignore").write_text(
-            ".criteria-stack.json\n", encoding="utf-8"
-        )
+        (self.root / ".gitignore").write_text(".criteria-stack.json\n", encoding="utf-8")
         self.assertFalse(lib.git_user_is_dirty())
         # A real user file does.
         (self.root / "src.rs").write_text("fn main(){}", encoding="utf-8")
@@ -317,9 +309,7 @@ class CommitCriterionTests(unittest.TestCase):
         # Simulate a pipeline state file present in the worktree.
         lib.CRITERIA_STACK_FILE.write_text("[]\n", encoding="utf-8")
         # Make sure it's gitignored so commit_criterion doesn't stage it.
-        (self.root / ".gitignore").write_text(
-            ".criteria-stack.json\n", encoding="utf-8"
-        )
+        (self.root / ".gitignore").write_text(".criteria-stack.json\n", encoding="utf-8")
         (self.root / "src.rs").write_text("x", encoding="utf-8")
         lib.commit_criterion(self.cfg, "SA-1", "- [ ] add src")
         r = subprocess.run(
@@ -431,6 +421,7 @@ class ResetPipelineTests(unittest.TestCase):
 
     def _run(self, argv):
         import importlib
+
         from ticket_pipeline import reset_pipeline
 
         importlib.reload(reset_pipeline)
@@ -447,12 +438,8 @@ class ResetPipelineTests(unittest.TestCase):
         lib.TICKET_FILE.write_text("ticket\n", encoding="utf-8")
         lib.PLAN_FILE.write_text("plan\n", encoding="utf-8")
         (scaffold / "ticket-review-123.md").write_text("review\n", encoding="utf-8")
-        (scaffold / "ticket-proposed-123.md").write_text(
-            "proposed\n", encoding="utf-8"
-        )
-        (self.root / ".ticket-review-123.md").write_text(
-            "root review\n", encoding="utf-8"
-        )
+        (scaffold / "ticket-proposed-123.md").write_text("proposed\n", encoding="utf-8")
+        (self.root / ".ticket-review-123.md").write_text("root review\n", encoding="utf-8")
         config = self.root / ".dev-pipeline.toml"
         config.write_text('test_cmd = "true"\n', encoding="utf-8")
 
@@ -511,6 +498,7 @@ class ResetWorkflowTests(unittest.TestCase):
 
     def _run(self, argv):
         import importlib
+
         from ticket_pipeline import reset_workflow
 
         importlib.reload(reset_workflow)
@@ -563,13 +551,14 @@ class ResetWorkflowTests(unittest.TestCase):
 
     def test_workflow_off_skips_git_and_clears_state(self):
         # Switch off git_workflow: no branch teardown, just file cleanup.
-        cfg_off = lib.GitConfig(git_workflow=False)
+        lib.GitConfig(git_workflow=False)
         # Simulate by directly calling with workflow off - reload won't
         # change the config file; instead exercise the off-path via the
         # command using a config file.
         off_cfg = Path(self.root) / "off.toml"
         off_cfg.write_text('test_cmd = "true"\n', encoding="utf-8")
         import importlib
+
         from ticket_pipeline import reset_workflow
 
         importlib.reload(reset_workflow)
@@ -618,7 +607,7 @@ class ResetWorkflowTests(unittest.TestCase):
         # SA-1 -> it WILL identify SA-1 from stack. Force the no-identify
         # path by clearing the stack too and removing the branch.
         lib.CRITERIA_STACK_FILE.unlink()
-        r = lib._git("branch", "-D", "ticket/SA-1")
+        lib._git("branch", "-D", "ticket/SA-1")
         # Now nothing identifies a ticket.
         code = self._run(["--yes", "--log-level", "warning"])
         self.assertEqual(code, 0)

@@ -1,7 +1,5 @@
 import sys
 
-import pytest
-
 
 def test_cli_dispatches_to_ticket_pipeline_subcommands(monkeypatch, capsys):
     from scaffold_cli import cli

@@ -7,9 +7,9 @@ attempt; the loop body stays unchanged.
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 from typing import Protocol, runtime_checkable
-import tomllib
 
 
 @runtime_checkable
@@ -51,7 +51,8 @@ class FixedBudgetPolicy:
         )
         lib.die_with_log(
             "implement-criterion",
-            f"{what} after {self.max_attempts} attempt(s) (exit {exit_code}). See output above. The frame is untouched.",
+            f"{what} after {self.max_attempts} attempt(s) (exit {exit_code}). "
+            "See output above. The frame is untouched.",
             criterion=frame.criterion,
         )
 

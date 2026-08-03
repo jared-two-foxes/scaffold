@@ -14,8 +14,8 @@ These must not be collapsed into a single unexplained result.
 
 from __future__ import annotations
 
-from ..models import AcceptanceResult, GateResult
 from ..acceptance import build_acceptance_result
+from ..models import AcceptanceResult, GateResult
 
 
 def grade_downstream_not_implemented() -> AcceptanceResult:

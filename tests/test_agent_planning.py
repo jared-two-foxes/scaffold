@@ -20,15 +20,30 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import patch
 
 from ticket_pipeline.planning.agent_models import (
+    VALID_DISPOSITIONS,
     AgentAssumption,
     AgentCriterionAssessment,
     AgentEvidence,
     AgentPlanSubmission,
     PlannedChange,
-    VALID_DISPOSITIONS,
+)
+from ticket_pipeline.planning.agent_prompt import (
+    assign_criterion_ids,
+    extract_acceptance_criteria,
+)
+from ticket_pipeline.planning.agent_rendering import (
+    build_agent_diagnostics,
+    render_agent_full_plan,
+    render_agent_gap_plan,
+    render_plan_context,
+)
+from ticket_pipeline.planning.agent_runner import (
+    PlanningInputRequired,
+    make_read_only_executor,
+    run_agent_until_terminal,
 )
 from ticket_pipeline.planning.agent_tools import (
     AGENT_PLANNING_TOOLS,
@@ -38,35 +53,17 @@ from ticket_pipeline.planning.agent_tools import (
     TERMINAL_TOOL_NAMES,
     summarize_agent_tool_call,
 )
-from ticket_pipeline.planning.agent_runner import (
-    PlanningInputRequired,
-    TerminalToolResult,
-    make_read_only_executor,
-    run_agent_until_terminal,
-)
 from ticket_pipeline.planning.agent_validation import validate_submission
-from ticket_pipeline.planning.agent_rendering import (
-    build_agent_diagnostics,
-    render_agent_full_plan,
-    render_agent_gap_plan,
-    render_plan_context,
-)
-from ticket_pipeline.planning.agent_prompt import (
-    assign_criterion_ids,
-    extract_acceptance_criteria,
-)
 from ticket_pipeline.planning.factory import (
     create_planning_strategy,
     load_agent_config,
 )
-from ticket_pipeline.planning.strategy import PlanningError
 from ticket_pipeline.planning.models import (
-    VALID_IMPLEMENTATION_STRATEGIES,
-    VALID_VERIFICATION_MODES,
     PlanningRequest,
     PlanningResult,
 )
 from ticket_pipeline.planning.strategies.agent import AgentPlanningStrategy
+from ticket_pipeline.planning.strategy import PlanningError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -413,7 +410,8 @@ class AgentRunnerTests(unittest.TestCase):
             self._run(responses, max_turns=3)
 
     def test_terminal_call_stops_before_processing_later_calls(self):
-        """If submit_plan and another tool appear in the same batch, only submit_plan is processed."""
+        """If submit_plan and another tool appear in the same batch,
+        only submit_plan is processed."""
         submit_args = _minimal_submit_args()
         responses = [
             [
@@ -905,7 +903,7 @@ class CriterionExtractionTests(unittest.TestCase):
         self.assertIn("Second criterion", criteria[1])
 
     def test_case_insensitive_section_match(self):
-        ticket = "# Ticket\n\n" "## acceptance criteria\n\n" "- [ ] Thing\n"
+        ticket = "# Ticket\n\n## acceptance criteria\n\n- [ ] Thing\n"
         criteria = extract_acceptance_criteria(ticket)
         self.assertEqual(1, len(criteria))
 
@@ -945,12 +943,7 @@ class FakeTranscriptIntegrationTests(unittest.TestCase):
         from ticket_pipeline.lib import pipeline_lib as lib
         from ticket_pipeline.planning import build_ticket_frames
 
-        ticket_content = (
-            "# Test Ticket\n\n"
-            "Description.\n\n"
-            "## Acceptance Criteria\n\n"
-            "- [ ] Add foo support\n"
-        )
+        ticket_content = "# Test Ticket\n\nDescription.\n\n## Acceptance Criteria\n\n- [ ] Add foo support\n"
 
         submit_args = {
             "ticket_summary": "Add foo support",
@@ -1246,9 +1239,6 @@ class FakeTranscriptIntegrationTests(unittest.TestCase):
 
 class CLIExploreIncompatibilityTests(unittest.TestCase):
     def test_explore_with_agent_strategy_exits(self):
-        import sys
-        from unittest.mock import patch
-
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             # Create a config with agent strategy

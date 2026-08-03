@@ -52,11 +52,18 @@ SCOPED_GAP_PLAN = """\
 SA-528
 
 ## Acceptance Criteria
-- [ ] `xero_reconcile_observability.rs` and `xero_webhook.rs` use the shared helper(s) from `virtual_assistant::test_support` instead of local copies. <!-- why: original criterion covers 11 files; 9 already migrated; these 2 still define local EnvVarGuard/lock helpers; verify: test-refactor; existing_test: tests/xero_reconcile_observability.rs::reconcile_observability; existing_test: tests/xero_webhook.rs::webhook_handler -->
+- [ ] `xero_reconcile_observability.rs` and `xero_webhook.rs` use the shared
+  helper(s) from `virtual_assistant::test_support` instead of local copies.
+  <!-- why: original criterion covers 11 files; 9 already migrated; these 2
+  still define local EnvVarGuard/lock helpers; verify: test-refactor;
+  existing_test: tests/xero_reconcile_observability.rs::reconcile_observability;
+  existing_test: tests/xero_webhook.rs::webhook_handler -->
 
 ## Implementation Plan
-- `tests/xero_reconcile_observability.rs`: replace local EnvVarGuard with `virtual_assistant::test_support::EnvVarGuard`
-- `tests/xero_webhook.rs`: replace local lock helper with `virtual_assistant::test_support::lock`
+- `tests/xero_reconcile_observability.rs`: replace local EnvVarGuard with
+  `virtual_assistant::test_support::EnvVarGuard`
+- `tests/xero_webhook.rs`: replace local lock helper with
+  `virtual_assistant::test_support::lock`
 """
 
 CROSS_CONTAMINATED_GAP_PLAN = """\
@@ -156,7 +163,10 @@ class ExtractExistingTestRefsScopedTests(unittest.TestCase):
         )
 
     def test_no_existing_test_tag_returns_empty(self):
-        scoped = "- [ ] `foo.rs` uses `Bar`. <!-- why: original covers 3 files; 2 done; verify: manual -->"
+        scoped = (
+            "- [ ] `foo.rs` uses `Bar`. <!-- why: original covers 3 files; "
+            "2 done; verify: manual -->"
+        )
         self.assertEqual([], lib.extract_existing_test_refs(scoped))
 
 
@@ -173,8 +183,8 @@ class ExtractPlanContextForCriterionScopedTests(unittest.TestCase):
         self.assertEqual(2, len(lines))
         self.assertTrue(
             all(
-                "xero_reconcile_observability" in l or "xero_webhook" in l
-                for l in lines
+                "xero_reconcile_observability" in line or "xero_webhook" in line
+                for line in lines
             )
         )
         self.assertNotIn("foo.rs", context)
@@ -218,7 +228,8 @@ class ExtractPlanContextForCriterionScopedTests(unittest.TestCase):
 
         self.assertEqual(
             [
-                "- `src/ticket_pipeline/lib/pipeline_lib.py`: redefine `TICKET_FILE` handling for plan scoping"
+                "- `src/ticket_pipeline/lib/pipeline_lib.py`: redefine "
+                "`TICKET_FILE` handling for plan scoping"
             ],
             context.splitlines(),
         )

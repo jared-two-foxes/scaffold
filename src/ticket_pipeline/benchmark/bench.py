@@ -24,8 +24,10 @@ bad one.
 
 Usage (not a console-script command - deliberately excluded from the
 standard install as situational; run via `python -m`):
-    python -m ticket_pipeline.benchmark.bench --block plan --models deepseek-v4-pro,glm-5 --trials 3
-    python -m ticket_pipeline.benchmark.bench --block narrow --models glm-5,gpt-5.1 --trials 3 --plan-fixture both
+    python -m ticket_pipeline.benchmark.bench --block plan \
+        --models deepseek-v4-pro,glm-5 --trials 3
+    python -m ticket_pipeline.benchmark.bench --block narrow \
+        --models glm-5,gpt-5.1 --trials 3 --plan-fixture both
 
 Each trial calls bench_block.py as a subprocess with cwd set to its
 worktree - see that file for the actual block invocation + grading.
@@ -43,7 +45,7 @@ import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 # `git worktree add`/`remove` race against each other when run
@@ -64,6 +66,7 @@ SCAFFOLD_TEMP_DIR = Path.cwd() / ".scaffold"
 def _scaffold_temp_path(*parts: str) -> Path:
     SCAFFOLD_TEMP_DIR.mkdir(parents=True, exist_ok=True)
     return SCAFFOLD_TEMP_DIR.joinpath(*parts)
+
 
 # test-criterion trials actually invoke cargo (compile + scoped run) -
 # each worktree is a fresh checkout with no target/ directory, so a
@@ -117,7 +120,10 @@ TRIAL_TIMEOUT_S = {
 # axis, just one fixed gap plan plus the one criterion under test.
 DEFAULT_CRITERIA = {
     "sa452": "- [ ] `Debug` output redacts the secret values",
-    "sa500": "- [ ] `WEBHOOK_RETRY_RATE_LIMIT` env var parsed into `RateLimitConfig.webhook_retry_rate_limit`",
+    "sa500": (
+        "- [ ] `WEBHOOK_RETRY_RATE_LIMIT` env var parsed into "
+        "`RateLimitConfig.webhook_retry_rate_limit`"
+    ),
 }
 
 
@@ -400,7 +406,10 @@ def print_summary(results: list[TrialResult]) -> None:
         key = (r.job.model, r.job.plan_fixture)
         groups.setdefault(key, []).append(r)
 
-    header = f"{'model':<20} {'fixture':<8} {'trials':<7} {'pass':<6} {'avg_s':<8} {'avg_$':<8} {'total_$':<8}"
+    header = (
+        f"{'model':<20} {'fixture':<8} {'trials':<7} {'pass':<6} "
+        f"{'avg_s':<8} {'avg_$':<8} {'total_$':<8}"
+    )
     print(header)
     print("-" * len(header))
     for (model, fixture), group in sorted(groups.items()):
@@ -509,9 +518,10 @@ def main() -> None:
     )
 
     results: list[TrialResult] = []
-    with ThreadPoolExecutor(max_workers=args.concurrency) as pool, out_path.open(
-        "w", encoding="utf-8"
-    ) as out_f:
+    with (
+        ThreadPoolExecutor(max_workers=args.concurrency) as pool,
+        out_path.open("w", encoding="utf-8") as out_f,
+    ):
         futures = {
             pool.submit(run_trial, job, args.repo, args.base_ref): job for job in jobs
         }

@@ -12,14 +12,11 @@ always presented first, with efficiency metrics as secondary context.
 
 from __future__ import annotations
 
-import json
 import math
-import statistics
 from pathlib import Path
 from typing import IO
 
-from .models import BenchmarkResult, Verdict
-
+from .models import BenchmarkResult
 
 # ---------------------------------------------------------------------------
 # JSONL I/O
@@ -79,9 +76,7 @@ def print_summary(results: list[BenchmarkResult], title: str = "Benchmark summar
         indet = [r for r in group if r.acceptance.verdict == "indeterminate"]
         n = len(group)
 
-        cost_per_acc = (
-            sum(r.cost_usd for r in group) / len(accepted) if accepted else float("inf")
-        )
+        cost_per_acc = sum(r.cost_usd for r in group) / len(accepted) if accepted else float("inf")
         time_per_acc = (
             sum(r.duration_s for r in group) / len(accepted) if accepted else float("inf")
         )
@@ -122,8 +117,7 @@ def print_planning_detail(results: list[BenchmarkResult]) -> None:
     for r in planning:
         verdict = r.acceptance.verdict.upper()
         print(
-            f"  [{verdict}] case={r.case} strategy={r.strategy} "
-            f"model={r.model} rep={r.repetition}"
+            f"  [{verdict}] case={r.case} strategy={r.strategy} model={r.model} rep={r.repetition}"
         )
         for gate in r.acceptance.gates:
             status = "PASS" if gate.passed is True else ("SKIP" if gate.passed is None else "FAIL")

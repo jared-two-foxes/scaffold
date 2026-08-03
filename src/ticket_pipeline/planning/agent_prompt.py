@@ -9,9 +9,7 @@ user message for the planning agent.
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
-from ..lib import repo_context
 from ..lib.pipeline_lib import PROMPTS_DIR
 from ..lib.repo_context import gather_repo_context, render_repo_context_block
 from .models import PlanningRequest

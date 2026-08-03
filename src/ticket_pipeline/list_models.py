@@ -34,7 +34,9 @@ def fetch_models(provider: ai_client.Provider) -> list[dict]:
             data = json.loads(resp.read())
     except urllib.error.HTTPError as e:
         raise ai_client.AIError(
-            f"GET {provider.base_url}/models failed: HTTP {e.code}: {e.read().decode(errors='replace')}"
+            "GET "
+            f"{provider.base_url}/models failed: HTTP {e.code}: "
+            f"{e.read().decode(errors='replace')}"
         ) from e
     except urllib.error.URLError as e:
         raise ai_client.AIError(
@@ -46,7 +48,9 @@ def fetch_models(provider: ai_client.Provider) -> list[dict]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument(
         "--provider",
         default="opencode",
@@ -57,7 +61,7 @@ def main() -> None:
         "--raw",
         action="store_true",
         help="Print the full JSON for each model instead of just its id "
-             "(and vendor/owned_by, if present).",
+        "(and vendor/owned_by, if present).",
     )
     args = parser.parse_args()
 
@@ -68,7 +72,9 @@ def main() -> None:
         render.print_line(f"error: {e}")
         sys.exit(1)
 
-    render.print_line(f"-- {len(models)} model(s) available from '{args.provider}' ({provider.base_url}):")
+    render.print_line(
+        f"-- {len(models)} model(s) available from '{args.provider}' ({provider.base_url}):"
+    )
     render.print_line()
     if args.raw:
         render.print_line(json.dumps(models, indent=2))

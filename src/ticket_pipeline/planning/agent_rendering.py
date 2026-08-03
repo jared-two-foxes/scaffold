@@ -31,8 +31,7 @@ def render_plan_context(assessment: AgentCriterionAssessment) -> str:
 
     if assessment.planned_changes:
         changes = "\n".join(
-            f"- {c.path}: {c.description}"
-            + (f" [{', '.join(c.symbols)}]" if c.symbols else "")
+            f"- {c.path}: {c.description}" + (f" [{', '.join(c.symbols)}]" if c.symbols else "")
             for c in assessment.planned_changes
         )
         parts.append(f"Planned changes:\n{changes}")
@@ -61,8 +60,7 @@ def _render_evidence_block(evidence: tuple) -> str:
     if not evidence:
         return "_None recorded._"
     return "\n".join(
-        f"- {('`' + e.path + '`') if e.path else '(no path)'}: {e.observation}"
-        for e in evidence
+        f"- {('`' + e.path + '`') if e.path else '(no path)'}: {e.observation}" for e in evidence
     )
 
 
@@ -231,9 +229,7 @@ def render_agent_gap_plan(submission: AgentPlanSubmission) -> str:
         impl = assessment.implementation_strategy or "tdd"
         refs_part = ""
         if assessment.existing_test_refs:
-            refs_part = "; ".join(
-                f"existing_test: {r}" for r in assessment.existing_test_refs
-            )
+            refs_part = "; ".join(f"existing_test: {r}" for r in assessment.existing_test_refs)
             refs_part = f"; {refs_part}"
 
         lines.append(
@@ -265,8 +261,7 @@ def build_agent_diagnostics(
         )
 
     for assessment in submission.criteria:
-        if assessment.disposition == "remaining" and not (
-            assessment.plan_context or "").strip():
+        if assessment.disposition == "remaining" and not (assessment.plan_context or "").strip():
             diagnostics.append(
                 PlanningDiagnostic(
                     level="warning",

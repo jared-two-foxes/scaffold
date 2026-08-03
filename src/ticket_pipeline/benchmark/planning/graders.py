@@ -20,14 +20,13 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from ..models import GateResult
-from ..fixtures import PlanningFixture
 from ...planning.models import (
     VALID_IMPLEMENTATION_STRATEGIES,
     VALID_VERIFICATION_MODES,
     PlanningResult,
 )
-
+from ..fixtures import PlanningFixture
+from ..models import GateResult
 
 # ---------------------------------------------------------------------------
 # Schema / structural gates
@@ -52,13 +51,9 @@ def grade_schema_valid(result: PlanningResult) -> GateResult:
         if not c.criterion.strip():
             errors.append(f"criterion[{i}] has empty text")
         if c.verification not in VALID_VERIFICATION_MODES:
-            errors.append(
-                f"criterion[{i}] unsupported verification {c.verification!r}"
-            )
+            errors.append(f"criterion[{i}] unsupported verification {c.verification!r}")
         if c.implementation_strategy not in VALID_IMPLEMENTATION_STRATEGIES:
-            errors.append(
-                f"criterion[{i}] unsupported strategy {c.implementation_strategy!r}"
-            )
+            errors.append(f"criterion[{i}] unsupported strategy {c.implementation_strategy!r}")
 
     if errors:
         return GateResult(
@@ -175,8 +170,22 @@ def _outcome_covered(description: str, plan_text_lower: str) -> bool:
     """
     _STOP = frozenset(
         {
-            "the", "and", "that", "this", "with", "from", "into", "have",
-            "will", "should", "must", "does", "been", "when", "where", "which",
+            "the",
+            "and",
+            "that",
+            "this",
+            "with",
+            "from",
+            "into",
+            "have",
+            "will",
+            "should",
+            "must",
+            "does",
+            "been",
+            "when",
+            "where",
+            "which",
         }
     )
     words = [w for w in re.findall(r"[a-z]{4,}", description.lower()) if w not in _STOP]
@@ -341,7 +350,7 @@ def grade_strategy_classification(
         return []
 
     gates: list[GateResult] = []
-    combined_text = _plan_text_for_matching(result)
+    _plan_text_for_matching(result)
 
     for outcome_id, expected_strategy in fixture.expected_strategy_by_outcome.items():
         # Find the criteria most relevant to this outcome
@@ -363,8 +372,7 @@ def grade_strategy_classification(
                     passed=True,
                     critical=False,
                     reason=(
-                        f"Outcome {outcome_id!r}: expected strategy "
-                        f"{expected_strategy!r} found."
+                        f"Outcome {outcome_id!r}: expected strategy {expected_strategy!r} found."
                     ),
                 )
             )

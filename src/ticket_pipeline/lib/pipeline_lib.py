@@ -42,21 +42,38 @@ import sys
 import time
 import tomllib
 import urllib.error
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Callable
+from datetime import UTC, datetime
 from importlib.resources import files
+from pathlib import Path
 
-from . import ai_client
-from .ai_client import AIError, run_with_tools
+from . import ai_client, render, repo_context, toolchains, tools, verbosity
+
+
+class ScaffoldPath(type(Path())):
+    """Path subclass that ensures its parent directory exists on write/open."""
+
+    def write_text(self, data, encoding=None, errors=None, newline=None):
+        self.parent.mkdir(parents=True, exist_ok=True)
+        return super().write_text(
+            data, encoding=encoding, errors=errors, newline=newline
+        )
+
+    def open(self, mode="r", buffering=-1, encoding=None, errors=None, newline=None):
+        self.parent.mkdir(parents=True, exist_ok=True)
+        return super().open(
+            mode=mode,
+            buffering=buffering,
+            encoding=encoding,
+            errors=errors,
+            newline=newline,
+        )
+
+
 from . import fetch_ticket as ticket_source
-from . import render
+from .ai_client import AIError, run_with_tools
 from .render import render_markdown
-from . import repo_context
-from . import tools
-from . import toolchains
-from . import verbosity
 from .retry import RetryPolicy
 
 log = verbosity.get_logger(__name__)
@@ -68,14 +85,15 @@ SUPPORTED_PLANNING_STRATEGIES = ("mechanical", "agent")
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROMPTS_DIR = files("ticket_pipeline") / "prompts"
-SCAFFOLD_TEMP_DIR = Path(".scaffold")
+SCAFFOLD_TEMP_DIR = ScaffoldPath(".scaffold")
+SCAFFOLD_TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
-TICKET_FILE = SCAFFOLD_TEMP_DIR / ".ticket.md"
-PLAN_FILE = SCAFFOLD_TEMP_DIR / ".implementation-plan.md"
+TICKET_FILE = ScaffoldPath(SCAFFOLD_TEMP_DIR, ".ticket.md")
+PLAN_FILE = ScaffoldPath(SCAFFOLD_TEMP_DIR, ".implementation-plan.md")
 LEGACY_PLAN_FILE = Path(
     ".tdd-plan.md"
 )  # deprecated name; read as fallback during migration
-UPDATED_PLAN_FILE = SCAFFOLD_TEMP_DIR / ".updated-plan.md"
+UPDATED_PLAN_FILE = ScaffoldPath(SCAFFOLD_TEMP_DIR, ".updated-plan.md")
 PIPELINE_CONFIG_FILE = Path(".dev-pipeline.toml")
 
 # Transient scratch artifacts, not cross-invocation state: push_ticket
@@ -89,19 +107,19 @@ PIPELINE_CONFIG_FILE = Path(".dev-pipeline.toml")
 # serving callers with different lifecycles is exactly what caused a
 # real ordering bug in an earlier draft of this pipeline (a cleanup step
 # deleting the stack file before a re-entrancy guard could check it).
-GAP_PLAN_FILE = SCAFFOLD_TEMP_DIR / ".gap-plan.md"
-PIPELINE_LOG_FILE = SCAFFOLD_TEMP_DIR / ".pipeline-log.jsonl"
+GAP_PLAN_FILE = ScaffoldPath(SCAFFOLD_TEMP_DIR, ".gap-plan.md")
+PIPELINE_LOG_FILE = ScaffoldPath(SCAFFOLD_TEMP_DIR, ".pipeline-log.jsonl")
 
 # The pipeline's canonical work-queue and sole cross-invocation source
 # of truth - see CriterionFrame/load_stack/save_stack below.
-CRITERIA_STACK_FILE = SCAFFOLD_TEMP_DIR / ".criteria-stack.json"
+CRITERIA_STACK_FILE = ScaffoldPath(SCAFFOLD_TEMP_DIR, ".criteria-stack.json")
 
 # Ledger of criteria a mechanical grounding check rejected before they
 # ever became a stack frame - see verify_criterion_grounding/
 # filter_grounded_frames. Append-only, never read back into the stack
 # itself; its existence is what makes a decline sticky across repeated
 # next_step/push_ticket calls (see DeclinedCriterion/is_declined).
-DECLINED_CRITERIA_FILE = SCAFFOLD_TEMP_DIR / ".declined-criteria.json"
+DECLINED_CRITERIA_FILE = ScaffoldPath(SCAFFOLD_TEMP_DIR, ".declined-criteria.json")
 
 # Per-ticket git-workflow state (base_branch recorded at push-ticket time,
 # read at TICKET_VALIDATE merge/PR time). A sidecar rather than a frame
@@ -109,7 +127,7 @@ DECLINED_CRITERIA_FILE = SCAFFOLD_TEMP_DIR / ".declined-criteria.json"
 # sentinel frame that would carry it is popped *before* the merge runs.
 # Gitignored like every other pipeline state file (see
 # ensure_gitignore_entries) so `git reset --hard` never touches it.
-GIT_STATE_FILE = SCAFFOLD_TEMP_DIR / ".pipeline-git-state.json"
+GIT_STATE_FILE = ScaffoldPath(SCAFFOLD_TEMP_DIR, ".pipeline-git-state.json")
 
 
 PLAN_PROMPT_FILE = PROMPTS_DIR / "plan.prompt.md"
@@ -144,7 +162,9 @@ def _resolve_plan_file() -> Path | None:
     return None
 
 
-def _load_state_file_with_legacy_fallback(current_file: Path) -> tuple[Path | None, str | None]:
+def _load_state_file_with_legacy_fallback(
+    current_file: Path,
+) -> tuple[Path | None, str | None]:
     """Read a scaffold state file, falling back to its root legacy name."""
     legacy_file = Path(current_file.name)
     if current_file.is_file():
@@ -400,7 +420,7 @@ def log_event(
         "block": block,
         "ticket": ticket,
         "criterion": criterion,
-        "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "ts": datetime.now(UTC).isoformat(timespec="seconds"),
         "status": status,
         "error": error,
         "tokens_prompt": tokens_prompt,
@@ -874,11 +894,13 @@ def _resolve_bare_filename(name: str) -> str | None:
     worse than not prefetching at all).
     """
     matches = []
-    for root, dirs, files in os.walk("."):
-        dirs[:] = [
-            d for d in dirs if d not in _PREFETCH_SEARCH_PRUNE and not d.startswith(".")
+    for root, dir_names, file_names in os.walk("."):
+        dir_names[:] = [
+            d
+            for d in dir_names
+            if d not in _PREFETCH_SEARCH_PRUNE and not d.startswith(".")
         ]
-        if name in files:
+        if name in file_names:
             matches.append(str(Path(root, name)).removeprefix(".\\").removeprefix("./"))
             if len(matches) > 1:
                 return None
@@ -1322,11 +1344,22 @@ def extract_acceptance_criteria(plan_content: str) -> list[str]:
     )
     if not match:
         return []
-    return [
-        line.strip()
-        for line in match.group(1).splitlines()
-        if LIST_MARKER_RE.match(line.strip())
-    ]
+
+    entries: list[str] = []
+    current: str | None = None
+    for raw_line in match.group(1).splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if LIST_MARKER_RE.match(line):
+            if current is not None:
+                entries.append(current.strip())
+            current = line
+        elif current is not None:
+            current = f"{current} {line}"
+    if current is not None:
+        entries.append(current.strip())
+    return entries
 
 
 VERIFICATION_TAG_RE = re.compile(
@@ -1837,7 +1870,7 @@ def record_declined(
             criterion=criterion,
             origin=origin,
             reasons=reasons,
-            ts=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            ts=datetime.now(UTC).isoformat(timespec="seconds"),
         )
     )
     SCAFFOLD_TEMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -2084,12 +2117,27 @@ def extract_plan_context_for_criterion(criterion: str, gap_plan_text: str) -> st
     if not impl_section:
         return gap_plan_text
 
+    impl_lines = []
+    current: str | None = None
+    for raw_line in impl_section.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if LIST_MARKER_RE.match(line):
+            if current is not None:
+                impl_lines.append(current.strip())
+            current = line
+        elif current is not None:
+            current = f"{current} {line}"
+    if current is not None:
+        impl_lines.append(current.strip())
+
     referenced_paths = {
         Path(path).as_posix() for path in extract_referenced_paths(criterion)
     }
     if referenced_paths:
         matching_lines = []
-        for line in impl_section.splitlines():
+        for line in impl_lines:
             backtick_match = BACKTICK_TOKEN_RE.search(line)
             if not backtick_match:
                 continue
@@ -2101,14 +2149,12 @@ def extract_plan_context_for_criterion(criterion: str, gap_plan_text: str) -> st
 
     nouns = {tok.strip() for tok in BACKTICK_TOKEN_RE.findall(criterion) if tok.strip()}
     if not nouns:
-        return impl_section
+        return "\n".join(impl_lines) if impl_lines else impl_section
 
     matching_lines = [
-        line
-        for line in impl_section.splitlines()
-        if any(noun in line for noun in nouns)
+        line for line in impl_lines if any(noun in line for noun in nouns)
     ]
-    return "\n".join(matching_lines) if matching_lines else impl_section
+    return "\n".join(matching_lines) if matching_lines else "\n".join(impl_lines)
 
 
 # ---------------------------------------------------------------------------
@@ -2940,6 +2986,8 @@ def post_validate_git(
 
 _GITIGNORE_ENTRIES = (
     ".scaffold/",
+    ".criteria-stack.json",
+    ".pipeline-git-state.json",
 )
 
 
@@ -3160,8 +3208,8 @@ def run_explore_for_criterion(criterion: str, plan_context: str, model: str) -> 
     )
     if EXPLORE_CONTEXT_HEADING not in result.text:
         render.print_line(
-            f"-- explore-criterion: response had no context heading - "
-            f"skipping criterion (raw output above)."
+            "-- explore-criterion: response had no context heading - "
+            "skipping criterion (raw output above)."
         )
         render_step_output(result.text, level=1)
         return ""
@@ -3280,16 +3328,14 @@ def build_test_criterion_prompt(
     else:
         existing_test_section = (
             f"\n\nThis criterion is about changing behavior existing test(s) "
-            f"already cover, not adding new coverage - modify {'that test' if len(existing_test_refs) == 1 else 'those tests'} "
+            f"already cover, not adding new coverage - modify "
+            f"{'that test' if len(existing_test_refs) == 1 else 'those tests'} "
             f"instead of writing a new one (see this prompt's own instructions "
             f"for exactly how). The test(s) to change: {', '.join(existing_test_refs)}."
             if existing_test_refs
             else ""
         )
-        write_instruction = (
-            "Write a failing test for exactly this one acceptance "
-            "criterion, and only this one:"
-        )
+        write_instruction = "Write a failing test for exactly this one acceptance criterion, and only this one:"
     return (
         f"{instructions}\n\n---\n\n"
         f"Here is the relevant Implementation Plan context for this "
@@ -3496,7 +3542,8 @@ def run_test_for_criterion_with_compile_retry(
             )
         else:
             log.warning(
-                "-- Compile failed (attempt %d/%d). Feeding the compile error back to Tester to fix.",
+                "-- Compile failed (attempt %d/%d). Feeding the compile error "
+                "back to Tester to fix.",
                 attempt - 1,
                 max_attempts,
             )
@@ -3758,7 +3805,8 @@ def run_test_for_criterion_with_full_retry(
                 )
         elif failure_kind == "compile":
             log.warning(
-                "-- Compile failed (attempt %d, %s). Feeding the compile error back to Tester to fix.",
+                "-- Compile failed (attempt %d, %s). Feeding the compile error "
+                "back to Tester to fix.",
                 attempt - 1,
                 limit_desc,
             )
@@ -3767,7 +3815,8 @@ def run_test_for_criterion_with_full_retry(
             )
         elif failure_kind in ("quality-red", "quality-green"):
             log.warning(
-                "-- Test-quality review flagged (attempt %d, %s). Feeding the concern back to Tester.",
+                "-- Test-quality review flagged (attempt %d, %s). Feeding the "
+                "concern back to Tester.",
                 attempt - 1,
                 limit_desc,
             )

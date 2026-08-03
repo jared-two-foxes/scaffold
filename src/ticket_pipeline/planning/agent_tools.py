@@ -13,9 +13,6 @@ These are intentionally separate from the read-only repository tools.
 
 from __future__ import annotations
 
-import json
-from typing import Callable
-
 from ..lib.tools import (
     LIST_DIR_SCHEMA,
     READ_FILE_SCHEMA,
@@ -91,7 +88,9 @@ SUBMIT_PLAN_SCHEMA = {
                         "properties": {
                             "criterion_id": {
                                 "type": "string",
-                                "description": "The criterion ID assigned in the prompt (e.g. AC-1).",
+                                "description": (
+                                    "The criterion ID assigned in the prompt (e.g. AC-1)."
+                                ),
                             },
                             "source_criterion": {
                                 "type": "string",
@@ -147,7 +146,9 @@ SUBMIT_PLAN_SCHEMA = {
                             "existing_test_refs": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "Each entry must be in 'file::qualified_test_name' shape.",
+                                "description": (
+                                    "Each entry must be in 'file::qualified_test_name' shape."
+                                ),
                             },
                             "plan_context": {
                                 "type": "string",

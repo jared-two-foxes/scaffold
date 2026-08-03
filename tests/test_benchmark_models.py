@@ -1,4 +1,5 @@
 """Tests for the benchmark models module."""
+
 import json
 import unittest
 

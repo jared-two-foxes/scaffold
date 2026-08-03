@@ -43,7 +43,7 @@ class GateResult:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "GateResult":
+    def from_dict(cls, d: dict) -> GateResult:
         return cls(
             gate=d["gate"],
             passed=d["passed"],
@@ -80,7 +80,7 @@ class AcceptanceResult:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "AcceptanceResult":
+    def from_dict(cls, d: dict) -> AcceptanceResult:
         return cls(
             verdict=d["verdict"],
             gates=[GateResult.from_dict(g) for g in d.get("gates", [])],
@@ -168,7 +168,7 @@ class BenchmarkResult:
         return json.dumps(self.to_dict())
 
     @classmethod
-    def from_dict(cls, d: dict) -> "BenchmarkResult":
+    def from_dict(cls, d: dict) -> BenchmarkResult:
         return cls(
             run_id=d["run_id"],
             category=d["category"],
@@ -196,5 +196,5 @@ class BenchmarkResult:
         )
 
     @classmethod
-    def from_jsonl(cls, line: str) -> "BenchmarkResult":
+    def from_jsonl(cls, line: str) -> BenchmarkResult:
         return cls.from_dict(json.loads(line))

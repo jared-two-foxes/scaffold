@@ -10,8 +10,8 @@ shape produced by make_executor() below.
 
 import os
 import re
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from . import verbosity
 
@@ -335,11 +335,17 @@ READ_FILE_SCHEMA = {
                 "path": {"type": "string"},
                 "start_line": {
                     "type": "integer",
-                    "description": "First line to read, 1-indexed, inclusive. Omit to start from the beginning. Negative means 'N lines from the end' (tail-style); end_line is ignored in that case.",
+                    "description": (
+                        "First line to read, 1-indexed, inclusive. Omit to start "
+                        "from the beginning. Negative means 'N lines from the end' "
+                        "(tail-style); end_line is ignored in that case."
+                    ),
                 },
                 "end_line": {
                     "type": "integer",
-                    "description": "Last line to read, 1-indexed, inclusive. Omit to read to the end.",
+                    "description": (
+                        "Last line to read, 1-indexed, inclusive. Omit to read to the end."
+                    ),
                 },
             },
             "required": ["path"],
@@ -386,11 +392,17 @@ SEARCH_FILES_SCHEMA = {
                 "pattern": {"type": "string"},
                 "path": {
                     "type": "string",
-                    "description": "Directory to search under, relative to the project root. Defaults to the project root.",
+                    "description": (
+                        "Directory to search under, relative to the project root. "
+                        "Defaults to the project root."
+                    ),
                 },
                 "regex": {
                     "type": "boolean",
-                    "description": "Treat pattern as a regular expression instead of a plain substring. Defaults to false.",
+                    "description": (
+                        "Treat pattern as a regular expression instead of a plain "
+                        "substring. Defaults to false."
+                    ),
                 },
                 "max_results": {
                     "type": "integer",
@@ -548,7 +560,12 @@ COMPILE_SCHEMA = {
     "function": {
         "name": COMPILE_TOOL_NAME,
         "description": (
-            "Compile the project using the configured build command. Returns the compile output (truncated to the last few thousand characters). Use this to self-check that your code compiles before finishing your turn - catching syntax errors, missing imports, and type mismatches here avoids wasting a retry attempt on a trivial fix. The command run is the project's configured build_cmd, not a command you choose."
+            "Compile the project using the configured build command. Returns the "
+            "compile output (truncated to the last few thousand characters). "
+            "Use this to self-check that your code compiles before finishing your "
+            "turn - catching syntax errors, missing imports, and type mismatches "
+            "here avoids wasting a retry attempt on a trivial fix. The command run "
+            "is the project's configured build_cmd, not a command you choose."
         ),
         "parameters": {
             "type": "object",
@@ -707,9 +724,16 @@ def make_executor(
             )
         if name == COMPILE_TOOL_NAME:
             if not allow_compile or not compile_cmd:
-                return "ERROR: compile tool is not enabled. Finish your turn and the pipeline will check compilation."
+                return (
+                    "ERROR: compile tool is not enabled. Finish your turn and "
+                    "the pipeline will check compilation."
+                )
             if compile_calls >= max_compiles_per_turn:
-                return f"ERROR: compile call limit reached ({max_compiles_per_turn} per turn). Finish your turn - the pipeline will run the build gate."
+                return (
+                    f"ERROR: compile call limit reached ({max_compiles_per_turn} "
+                    "per turn). Finish your turn - the pipeline will run the "
+                    "build gate."
+                )
             compile_calls += 1
             from . import pipeline_lib as lib
 

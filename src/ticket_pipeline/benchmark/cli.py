@@ -19,10 +19,8 @@ Commands::
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
 import sys
-import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -240,9 +238,7 @@ def _build_parser() -> argparse.ArgumentParser:
     def _add_common(p: argparse.ArgumentParser) -> None:
         p.add_argument("--models", required=True, help="Comma-separated model IDs")
         p.add_argument("--trials", type=int, default=3)
-        p.add_argument(
-            "--max-concurrency", type=int, default=4, metavar="N"
-        )
+        p.add_argument("--max-concurrency", type=int, default=4, metavar="N")
         p.add_argument(
             "--repo",
             default=str(_DEFAULT_REPO),
@@ -300,7 +296,9 @@ def _build_parser() -> argparse.ArgumentParser:
     impl_p.set_defaults(func=_run_implementation)
 
     # end-to-end
-    e2e_p = sub.add_parser("end-to-end", help="Benchmark complete planning+implementation pipelines")
+    e2e_p = sub.add_parser(
+        "end-to-end", help="Benchmark complete planning+implementation pipelines"
+    )
     _add_common(e2e_p)
     e2e_p.add_argument("--planning-strategies", required=True)
     e2e_p.add_argument("--implementation-strategies", required=True)

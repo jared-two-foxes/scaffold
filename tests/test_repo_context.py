@@ -2,8 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ticket_pipeline.lib import pipeline_lib
-from ticket_pipeline.lib import repo_context
+from ticket_pipeline.lib import pipeline_lib, repo_context
 
 
 class TicketEvidenceTokenTests(unittest.TestCase):
@@ -102,9 +101,7 @@ class PlanNarrowPromptTests(unittest.TestCase):
         prompt = pipeline_lib.build_plan_narrow_prompt(ticket)
 
         seed_pos = prompt.index("## Ticket Evidence Seed")
-        guidance_pos = prompt.index(
-            "Use read_file/list_dir/search_files for anything else"
-        )
+        guidance_pos = prompt.index("Use read_file/list_dir/search_files for anything else")
         self.assertLess(seed_pos, guidance_pos)
         self.assertIn("preliminary host-side search results", prompt)
 

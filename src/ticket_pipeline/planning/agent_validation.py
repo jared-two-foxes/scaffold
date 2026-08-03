@@ -9,6 +9,7 @@ error messages to feed back to the model.
 
 from __future__ import annotations
 
+from ..planning.models import VALID_IMPLEMENTATION_STRATEGIES, VALID_VERIFICATION_MODES
 from .agent_models import (
     VALID_DISPOSITIONS,
     AgentAssumption,
@@ -17,7 +18,6 @@ from .agent_models import (
     AgentPlanSubmission,
     PlannedChange,
 )
-from ..planning.models import VALID_VERIFICATION_MODES, VALID_IMPLEMENTATION_STRATEGIES
 
 
 def _parse_evidence(raw_list: list | None) -> tuple[AgentEvidence, ...]:
@@ -141,7 +141,8 @@ def validate_submission(
         for ref in existing_test_refs:
             if "::" not in ref:
                 criterion_errors.append(
-                    f"{cid}: existing_test_refs entries must be in 'file::qualified_test_name' shape (got {ref!r})."
+                    f"{cid}: existing_test_refs entries must be in "
+                    f"'file::qualified_test_name' shape (got {ref!r})."
                 )
         plan_context = item.get("plan_context")
         blocker = item.get("blocker")

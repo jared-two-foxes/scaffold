@@ -39,7 +39,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from .lib import pipeline_lib as lib, render, verbosity
+from .lib import pipeline_lib as lib
+from .lib import render, verbosity
 
 log = verbosity.get_logger(__name__)
 
@@ -47,7 +48,7 @@ log = verbosity.get_logger(__name__)
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Reset the top criterion: git reset --hard to its "
-                     "pre-WRITE_TEST commit and return the frame to pending.",
+        "pre-WRITE_TEST commit and return the frame to pending.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -116,7 +117,9 @@ def main() -> None:
     frame.commit_sha = None
     lib.save_stack(stack)
 
-    render.print_line("-- Criterion reset to pending. Working tree restored to pre-WRITE_TEST state.")
+    render.print_line(
+        "-- Criterion reset to pending. Working tree restored to pre-WRITE_TEST state."
+    )
     render.print_line("-- Run 'next_step' to re-enter WRITE_TEST for this criterion.")
 
 

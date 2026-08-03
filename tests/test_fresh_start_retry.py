@@ -31,17 +31,11 @@ class FreshStartRetryTests(unittest.TestCase):
         frame = frame or self._frame()
         prompts: list[str] = []
         build_results = [
-            subprocess.CompletedProcess(
-                args=["build"], returncode=1, stdout="bad", stderr=""
-            ),
-            subprocess.CompletedProcess(
-                args=["build"], returncode=0, stdout="", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["build"], returncode=1, stdout="bad", stderr=""),
+            subprocess.CompletedProcess(args=["build"], returncode=0, stdout="", stderr=""),
         ]
 
-        def fake_run_with_tools(
-            prompt, tool_list, executor, name, model=None, summarize_call=None
-        ):
+        def fake_run_with_tools(prompt, tool_list, executor, name, model=None, summarize_call=None):
             prompts.append(prompt)
             executor("write_file", {"path": "src/generated.py", "content": "x"})
             return mock.Mock(text="ok")
@@ -53,17 +47,13 @@ class FreshStartRetryTests(unittest.TestCase):
             return build_results.pop(0)
 
         with (
-            mock.patch.object(
-                implement_lib, "run_with_tools", side_effect=fake_run_with_tools
-            ),
+            mock.patch.object(implement_lib, "run_with_tools", side_effect=fake_run_with_tools),
             mock.patch.object(
                 implement_lib.lib,
                 "run_ai_step_with_retry",
                 side_effect=fake_run_ai_step_with_retry,
             ),
-            mock.patch.object(
-                implement_lib.lib, "run_command", side_effect=fake_run_command
-            ),
+            mock.patch.object(implement_lib.lib, "run_command", side_effect=fake_run_command),
             mock.patch.object(implement_lib.lib, "git_reset_hard") as git_reset_hard,
         ):
             changed = implement_lib.run_implement_direct_with_refine(
@@ -112,9 +102,7 @@ class FreshStartRetryTests(unittest.TestCase):
             return step_fn()
 
         with (
-            mock.patch.object(
-                implement_lib, "run_with_tools", side_effect=fake_run_with_tools
-            ),
+            mock.patch.object(implement_lib, "run_with_tools", side_effect=fake_run_with_tools),
             mock.patch.object(
                 implement_lib.lib,
                 "run_ai_step_with_retry",
@@ -159,24 +147,12 @@ class FreshStartRetryTests(unittest.TestCase):
         )
         prompts: list[str] = []
         build_results = [
-            subprocess.CompletedProcess(
-                args=["build"], returncode=0, stdout="", stderr=""
-            ),
-            subprocess.CompletedProcess(
-                args=["build"], returncode=0, stdout="", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["build"], returncode=0, stdout="", stderr=""),
+            subprocess.CompletedProcess(args=["build"], returncode=0, stdout="", stderr=""),
         ]
         green_results = [
-            [
-                subprocess.CompletedProcess(
-                    args=["test"], returncode=1, stdout="fail", stderr=""
-                )
-            ],
-            [
-                subprocess.CompletedProcess(
-                    args=["test"], returncode=0, stdout="", stderr=""
-                )
-            ],
+            [subprocess.CompletedProcess(args=["test"], returncode=1, stdout="fail", stderr="")],
+            [subprocess.CompletedProcess(args=["test"], returncode=0, stdout="", stderr="")],
         ]
 
         def fake_run_with_tools(prompt, _tool_list, executor, _name, **_kwargs):
@@ -189,9 +165,7 @@ class FreshStartRetryTests(unittest.TestCase):
             return step_fn()
 
         with (
-            mock.patch.object(
-                implement_lib, "run_with_tools", side_effect=fake_run_with_tools
-            ),
+            mock.patch.object(implement_lib, "run_with_tools", side_effect=fake_run_with_tools),
             mock.patch.object(
                 implement_lib.lib,
                 "run_ai_step_with_retry",

@@ -47,10 +47,10 @@ import time
 import tomllib
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Callable
 from importlib.resources import files
+from pathlib import Path
 
 from . import verbosity
 
@@ -76,6 +76,7 @@ class StepBudgetExceeded(AIError):
 @dataclass
 class AIResult:
     text: str
+    finish_reason: str | None = None
 
 
 @dataclass
@@ -216,6 +217,8 @@ RETRY_BACKOFF_BASE_S = 2.0
 # multi-file exploration (see run_with_tools's own docstring reasoning),
 # but not unbounded.
 MAX_TURNS_PER_STEP = 40
+
+MAX_COMPLETION_TOKENS = 16384
 
 # Optional process-wide cumulative cost ceiling, opt-in via env var rather
 # than a hardcoded default: model-pricing.toml doesn't have an entry for
@@ -581,7 +584,13 @@ def run_with_tools(
             log.critical(msg)
             raise StepBudgetExceeded(msg)
         parsed = _post_chat_completion(
-            {"model": model, "messages": messages, "tools": tools}, label
+            {
+                "model": model,
+                "messages": messages,
+                "tools": tools,
+                "max_tokens": MAX_COMPLETION_TOKENS,
+            },
+            label,
         )
 
         if max_cost_usd is not None:
@@ -602,7 +611,16 @@ def run_with_tools(
         messages.append(message)
         tool_calls = message.get("tool_calls")
         if not tool_calls:
-            return AIResult(text=message.get("content") or "")
+            finish_reason = parsed["choices"][0].get("finish_reason")
+            if finish_reason == "length":
+                raise AIError(
+                    f"{label}: response truncated by length limit "
+                    "(finish_reason=length) - will retry"
+                )
+            return AIResult(
+                text=message.get("content") or "",
+                finish_reason=finish_reason,
+            )
 
         for call in tool_calls:
             function = call.get("function", {})

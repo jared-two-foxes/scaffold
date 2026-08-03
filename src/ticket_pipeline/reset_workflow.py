@@ -53,11 +53,11 @@ Usage:
 """
 
 import argparse
-import sys
 from pathlib import Path
 
-from .lib import pipeline_lib as lib, render, verbosity
 from . import reset_pipeline
+from .lib import pipeline_lib as lib
+from .lib import render, verbosity
 
 log = verbosity.get_logger(__name__)
 
@@ -72,7 +72,7 @@ def _identify_ticket(cfg: "lib.GitConfig") -> str | None:
         branch = lib.git_current_branch()
         prefix = cfg.branch_prefix
         if prefix and branch.startswith(prefix):
-            return branch[len(prefix):]
+            return branch[len(prefix) :]
     state = lib.load_git_state()
     if len(state) == 1:
         return next(iter(state))
@@ -94,29 +94,33 @@ def _resolve_base_branch(cfg: "lib.GitConfig", ticket_id: str | None) -> str | N
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Abandon the current ticket: revert to its base branch, "
-                     "delete the ticket branch, and clear all pipeline state.",
+        "delete the ticket branch, and clear all pipeline state.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
     parser.add_argument(
-        "--yes", action="store_true",
+        "--yes",
+        action="store_true",
         help="Actually perform the reset. Without this, prints what would "
-             "happen and exits without touching anything.",
+        "happen and exits without touching anything.",
     )
     parser.add_argument(
-        "--keep-stack", action="store_true",
+        "--keep-stack",
+        action="store_true",
         help="Don't remove .criteria-stack.json - clear only the other "
-             "pipeline state (and still revert/delete the git branch).",
+        "pipeline state (and still revert/delete the git branch).",
     )
     parser.add_argument(
-        "--keep-branch", action="store_true",
+        "--keep-branch",
+        action="store_true",
         help="Don't delete the ticket/<id> branch - leave it in place for "
-             "inspection. The working tree still returns to the base branch.",
+        "inspection. The working tree still returns to the base branch.",
     )
     parser.add_argument(
-        "--include-log", action="store_true",
+        "--include-log",
+        action="store_true",
         help="Also remove .pipeline-log.jsonl (excluded by default - it's a "
-             "running diagnostic history across every ticket ever processed).",
+        "running diagnostic history across every ticket ever processed).",
     )
     parser.add_argument(
         "--config",
@@ -124,7 +128,9 @@ def main() -> None:
         help=f"Path to the pipeline config (default: {lib.PIPELINE_CONFIG_FILE}).",
     )
     parser.add_argument(
-        "--log-level", default="info", choices=list(verbosity.LEVELS),
+        "--log-level",
+        default="info",
+        choices=list(verbosity.LEVELS),
         help="Console verbosity (default: info).",
     )
     args = parser.parse_args()
@@ -137,7 +143,8 @@ def main() -> None:
     base_branch = _resolve_base_branch(cfg, ticket_id) if cfg.git_workflow else None
     ticket_branch = (
         lib.ticket_branch_name(cfg, ticket_id)
-        if (cfg.git_workflow and ticket_id is not None) else None
+        if (cfg.git_workflow and ticket_id is not None)
+        else None
     )
 
     # ── Plan: what would happen ──────────────────────────────────────────
@@ -145,8 +152,10 @@ def main() -> None:
 
     do_git = cfg.git_workflow and lib.git_is_repo()
     if cfg.git_workflow and not lib.git_is_repo():
-        plan_lines.append("-- git_workflow is on but not a git repo - "
-                           "skipping git steps, clearing pipeline state only.")
+        plan_lines.append(
+            "-- git_workflow is on but not a git repo - "
+            "skipping git steps, clearing pipeline state only."
+        )
 
     if do_git:
         if ticket_branch is None or not lib.git_branch_exists(ticket_branch):
@@ -213,8 +222,11 @@ def main() -> None:
                 # expected to be unmerged - -d would refuse exactly that.
                 r = lib._git("branch", "-D", ticket_branch)
                 if r.returncode != 0:
-                    log.warning("-- git branch -D %s failed (non-fatal): %s",
-                                ticket_branch, r.stderr.strip())
+                    log.warning(
+                        "-- git branch -D %s failed (non-fatal): %s",
+                        ticket_branch,
+                        r.stderr.strip(),
+                    )
             if ticket_id is not None:
                 lib.clear_git_base_branch(ticket_id)
         except lib.GitError as e:

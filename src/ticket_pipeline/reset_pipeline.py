@@ -63,7 +63,8 @@ Usage:
 import argparse
 from pathlib import Path
 
-from .lib import pipeline_lib as lib, render, verbosity
+from .lib import pipeline_lib as lib
+from .lib import render, verbosity
 
 log = verbosity.get_logger(__name__)
 
@@ -108,30 +109,35 @@ def find_targets(keep_stack: bool, include_log: bool) -> list[Path]:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Clear .criteria-stack.json and every scratch/intermediate "
-                     "file the criteria-stack pipeline leaves behind, for a "
-                     "genuinely clean slate.",
+        "file the criteria-stack pipeline leaves behind, for a "
+        "genuinely clean slate.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
     parser.add_argument(
-        "--yes", action="store_true",
+        "--yes",
+        action="store_true",
         help="Actually delete the files. Without this, prints what would be "
-             "removed and exits without deleting anything.",
+        "removed and exits without deleting anything.",
     )
     parser.add_argument(
-        "--keep-stack", action="store_true",
+        "--keep-stack",
+        action="store_true",
         help="Don't remove .criteria-stack.json - clear only the scratch/"
-             "intermediate files around it, leaving any in-progress work on "
-             "the stack untouched.",
+        "intermediate files around it, leaving any in-progress work on "
+        "the stack untouched.",
     )
     parser.add_argument(
-        "--include-log", action="store_true",
+        "--include-log",
+        action="store_true",
         help="Also remove .pipeline-log.jsonl (excluded by default - it's a "
-             "running diagnostic history across every ticket ever processed, "
-             "not scratch tied to whatever's currently in progress).",
+        "running diagnostic history across every ticket ever processed, "
+        "not scratch tied to whatever's currently in progress).",
     )
     parser.add_argument(
-        "--log-level", default="info", choices=list(verbosity.LEVELS),
+        "--log-level",
+        default="info",
+        choices=list(verbosity.LEVELS),
         help="Console verbosity (default: info).",
     )
     args = parser.parse_args()

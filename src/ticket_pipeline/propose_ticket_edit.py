@@ -38,8 +38,9 @@ import difflib
 import re
 from pathlib import Path
 
-from .lib import ai_client, pipeline_lib as lib, render, tools, verbosity
 from . import review_ticket as review
+from .lib import ai_client, render, tools, verbosity
+from .lib import pipeline_lib as lib
 
 log = verbosity.get_logger(__name__)
 
@@ -67,7 +68,9 @@ def load_review(ticket_id: str) -> tuple[str, str]:
         )
     text = path.read_text(encoding="utf-8")
     if review.REVIEW_FILE_REPORT_MARKER not in text:
-        lib.die(f"{path} doesn't look like a review-ticket.py output file (missing report marker).")
+        lib.die(
+            f"{path} doesn't look like a review-ticket.py output file (missing report marker)."
+        )
     ticket_part, _, report_part = text.partition(review.REVIEW_FILE_REPORT_MARKER)
     ticket_content = ticket_part.split(review.REVIEW_FILE_TICKET_MARKER, 1)[-1].strip()
     report = (review.REVIEW_FILE_REPORT_MARKER + report_part).strip()
@@ -106,7 +109,9 @@ def run_propose_step(ticket_content: str, report: str, model: str) -> str:
             lambda: ai_client.run_with_tools(
                 build_propose_prompt(ticket_content, report),
                 tools.READ_ONLY_TOOLS,
-                tools.make_executor(allow_write=False, preloaded_paths={TICKET_DEDUP_KEY}),
+                tools.make_executor(
+                    allow_write=False, preloaded_paths={TICKET_DEDUP_KEY}
+                ),
                 "propose-ticket-edit",
                 model=model,
                 summarize_call=tools.summarize_tool_call,
@@ -160,11 +165,17 @@ def print_diff(original: str, revised: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Propose a ticket revision that resolves a prior review-ticket.py run's flagged concerns.",
+        description=(
+            "Propose a ticket revision that resolves a prior review-ticket.py "
+            "run's flagged concerns."
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument("ticket_id", help="Linear ticket ID, e.g. NEB-42 - must match a prior review-ticket run")
+    parser.add_argument(
+        "ticket_id",
+        help="Linear ticket ID, e.g. NEB-42 - must match a prior review-ticket run",
+    )
     parser.add_argument(
         "--model",
         default=DEFAULT_MODEL,
@@ -175,16 +186,16 @@ def main() -> None:
         type=Path,
         default=None,
         help="Where to write the proposed revision. Required unless --no-write "
-             "is passed - there is no implicit default path, so the destination "
-             "is always explicit at the call site rather than something you "
-             "have to remember. Pass .ticket.md if you want it written straight "
-             "to the canonical pipeline state file instead of an isolated one.",
+        "is passed - there is no implicit default path, so the destination "
+        "is always explicit at the call site rather than something you "
+        "have to remember. Pass .ticket.md if you want it written straight "
+        "to the canonical pipeline state file instead of an isolated one.",
     )
     parser.add_argument(
         "--no-write",
         action="store_true",
         help="Only print the diff/proposal - don't write the revision anywhere "
-             "(makes --ticket-file-out optional).",
+        "(makes --ticket-file-out optional).",
     )
     parser.add_argument(
         "--log-level",
@@ -195,11 +206,16 @@ def main() -> None:
     args = parser.parse_args()
     verbosity.setup_logging(args.log_level)
     if args.ticket_file_out is None and not args.no_write:
-        parser.error("--ticket-file-out is required (or pass --no-write to skip writing).")
+        parser.error(
+            "--ticket-file-out is required (or pass --no-write to skip writing)."
+        )
 
     ticket_content, report = load_review(args.ticket_id)
     if not has_concerns(report):
-        render.print_line(f"-- {review.review_file_path(args.ticket_id)} reports no concerns - nothing to propose.")
+        render.print_line(
+            f"-- {review.review_file_path(args.ticket_id)} reports no concerns - "
+            "nothing to propose."
+        )
         return
 
     proposal_text = run_propose_step(ticket_content, report, args.model)
@@ -218,17 +234,21 @@ def main() -> None:
 
     render.print_line()
     if revised_ticket is None:
-        render.print_line("-- Nothing written - this was the no-remaining-work case, not a revision.")
+        render.print_line(
+            "-- Nothing written - this was the no-remaining-work case, not a revision."
+        )
     elif args.no_write:
         render.print_line("-- --no-write passed: not writing the revision anywhere.")
     else:
         out_path = args.ticket_file_out
         tools.write_file_block(str(out_path))(revised_ticket)
         render.print_line(
-            f"-- Wrote proposed revision to {out_path}. Nothing was sent to Linear "
-            f"and {lib.TICKET_FILE} was not touched. Next:\n"
-            f"   review-ticket {args.ticket_id} --ticket-file-in {out_path}   # check whether concerns are resolved\n"
-            f"   update-ticket {args.ticket_id} --ticket-file-in {out_path} --yes   # push it to Linear once you're happy"
+            f"-- Wrote proposed revision to {out_path}. Nothing was sent to "
+            f"Linear and {lib.TICKET_FILE} was not touched. Next:\n"
+            f"   review-ticket {args.ticket_id} --ticket-file-in {out_path}   "
+            f"# check whether concerns are resolved\n"
+            f"   update-ticket {args.ticket_id} --ticket-file-in {out_path} "
+            f"--yes   # push it to Linear once you're happy"
         )
     render.print_line(f"-- Token usage: {ai_client.usage}")
 
