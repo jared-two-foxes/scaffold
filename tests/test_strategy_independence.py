@@ -23,7 +23,6 @@ from ticket_pipeline.strategies import direct as direct_strategy
 from ticket_pipeline.strategies import manual as manual_strategy
 from ticket_pipeline.strategies import refactor as refactor_strategy
 
-
 # ---------------------------------------------------------------------------
 # Model-level independence
 # ---------------------------------------------------------------------------
@@ -106,8 +105,7 @@ _GAP_PLAN_MISSING_VERIFICATION = (
 )
 
 _GAP_PLAN_NO_TAGS = (
-    "## Acceptance Criteria\n\n"
-    "- [ ] Feature A works <!-- why: not yet -->\n"
+    "## Acceptance Criteria\n\n" "- [ ] Feature A works <!-- why: not yet -->\n"
 )
 
 
@@ -145,7 +143,9 @@ class ExtractFunctionsReturnNoneForMissingTagsTests(unittest.TestCase):
         self.assertIsNone(lib.extract_verification_mode(criterion))
 
     def test_extract_strategy_returns_none_when_no_tag(self):
-        criterion = "- [ ] Criterion without a strategy tag <!-- why: missing; verify: test -->"
+        criterion = (
+            "- [ ] Criterion without a strategy tag <!-- why: missing; verify: test -->"
+        )
         self.assertIsNone(lib.extract_strategy(criterion))
 
     def test_extract_verification_parses_test_tag(self):
@@ -274,9 +274,7 @@ class ManualStrategyIndependenceTests(unittest.TestCase):
 
     def test_manual_strategy_does_not_invoke_ai_implementation(self):
         """Manual strategy must not call run_implement_direct_with_refine."""
-        frame = _make_frame(
-            strategy="manual", status="pending", verification="manual"
-        )
+        frame = _make_frame(strategy="manual", status="pending", verification="manual")
         with (
             mock.patch.object(lib, "load_stack", return_value=[frame]),
             mock.patch.object(lib, "extract_referenced_paths", return_value=[]),
@@ -439,9 +437,120 @@ class EndToEndDirectWithTestVerificationTests(unittest.TestCase):
         # 1. Test generation was NOT invoked
         self.assertEqual([], write_test_called, "do_write_test must not be called")
         # 2. Direct implementation was invoked
-        self.assertEqual([True], direct_impl_called, "run_implement_direct_with_refine must be called")
+        self.assertEqual(
+            [True],
+            direct_impl_called,
+            "run_implement_direct_with_refine must be called",
+        )
         # 3. Frame was never in 'test-written' state
         self.assertNotEqual("test-written", frame.status)
+
+
+# ---------------------------------------------------------------------------
+# TDD strategy: mechanical path check on done-gating
+# ---------------------------------------------------------------------------
+
+
+class TDDStrategyPathCheckTests(unittest.TestCase):
+    """TDD strategy must not accept 'done' when the diff skips plan-referenced files."""
+
+    def test_tdd_recheck_not_done_when_diff_misses_plan_referenced_file(self):
+        """recheck_test_frame must not mark done when no plan-referenced path is in the diff."""
+        frame = lib.CriterionFrame(
+            ticket="SA-1",
+            criterion="- [ ] do the thing <!-- verify: test; strategy: tdd -->",
+            plan_context="Edit `src/ticket_pipeline/lib/pipeline_lib.py`.",
+            test_files=["tests/test_example.py"],
+            test_names=["test_example"],
+            status="test-written",
+            origin="ticket",
+            verification="test",
+            strategy="tdd",
+        )
+        frame.unconfirmed_tests = []
+
+        results_all_green = [
+            type("R", (), {"returncode": 0})(),
+        ]
+
+        with (
+            mock.patch.object(lib, "run_scoped_tests", return_value=results_all_green),
+            mock.patch.object(
+                lib,
+                "extract_referenced_paths",
+                return_value=["src/ticket_pipeline/lib/pipeline_lib.py"],
+            ),
+            mock.patch.object(
+                lib,
+                "git_changed_files",
+                # diff only touched __init__.py — not the plan-referenced file
+                return_value=["src/ticket_pipeline/lib/__init__.py"],
+            ),
+            mock.patch.object(lib, "save_stack"),
+        ):
+            with self.assertRaises(SystemExit):
+                tdd_strategy.recheck_test_frame([], frame, _make_ctx())
+
+        self.assertNotEqual("done", frame.status)
+
+    def test_tdd_recheck_done_when_diff_touches_plan_referenced_file(self):
+        """recheck_test_frame marks done when the diff includes a plan-referenced file."""
+        frame = lib.CriterionFrame(
+            ticket="SA-1",
+            criterion="- [ ] do the thing <!-- verify: test; strategy: tdd -->",
+            plan_context="Edit `src/ticket_pipeline/lib/pipeline_lib.py`.",
+            test_files=["tests/test_example.py"],
+            test_names=["test_example"],
+            status="test-written",
+            origin="ticket",
+            verification="test",
+            strategy="tdd",
+        )
+        frame.unconfirmed_tests = []
+
+        results_all_green = [
+            type("R", (), {"returncode": 0})(),
+        ]
+
+        with (
+            mock.patch.object(lib, "run_scoped_tests", return_value=results_all_green),
+            mock.patch.object(
+                lib,
+                "extract_referenced_paths",
+                return_value=["src/ticket_pipeline/lib/pipeline_lib.py"],
+            ),
+            mock.patch.object(
+                lib,
+                "git_changed_files",
+                return_value=["src/ticket_pipeline/lib/pipeline_lib.py"],
+            ),
+            mock.patch.object(lib, "save_stack"),
+        ):
+            tdd_strategy.recheck_test_frame([], frame, _make_ctx())
+
+        self.assertEqual("done", frame.status)
+
+
+def _make_ctx(**kwargs):
+    """Return a minimal StepContext for unit tests."""
+    defaults = dict(
+        model="test-model",
+        step_models={},
+        commands={"build_cmd": "true"},
+        config_path=lib.PIPELINE_CONFIG_FILE,
+        continuous=False,
+        max_attempts=1,
+        retry_policy=None,
+        accept_green=False,
+        accept_manual=False,
+        accept_no_test=False,
+        skip_implementation=False,
+        allow_compile=False,
+        reset_on_retry=False,
+        git_cfg=None,
+    )
+    defaults.update(kwargs)
+    return lib.StepContext(**defaults)
 
 
 if __name__ == "__main__":

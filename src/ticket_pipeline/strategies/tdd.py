@@ -163,6 +163,23 @@ def do_write_test(
     unconfirmed = [] if frame.origin == "ticket" else green_names
 
     if not red_names and not unconfirmed:
+        paths = lib.extract_referenced_paths(f"{frame.criterion}\n{frame.plan_context}")
+        mechanically_confirmed = bool(paths) and bool(
+            set(paths) & set(lib.git_changed_files())
+        )
+        if not mechanically_confirmed and not ctx.accept_manual:
+            render.print_line()
+            render.print_line(
+                "-- Tests passed but no plan-referenced file appears in git changes."
+            )
+            render.print_line(f"   Criterion: {frame.criterion}")
+            render.print_line(
+                "   Verify the implementation touches a file named in the plan context,"
+            )
+            render.print_line(
+                "   or run 'next_step --accept-manual' to confirm it's done."
+            )
+            sys.exit(0)
         log.info(
             "-- Test(s) passed without implementation - this criterion's "
             "gap didn't reproduce."
@@ -277,9 +294,24 @@ def recheck_test_frame(
         return
 
     if not frame.unconfirmed_tests:
-        frame.status = "done"
-        lib.save_stack(stack)
-        return
+        paths = lib.extract_referenced_paths(f"{frame.criterion}\n{frame.plan_context}")
+        mechanically_confirmed = bool(paths) and bool(
+            set(paths) & set(lib.git_changed_files())
+        )
+        if mechanically_confirmed or ctx.accept_manual:
+            frame.status = "done"
+            lib.save_stack(stack)
+            return
+        render.print_line()
+        render.print_line(
+            "-- Tests passed but no plan-referenced file appears in git changes."
+        )
+        render.print_line(f"   Criterion: {frame.criterion}")
+        render.print_line(
+            "   Verify the implementation touches a file named in the plan context,"
+        )
+        render.print_line("   or run 'next_step --accept-manual' to confirm it's done.")
+        sys.exit(0)
 
     if ctx.accept_green:
         log.info(

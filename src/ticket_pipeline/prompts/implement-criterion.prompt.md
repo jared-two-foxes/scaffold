@@ -28,8 +28,6 @@ without weakening or rewriting any of them.
   entire run with your question as the failure reason. There is no
   human available to answer and no retry. Only call it if you genuinely
   cannot proceed - not to confirm something you could reasonably infer.
-  Prefer Step 2's reconciliation process over asking when a planned path
-  is missing.
 - `run_command(command)` - **not supported.** You cannot compile or run
   tests yourself; the caller verifies your work mechanically after you
   finish, and feeds any build or test failure back to you for a bounded
@@ -49,9 +47,10 @@ functions; treat anything in it not relevant to this one criterion as
 background, not additional work.
 
 `read_file` each named test file to see exactly what each test expects
+
 - if a criterion has more than one, they may cover genuinely different
-code paths, so don't assume satisfying one automatically satisfies
-another.
+  code paths, so don't assume satisfying one automatically satisfies
+  another.
 
 - **If no criterion or test is named in the task prompt:** stop. Return
   as your final answer:
@@ -60,18 +59,17 @@ another.
   >
   > No criterion or test named to implement against.
 
-## Step 2 - Reconcile plan context against actual current files
+## Step 2 - Load the plan context files
 
-For each file named in the plan context, `read_file` it. If it doesn't
-exist, `list_dir` its parent directory - the implementation may already
-exist under a different name (e.g. consolidated into one file instead
-of the planned split). Identify the real target from the listing rather
-than creating a new file at the planned path.
+For each file named in the plan context, `read_file` it. If a named
+file does not exist, stop and report it in your final answer — do not
+redirect the implementation to a different file on your own judgment.
+The plan's named paths are verified by the Plan and Narrow steps before
+a criterion ever reaches you; if a path is missing, that is a signal
+for a human or re-plan decision, not an invitation to improvise.
 
 If you genuinely cannot tell where code should go from what you can
-read, stop and say so in your final answer rather than guessing - do
-not create a new file speculatively when an existing one might be the
-right target.
+read, stop and say so in your final answer rather than guessing.
 
 ## Step 3 - Implement
 
@@ -116,11 +114,12 @@ this yourself. Before finishing, `search_files` for the type's name
 project, not only the files the plan context or test mentions, and fix
 every other construction site you find so it still compiles with the
 new field (matching how the existing fields there are already populated
+
 - a literal value, a call to the same default the type's own `Default`
-impl uses, etc.). This applies to any type you add a field to, not just
-the one the named criterion is about - if satisfying the criterion
-requires changing a shared type, the search covers that whole type's
-usages.
+  impl uses, etc.). This applies to any type you add a field to, not just
+  the one the named criterion is about - if satisfying the criterion
+  requires changing a shared type, the search covers that whole type's
+  usages.
 
 ## Final answer
 
@@ -130,6 +129,7 @@ more tool calls) starting with:
 > **🤖 Implementor**
 
 Then report:
+
 - Files changed or created (paths and brief description of each change)
 - Summary of what was implemented for this criterion
 - Any deviation from the plan context's named files/approach (Step 2) -
@@ -141,7 +141,8 @@ Then report:
 
 ## Rules
 
-- Minimize code churn.
+- Minimize code churn within the planned files — do not relocate an
+  implementation to a different file to reduce diff size.
 - Do not self-assess against the acceptance criterion - the caller
   verifies by re-running every named test, not by trusting your report.
 - Do not modify any named test, ever - not even to "fix" a test you
