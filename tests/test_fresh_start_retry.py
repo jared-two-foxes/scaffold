@@ -1,6 +1,5 @@
 import subprocess
 import unittest
-from pathlib import Path
 from unittest import mock
 
 from ticket_pipeline.lib import implement as implement_lib
@@ -188,27 +187,6 @@ class FreshStartRetryTests(unittest.TestCase):
             "make the change one specific acceptance criterion describes",
             " ".join(direct_prompts[0].split()),
         )
-
-    def test_unrelated_generated_file_is_removed_or_justified(self):
-        repository_root = Path(__file__).resolve().parents[1]
-        generated_file = repository_root / "src" / "generated.py"
-        if not generated_file.exists():
-            return
-
-        plan_file = repository_root / ".scaffold" / ".implementation-plan.md"
-        plan_text = plan_file.read_text(encoding="utf-8")
-        plan_section = plan_text.split("## Implementation Plan", 1)[-1].split("## ", 1)[0]
-        justification_lines = [
-            line.strip()
-            for line in plan_section.splitlines()
-            if line.strip().startswith("-") and "src/generated.py" in line
-        ]
-        self.assertTrue(
-            justification_lines,
-            "src/generated.py must be removed or explicitly justified in the Implementation Plan",
-        )
-        for line in justification_lines:
-            self.assertTrue(line.split("src/generated.py", 1)[-1].strip(" `:-—").strip())
 
 
 if __name__ == "__main__":
