@@ -33,8 +33,8 @@ criterion.
   UNKNOWN (see Step 2) is almost always the right move instead of
   asking - prefer it.
 - `run_command(command)` - **not supported.** Calling this aborts the
-  entire run. You cannot run builds, tests, or linters yourself - for a
-  criterion that names an exact command (e.g. "`cargo test` passes"),
+  entire run. You cannot run builds, tests, or linters yourself - for
+  a criterion that names an exact command (e.g. "`cargo test` passes"),
   there is no command output available to you; judge it the same way as
   any other criterion, by reading code, and mark it UNKNOWN if reading
   alone can't confirm it.
@@ -123,7 +123,7 @@ it's done" is not "done," and the only way to find out for certain is to
 address it downstream. Drop every PASS criterion entirely from the
 output - not even as a comment, since it's already satisfied and isn't
 this document's concern. Trim `## Implementation Plan` to just the
-entries the retained criteria need; an entry only relevant to a
+entries those need; an entry only relevant to a
 now-dropped PASS criterion is dropped too.
 
 - **If every criterion is PASS:** the plan is fully satisfied - see the
@@ -219,7 +219,6 @@ produced. This is **independent of verification**:
 - `tdd`: write a failing test first, then implement until the test passes. Use when a red/green test meaningfully drives implementation.
 - `direct`: implement first, then verify. Use when the change is well-defined enough that direct implementation and verification add more value than a test-first loop. A criterion tagged `verify: test` may legitimately use `strategy: direct` — automated test verification does not require test-first implementation.
 - `refactor`: restructure existing code without changing behavior; existing tests serve as the safety net. Always accompanied by `existing_test:` refs.
-- `manual`: implementation requires human action; no AI implementation step is invoked.
 
 **Important:** `verify: test` and `strategy: tdd` are independent
 choices. A criterion verified by an automated test can use `direct`
@@ -251,9 +250,8 @@ The `existing_test:` tag is also required for `test-refactor` and
 test(s) (you can't refactor a test that doesn't exist yet), and
 `refactor` keeps those specific existing test(s) GREEN as its safety
 net. If you can't name a specific existing test for a structural
-change you'd otherwise tag `refactor`, tag it `manual` instead - a
-refactor with no identifiable safety net has no mechanical floor at
-all, which is exactly what `manual` is for.
+change you'd otherwise tag `refactor`, tag it `direct` instead - a
+refactor with no identifiable safety net should be implemented directly.
 
 ## Final answer
 
@@ -281,7 +279,7 @@ below. The caller writes this text verbatim to `.gap-plan.md`.
 - [ ] [criterion needing an existing test updated instead of a new one] <!-- why: existing test asserts old behavior; verify: test; existing_test: path/to/file::test_name; strategy: tdd -->
 - [ ] [criterion about test structure] <!-- why: local helpers still present; verify: test-refactor; existing_test: path/to/file::test_name; strategy: tdd -->
 - [ ] [criterion about production code structure] <!-- why: local implementation still present; verify: refactor; existing_test: path/to/file::test_name; strategy: refactor -->
-- [ ] [criterion only verifiable by human inspection] <!-- why: prose documentation not yet updated; verify: manual; strategy: manual -->
+- [ ] [criterion only verifiable by human inspection] <!-- why: prose documentation not yet updated; verify: manual; strategy: direct -->
 - [ ] [criterion where only some named items are unmet, scoped to those items] <!-- why: original covers N items; M already met; these are still unmet because ...; verify: test; strategy: direct -->
       (or, if every criterion was PASS: "(none - all criteria satisfied)")
 
@@ -311,13 +309,13 @@ below. The caller writes this text verbatim to `.gap-plan.md`.
   `test-refactor`, `refactor`, or `manual`, never more than one, never
   omitted (see Step 4).
 - Every retained criterion gets exactly one "strategy:" tag - `tdd`,
-  `direct`, `refactor`, or `manual`, never more than one, never omitted
+  `direct`, or `refactor`, never more than one, never omitted
   (see Step 4).
 - `verify: test` and `strategy: tdd` are independent: a criterion
   verified by automated tests may legitimately use `strategy: direct`.
-- `refactor` without `existing_test:` refs must be tagged `manual`
-  instead - a refactor with no identifiable safety net has no
-  mechanical floor. `test-refactor` always requires `existing_test:`
+- `refactor` without `existing_test:` refs must be tagged `direct`
+  instead - a refactor with no identifiable safety net should be
+  implemented directly. `test-refactor` always requires `existing_test:`
   refs (you can't refactor a test that doesn't exist yet).
 - "existing_test:" is optional for `test` (only when Step 2 confirmed a
   specific existing test to point at), but required for `test-refactor`
