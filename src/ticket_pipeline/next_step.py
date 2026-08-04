@@ -49,7 +49,7 @@ from .strategies.registry import resolve_strategy
 
 log = verbosity.get_logger(__name__)
 
-DEFAULT_MODEL = "opencode:gpt-5.4-mini"
+DEFAULT_MODEL = "opencode:gpt-5.6-luna"
 
 
 FEEDBACK_READY_STATUS = lib.FEEDBACK_READY_STATUS

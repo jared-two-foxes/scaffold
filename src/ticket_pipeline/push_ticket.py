@@ -88,7 +88,7 @@ from .planning import (
 
 log = verbosity.get_logger(__name__)
 
-DEFAULT_MODEL = "opencode:gpt-5.4-mini"
+DEFAULT_MODEL = "opencode:gpt-5.6-luna"
 
 
 def prepare_git_branch(ticket_id: str, cfg: "lib.GitConfig", force: bool) -> None:

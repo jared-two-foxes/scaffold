@@ -67,7 +67,7 @@ from .lib import pipeline_lib as lib
 
 log = verbosity.get_logger(__name__)
 
-DEFAULT_MODEL = "opencode:gpt-5.4-mini"
+DEFAULT_MODEL = "opencode:gpt-5.6-luna"
 
 # Tickets with fewer than this many acceptance criteria are always considered
 # simple - the AI step is skipped unless --force-ai is passed.

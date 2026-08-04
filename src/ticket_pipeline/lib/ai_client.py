@@ -4,9 +4,9 @@ ai_client - shared AI invocation library for scripted (non-chat) prompts.
 Talks to opencode zen's OpenAI-compatible chat-completions endpoint by
 default, or another registered provider (see PROVIDERS) by prefixing
 the model id with "<provider>:" (e.g. "ollama:llama3.1",
-"copilot:claude-sonnet-4.6", "opencode:gpt-5.4-mini"). A bare model id
+"copilot:claude-sonnet-4.6", "opencode:gpt-5.6-luna"). A bare model id
 with no recognized prefix always means opencode zen - every existing
-caller that passes a plain model string ("gpt-5.4-mini", "default", ...)
+caller that passes a plain model string ("gpt-5.6-luna", "default", ...)
 keeps working unchanged; the "opencode:" prefix is available for
 callers that want to name it explicitly the same way every other
 provider is named, not a requirement.
@@ -105,8 +105,8 @@ class UsageTracker:
     ai_client.usage from the calling script to report a final total.
 
     Tracked per model (not just one running total) because a single
-    script run could in principle call more than one model, and
-    pricing is looked up per model id.
+    script run could in principle call more than one model, and pricing
+    is looked up per model id.
     """
 
     by_model: dict[str, ModelUsage] = field(default_factory=dict)
@@ -213,8 +213,8 @@ RETRY_BACKOFF_BASE_S = 2.0
 # bounds a model that's merely confused (not stuck enough to call
 # ask_user_prompt/run_command, just looping search_files/read_file with
 # slightly different args turn after turn) rather than relying solely on
-# those pseudo-tools to catch every runaway case. Generous enough for real
-# multi-file exploration (see run_with_tools's own docstring reasoning),
+# those pseudo-tools to catch every runaway case. Generous enough for
+# real multi-file exploration (see run_with_tools's own docstring reasoning),
 # but not unbounded.
 MAX_TURNS_PER_STEP = 40
 
@@ -417,7 +417,7 @@ COPILOT = Provider(
 
 # Keyed by the "<key>:" prefix callers use in a model id. "opencode:" is
 # listed explicitly here (not just left as the implicit fallback) so it
-# can be named the same way every other provider is - "opencode:gpt-5.4-mini"
+# can be named the same way every other provider is - "opencode:gpt-5.6-luna"
 # reads the same as "ollama:llama3.1" or "copilot:claude-sonnet-4.6". A
 # bare model id with no recognized prefix (every existing caller, today)
 # still falls through to DEFAULT_PROVIDER unchanged - adding "opencode:"
@@ -439,7 +439,7 @@ def resolve_provider(model: str) -> tuple[Provider, str]:
     provider never sees its own prefix, since that's purely this
     module's routing convention, not something the backend knows about.
     Unrecognized or absent prefixes fall through to DEFAULT_PROVIDER with
-    the model id unchanged, so a bare "gpt-5.4-mini" or a model id that
+    the model id unchanged, so a bare "gpt-5.6-luna" or a model id that
     happens to contain ':' for some other reason both still work exactly
     as before this function existed.
     """
@@ -543,11 +543,6 @@ def run_with_tools(
     result back as a tool message, then send another request - repeating
     until a response comes back with no tool_calls, which is treated as
     the final answer.
-
-    `summarize_call` turns (name, args) into the one-line console log
-    shown for each call - defaults to the raw name(args) form, but
-    callers using tools.py should pass tools.summarize_tool_call so the
-    log reads "Read foo.rs" instead of "read_file({'path': 'foo.rs'})".
 
     Bounded by two independent ceilings, both raising StepBudgetExceeded
     (a non-retryable AIError subclass - see pipeline_lib.run_ai_step_with_retry)

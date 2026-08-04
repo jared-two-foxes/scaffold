@@ -21,7 +21,7 @@ from .retry import RetryPolicy
 
 log = verbosity.get_logger(__name__)
 
-DEFAULT_MODEL = "opencode:gpt-5.4-mini"
+DEFAULT_MODEL = "opencode:gpt-5.6-luna"
 DEFAULT_MAX_ATTEMPTS = 3
 
 IMPLEMENT_CRITERION_PROMPT_FILE = lib.PROMPTS_DIR / "implement-criterion.prompt.md"

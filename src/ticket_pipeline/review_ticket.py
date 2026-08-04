@@ -61,7 +61,7 @@ from .lib import pipeline_lib as lib
 
 log = verbosity.get_logger(__name__)
 
-DEFAULT_MODEL = "opencode:gpt-5.4-mini"
+DEFAULT_MODEL = "opencode:gpt-5.6-luna"
 
 VERDICT_LINE_RE = re.compile(r"(^###\s*Verdict\s*\n+)(\S+)", re.MULTILINE)
 

@@ -44,7 +44,7 @@ from .lib import pipeline_lib as lib
 
 log = verbosity.get_logger(__name__)
 
-DEFAULT_MODEL = "opencode:gpt-5.4-mini"
+DEFAULT_MODEL = "opencode:gpt-5.6-luna"
 
 PROPOSE_PROMPT_FILE = lib.PROMPTS_DIR / "propose-ticket-edit.prompt.md"
 TICKET_DEDUP_KEY = ".ticket.md"
