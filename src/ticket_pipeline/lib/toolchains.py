@@ -63,9 +63,9 @@ RUST = Toolchain(
     marker_files=("Cargo.toml",),
     commands={
         "build_cmd": "cargo build",
-        "test_compile_cmd": "cargo test --no-run",
+        "test_compile_cmd": "cargo test {test_target} --no-run",
         "test_cmd": "cargo test",
-        "test_filter_cmd": "cargo test {filter}",
+        "test_filter_cmd": "cargo test {test_target} {filter}",
         "fmt_fix_cmd": "cargo fmt",
         "clippy_fix_cmd": "cargo clippy --fix --allow-dirty --allow-staged --allow-no-vcs",
         "fmt_check_cmd": "cargo fmt -- --check",

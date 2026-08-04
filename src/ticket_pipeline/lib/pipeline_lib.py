@@ -252,11 +252,11 @@ def resolve_step_models(
 # convention every other relative path in this module already relies on.
 #
 # test_filter_cmd is used by next_step.py's per-criterion phases
-# (run_scoped_test) - {filter} is substituted with the qualified test
-# name recorded for that criterion's frame. Compiling can't be scoped to
-# one test (a test binary compiles everything in it regardless of which
-# test you'll filter at runtime), so there's no filtered equivalent of
-# test_compile_cmd - only the run is ever scoped.
+# (run_scoped_test) - {test_target} is substituted with the criterion's
+# single Rust test-binary target when it can be derived, and {filter} with
+# the qualified test name recorded for that criterion's frame. When the
+# files do not identify one target, both commands fall back to their
+# package/workspace scope.
 #
 # fmt_fix_cmd/clippy_fix_cmd/fmt_check_cmd/clippy_cmd are used only by
 # next_step.py's TICKET_VALIDATE phase (run_lint_gate) - lint/style
@@ -293,13 +293,10 @@ def extract_test_output_signal(output: str, pattern: str, context_lines: int = 1
     Filter a test run's raw stdout+stderr down to the lines a human
     actually needs to see why it's red, using the current toolchain's
     test_output_signal_pattern (see toolchains.py - built for exactly
-    this, previously unused). Necessary because test_filter_cmd's
-    default (e.g. cargo's "cargo test {filter}") isn't scoped to a
-    single test binary - it's a name filter applied across every
-    integration test file in the project, so the raw output is mostly
-    "Running tests\\X.rs (...)" binary-listing noise for files that
-    have nothing to do with the criterion at hand, with the actual
-    panic/assertion detail buried or scrolled past entirely.
+    this, previously unused). The {test_target} placeholder scopes a run
+    to one test binary when the criterion's files identify one; otherwise
+    the command retains its package/workspace scope, keeping output focused
+    on the criterion.
 
     Keeps each matching line plus up to `context_lines` following lines
     (a panic message's expected-vs-actual detail follows the "panicked
@@ -2345,31 +2342,72 @@ def extract_review_findings(review_text: str) -> list[str]:
     ]
 
 
+def derive_test_target(file_paths: list[str] | None) -> str:
+    """Derive one cargo test target, or ``""`` for workspace scope."""
+    targets: set[str] = set()
+    for file_path in file_paths or []:
+        normalized = file_path.replace("\\", "/").lstrip("./")
+        if normalized.startswith("tests/") and normalized.endswith(".rs"):
+            name = normalized[len("tests/") : -len(".rs")]
+            if "/" not in name:
+                targets.add(f"--test {name}")
+        elif normalized.startswith("src/"):
+            targets.add("--lib")
+    return targets.pop() if len(targets) == 1 else ""
+
+
 def run_scoped_test(
-    qualified_test_name: str, commands: dict, label: str, quiet: bool = False
+    qualified_test_name: str,
+    commands: dict,
+    label: str,
+    quiet: bool = False,
+    test_target: str = "",
 ) -> subprocess.CompletedProcess:
+    """Run one qualified test, optionally scoped to a single test binary.
+
+    For a top-level Rust integration-test file ``tests/<name>.rs``, callers
+    pass ``test_target`` as ``--test <name>``; an empty target intentionally
+    preserves package/workspace scope. Templates may contain
+    ``{test_target}`` and ``{filter}`` placeholders; each is substituted
+    literally (in target-then-filter order), with the target placeholder
+    becoming empty on the workspace-scope fallback.
+    """
     clean_name = qualified_test_name.strip().strip("`")
-    command_str = commands["test_filter_cmd"].format(filter=clean_name)
+    command_template = commands["test_filter_cmd"]
+    command_str = command_template.replace("{test_target}", test_target)
+    command_str = command_str.replace("{filter}", clean_name)
     return run_command(command_str, label, quiet=quiet)
 
 
 def run_scoped_tests(
-    qualified_test_names: list[str], commands: dict, label: str, quiet: bool = False
+    qualified_test_names: list[str],
+    commands: dict,
+    label: str,
+    quiet: bool = False,
+    file_paths: list[str] | None = None,
 ) -> list[subprocess.CompletedProcess]:
+
     """
     Like run_scoped_test, but for a criterion tracking more than one
-    test: loops run_scoped_test once per name, in order, so callers can
-    zip(qualified_test_names, results) to know which specific test(s)
-    are red/green. No toolchain's test_filter_cmd is asked to take more
-    than one name at once - N separate subprocess calls is simple and
-    correct; a composite OR-filter per toolchain would be a real
-    optimization but isn't needed for what should be a small N in
-    practice. A single-element list behaves identically to calling
-    run_scoped_test directly - this is the general form, not a special
-    multi-test path.
+    test: derives the criterion's single test-binary target once, then
+    loops run_scoped_test once per name, in order, so callers can zip
+    (qualified_test_names, results) to know which specific test(s) are
+    red/green. No toolchain's test_filter_cmd is asked to take more than
+    one name at once - N separate subprocess calls is simple and correct;
+    a composite OR-filter per toolchain would be a real optimization but
+    isn't needed for what should be a small N in practice. A single-element
+    list behaves identically to calling run_scoped_test directly - this is
+    the general form, not a special multi-test path.
     """
+    test_target = derive_test_target(file_paths)
     return [
-        run_scoped_test(name, commands, f"{label} ({name})", quiet=quiet)
+        run_scoped_test(
+            name,
+            commands,
+            f"{label} ({name})",
+            quiet=quiet,
+            test_target=test_target,
+        )
         for name in qualified_test_names
     ]
 
@@ -3244,8 +3282,17 @@ def build_test_criterion_prompt(
     plan_context: str,
     existing_test_refs: list[str] | None = None,
     verification: str = "test",
+    test_filter_cmd: str = "",
 ) -> str:
     instructions = load_prompt_body(TEST_CRITERION_PROMPT_FILE)
+    filter_command_note = (
+        f"\n\nThe project's test filter command is: `{test_filter_cmd}`. "
+        "The TEST_WITNESS qualified name will be substituted verbatim for "
+        "`{filter}` in this command; choose a name that selects exactly the "
+        "witnessed test."
+        if test_filter_cmd
+        else ""
+    )
     if verification == "test-refactor":
         existing_test_section = (
             f"\n\nThis criterion is about refactoring test code structure "
@@ -3284,7 +3331,7 @@ def build_test_criterion_prompt(
         f"criterion, extracted from the gap plan - already complete and "
         f"current, no need to read_file it again:\n\n{plan_context}\n\n"
         f"{write_instruction}\n\n{criterion}"
-        f"{existing_test_section}\n\n{_HOST_PLATFORM_NOTE}"
+        f"{existing_test_section}\n\n{_HOST_PLATFORM_NOTE}{filter_command_note}"
     )
 
 
@@ -3368,9 +3415,21 @@ def run_test_for_criterion(
 
 
 def build_test_criterion_fix_prompt(
-    criterion: str, plan_context: str, file_paths: list[str], error_output: str
+    criterion: str,
+    plan_context: str,
+    file_paths: list[str],
+    error_output: str,
+    test_filter_cmd: str = "",
 ) -> str:
     instructions = load_prompt_body(TEST_CRITERION_PROMPT_FILE)
+    filter_command_note = (
+        f"\n\nThe project's test filter command is: `{test_filter_cmd}`. "
+        "The TEST_WITNESS qualified name will be substituted verbatim for "
+        "`{filter}` in this command; choose a name that selects exactly the "
+        "witnessed test."
+        if test_filter_cmd
+        else ""
+    )
     file_list = ", ".join(file_paths)
     return (
         f"{instructions}\n\n---\n\n"
@@ -3387,7 +3446,7 @@ def build_test_criterion_fix_prompt(
         f"implement the production behaviour they're testing for. The "
         f"criterion must remain covered exactly as before; only the "
         f"compile error should be fixed.\n\n"
-        f"Compile error:\n\n```\n{error_output}\n```\n\n{_HOST_PLATFORM_NOTE}"
+        f"Compile error:\n\n```\n{error_output}\n```\n\n{_HOST_PLATFORM_NOTE}{filter_command_note}"
     )
 
 
@@ -3398,8 +3457,17 @@ def build_test_criterion_quality_fix_prompt(
     test_names: list[str],
     quality_concern: str,
     test_was_green: bool,
+    test_filter_cmd: str = "",
 ) -> str:
     instructions = load_prompt_body(TEST_CRITERION_PROMPT_FILE)
+    filter_command_note = (
+        f"\n\nThe project's test filter command is: `{test_filter_cmd}`. "
+        "The TEST_WITNESS qualified name will be substituted verbatim for "
+        "`{filter}` in this command; choose a name that selects exactly the "
+        "witnessed test."
+        if test_filter_cmd
+        else ""
+    )
     file_list = ", ".join(file_paths)
     green_note = (
         "Your test passed immediately (green) when run against the current "
@@ -3431,7 +3499,7 @@ def build_test_criterion_quality_fix_prompt(
         f"read_file {file_list} and fix {'it' if len(file_paths) == 1 else 'them'} "
         f"with write_file so the suite still compiles and the criterion is "
         f"genuinely exercised.\n\n"
-        f"Reviewer's concern:\n\n{quality_concern}\n\n{_HOST_PLATFORM_NOTE}"
+        f"Reviewer's concern:\n\n{quality_concern}\n\n{_HOST_PLATFORM_NOTE}{filter_command_note}"
     )
 
 
@@ -3477,7 +3545,12 @@ def run_test_for_criterion_with_compile_retry(
 
     for attempt in range(1, max_attempts + 1):
         if attempt == 1:
-            prompt = build_test_criterion_prompt(criterion, plan_context, existing_test_refs)
+            prompt = build_test_criterion_prompt(
+                criterion,
+                plan_context,
+                existing_test_refs,
+                test_filter_cmd=commands.get("test_filter_cmd", ""),
+            )
         else:
             log.warning(
                 "-- Compile failed (attempt %d/%d). Feeding the compile error "
@@ -3486,7 +3559,11 @@ def run_test_for_criterion_with_compile_retry(
                 max_attempts,
             )
             prompt = build_test_criterion_fix_prompt(
-                criterion, plan_context, file_paths, last_error
+                criterion,
+                plan_context,
+                file_paths,
+                last_error,
+                test_filter_cmd=commands.get("test_filter_cmd", ""),
             )
 
         def attempt_step():
@@ -3524,8 +3601,10 @@ def run_test_for_criterion_with_compile_retry(
             )
         file_paths, test_names = [w[0] for w in witnesses], [w[1] for w in witnesses]
 
+        test_target = derive_test_target(file_paths)
+        compile_command = commands["test_compile_cmd"].replace("{test_target}", test_target)
         compile_result = run_command(
-            commands["test_compile_cmd"],
+            compile_command,
             f"test compile gate (attempt {attempt}/{max_attempts})",
         )
         if compile_result.returncode == 0:
@@ -3738,6 +3817,7 @@ def run_test_for_criterion_with_full_retry(
                     plan_context,
                     existing_test_refs,
                     verification=verification,
+                    test_filter_cmd=commands.get("test_filter_cmd", ""),
                 )
         elif failure_kind == "compile":
             log.warning(
@@ -3747,7 +3827,11 @@ def run_test_for_criterion_with_full_retry(
                 limit_desc,
             )
             prompt = build_test_criterion_fix_prompt(
-                criterion, plan_context, file_paths, last_error
+                criterion,
+                plan_context,
+                file_paths,
+                last_error,
+                test_filter_cmd=commands.get("test_filter_cmd", ""),
             )
         elif failure_kind in ("quality-red", "quality-green"):
             log.warning(
@@ -3763,6 +3847,7 @@ def run_test_for_criterion_with_full_retry(
                 test_names,
                 last_error,
                 test_was_green=(failure_kind == "quality-green"),
+                test_filter_cmd=commands.get("test_filter_cmd", ""),
             )
 
         # -- Run Tester ---------------------------------------------------
@@ -3784,8 +3869,10 @@ def run_test_for_criterion_with_full_retry(
             return None, None, [], None, None
 
         # -- Gate 1: compile ---------------------------------------------
+        test_target = derive_test_target(file_paths)
+        compile_command = commands["test_compile_cmd"].replace("{test_target}", test_target)
         compile_result = run_command(
-            commands["test_compile_cmd"],
+            compile_command,
             f"test compile gate (attempt {attempt}, {limit_desc})",
         )
         if compile_result.returncode != 0:
@@ -3808,6 +3895,7 @@ def run_test_for_criterion_with_full_retry(
             commands,
             f"red check (attempt {attempt}, {limit_desc})",
             quiet=True,
+            file_paths=file_paths,
         )
 
         # -- Gate 3: quality review --------------------------------------

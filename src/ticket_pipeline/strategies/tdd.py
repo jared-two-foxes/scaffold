@@ -348,7 +348,9 @@ def manual_test_authoring(
     test_files, test_names = _parse_manual_test_refs(frame, manual_test_refs)
     frame.test_files = test_files
     frame.test_names = test_names
-    compile_result = lib.run_command(ctx.commands["test_compile_cmd"], "manual test compile gate")
+    test_target = lib.derive_test_target(test_files)
+    compile_command = ctx.commands["test_compile_cmd"].replace("{test_target}", test_target)
+    compile_result = lib.run_command(compile_command, "manual test compile gate")
     if compile_result.returncode != 0:
         lib.die_with_log(
             "manual-test",
