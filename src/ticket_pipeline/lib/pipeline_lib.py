@@ -1771,8 +1771,12 @@ def ensure_validating_sentinel(
     frame - the case where this is a resumed retry after a prior
     validation failure, not a fresh one.
     """
-    top = peek_frame()
+    stack = load_stack()
+    top = stack[0] if stack else None
     if top is not None and top.ticket == ticket_id and top.status == VALIDATING_STATUS:
+        if ticket_snapshot is not None and top.ticket_snapshot is None:
+            top.ticket_snapshot = ticket_snapshot
+            save_stack(stack)
         return
     push_frames(
         [

@@ -203,6 +203,18 @@ def do_pop(
     lib.pop_frame()
     new_stack = lib.load_stack()
 
+    # If we're returning to the validating sentinel for the same ticket,
+    # keep the snapshot alive even if the sentinel was created without one.
+    if (
+        new_stack
+        and new_stack[0].ticket == just_popped_ticket
+        and new_stack[0].status == lib.VALIDATING_STATUS
+        and new_stack[0].ticket_snapshot is None
+        and frame.ticket_snapshot is not None
+    ):
+        new_stack[0].ticket_snapshot = frame.ticket_snapshot
+        lib.save_stack(new_stack)
+
     render.print_line()
     render.print_line(f"-- Criterion done: {just_popped_criterion}")
 
@@ -256,6 +268,16 @@ def do_ticket_validate(
     plan_model = ctx.step_models.get("plan", ctx.model)
     narrow_model = ctx.step_models.get("narrow", ctx.model)
     review_model = ctx.step_models.get("review", ctx.model)
+    if ticket_snapshot is None:
+        stack = lib.load_stack()
+        top = stack[0] if stack else None
+        if (
+            top is not None
+            and top.ticket == ticket_id
+            and top.status == lib.VALIDATING_STATUS
+            and top.ticket_snapshot is not None
+        ):
+            ticket_snapshot = top.ticket_snapshot
     lib.ensure_validating_sentinel(ticket_id, ticket_snapshot=ticket_snapshot)
 
     render.print_line()
@@ -298,6 +320,7 @@ def do_ticket_validate(
                 test_names=None,
                 status="pending",
                 origin="validate-missed",
+                ticket_snapshot=ticket_content,
                 # validate-missed criteria come from a re-narrow over
                 # existing gap-plan text; use the parsed tags when
                 # present, and fall back to "test"/"tdd" for older plans
@@ -339,6 +362,7 @@ def do_ticket_validate(
             )
         render.print_line(f"-- Token usage: {ai_client.usage}")
         sys.exit(0)
+        return
 
     lib.run_lint_gate(ctx.commands)
 
@@ -410,8 +434,9 @@ def do_ticket_validate(
             )
         render.print_line(f"-- Token usage: {ai_client.usage}")
         sys.exit(0)
+        return
 
-    do_push_review_findings(ticket_id, review_text)
+    do_push_review_findings(ticket_id, review_text, ticket_content=ticket_content)
 
 
 def print_declined_criteria(
@@ -441,7 +466,11 @@ def print_declined_criteria(
     )
 
 
-def do_push_review_findings(ticket_id: str, review_text: str) -> None:
+def do_push_review_findings(
+    ticket_id: str,
+    review_text: str,
+    ticket_content: str | None = None,
+) -> None:
     findings = lib.extract_review_findings(review_text)
     if not findings:
         lib.die_with_log(
@@ -460,6 +489,7 @@ def do_push_review_findings(ticket_id: str, review_text: str) -> None:
             test_names=None,
             status="pending",
             origin="review",
+            ticket_snapshot=ticket_content,
             # review findings come from reviewer prose and never carry
             # strategy tags; default to "tdd" for backward compatibility.
             strategy=lib.extract_strategy(f"- [ ] {finding}") or "tdd",
