@@ -28,3 +28,6 @@ desktop.ini
 
 # Adhoc ticket files
 .ticket-adhoc-*.md
+
+# Test side-effect artifacts
+src/generated.py
