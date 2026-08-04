@@ -28,8 +28,8 @@ criterion.
 - `list_dir(path)` - list a directory's entries.
 - `ask_user_prompt(question)` - last resort only. This pipeline is
   single-shot and non-interactive: calling this immediately aborts the
-  entire run with your question as the failure reason. There is no
-  human available to answer and no retry. Treating a criterion as
+  entire run with the failure reason. There is no human
+  available to answer and no retry. Treating a criterion as
   UNKNOWN (see Step 2) is almost always the right move instead of
   asking - prefer it.
 - `run_command(command)` - **not supported.** Calling this aborts the
@@ -45,8 +45,8 @@ and `list_dir`.
 ## Step 0 - Load acceptance criteria
 
 The ticket and the implementation plan (`.implementation-plan.md`) are
-provided directly in the prompt below - no need to `read_file` either of
-those again. Use its
+provided directly in the prompt below - no need to `read_file` either
+of those again. Use its
 
 ## Acceptance Criteria section. Only use `read_file`/`list_dir` for the
 
@@ -73,14 +73,14 @@ For each acceptance criterion:
 - Use `read_file`/`list_dir` to find the specific test(s), assertion(s),
   or production code that demonstrates it is met _in the current state_
   - not "was touched by the most recent change."
-- For a documentation/manual-verification criterion (see Step 4 below),
-  there is no test to find - the evidence is the prose itself. Read the
-  file(s) the criterion names (or, if none are named, the ones most
-  plausibly relevant) and judge whether the actual content satisfies
-  what the criterion asks for, the same way you'd judge any other piece
-  of evidence. A file merely existing or being mentioned somewhere is
-  not enough - the specific thing the criterion describes needs to
-  actually be present and accurate.
+  - For a documentation/manual-verification criterion (see Step 4 below),
+    there is no test to find - the evidence is the prose itself. Read the
+    file(s) the criterion names (or, if none are named, the ones most
+    plausibly relevant) and judge whether the actual content satisfies
+    what the criterion asks for, the same way you'd judge any other piece
+    of evidence. A file merely existing or being mentioned somewhere is
+    not enough - the specific thing the criterion describes needs to
+    actually be present and accurate.
 - For criteria that name an exact command (e.g. "`cargo test` passes"),
   you cannot run it yourself. Two different shapes of this come up:
   - The command-criterion is the _only_ evidence for a specific behavior
@@ -93,8 +93,8 @@ For each acceptance criterion:
     above," referring to criteria you've already judged separately) -
     this is not new evidence to chase, it's a gate the pipeline already
     enforces downstream (a full-suite test run and lint check run after
-    implementation, regardless of what this document says). Mark it
-    PASS once every criterion it references is itself PASS; don't
+    implementation, regardless of what this document says). Mark it PASS
+    once every criterion it references is itself PASS; don't
     retain it just because you personally can't execute it.
 - Mark it PASS or FAIL, citing the evidence (test name, code excerpt, or
   file/line).
@@ -107,7 +107,7 @@ For each acceptance criterion:
   which: "no test/code covers this at all" versus "one or more specific
   existing tests currently assert the _old_ behavior, and this criterion
   wants it changed." For the second case, cite each such test's exact
-  file and fully-qualified name as your evidence (the same form the
+  file and fully-qualified name as the evidence (the same form the
   codebase's test runner would use) - not just that it exists, but which
   one(s); this is occasionally more than one test if the old behavior is
   asserted from more than one place. This becomes the (repeatable)
@@ -216,18 +216,10 @@ Key distinctions:
 For each criterion retained in Step 3, decide how the work should be
 produced. This is **independent of verification**:
 
-- `tdd`: write a failing test first, then implement until the test
-  passes. Use when a red/green test meaningfully drives implementation.
-- `direct`: implement first, then verify. Use when the change is
-  well-defined enough that direct implementation and verification add
-  more value than a test-first loop. A criterion tagged `verify: test`
-  may legitimately use `strategy: direct` — automated test verification
-  does not require test-first implementation.
-- `refactor`: restructure existing code without changing behavior;
-  existing tests serve as the safety net. Always accompanied by
-  `existing_test:` refs.
-- `manual`: implementation requires human action; no AI implementation
-  step is invoked.
+- `tdd`: write a failing test first, then implement until the test passes. Use when a red/green test meaningfully drives implementation.
+- `direct`: implement first, then verify. Use when the change is well-defined enough that direct implementation and verification add more value than a test-first loop. A criterion tagged `verify: test` may legitimately use `strategy: direct` — automated test verification does not require test-first implementation.
+- `refactor`: restructure existing code without changing behavior; existing tests serve as the safety net. Always accompanied by `existing_test:` refs.
+- `manual`: implementation requires human action; no AI implementation step is invoked.
 
 **Important:** `verify: test` and `strategy: tdd` are independent
 choices. A criterion verified by an automated test can use `direct`
@@ -295,8 +287,8 @@ below. The caller writes this text verbatim to `.gap-plan.md`.
 
 ## Implementation Plan
 
-- [file or component]: [one-sentence description]
-  (only entries the retained criteria need; omit this section entirely if
+- `[file or component]`: [one-sentence description]
+  (only entries the retained criteria need; file paths must be backtick-quoted in every entry; omit this section entirely if
   no criteria remain)
   \`\`\`
 
@@ -329,5 +321,5 @@ below. The caller writes this text verbatim to `.gap-plan.md`.
   refs (you can't refactor a test that doesn't exist yet).
 - "existing_test:" is optional for `test` (only when Step 2 confirmed a
   specific existing test to point at), but required for `test-refactor`
-  and `refactor`; it never accompanies `manual`, and is never guessed
-  at (see Step 4).
+  and `refactor`; it never accompanies `manual`, and is never guessed at
+  (see Step 4).
