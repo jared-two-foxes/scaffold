@@ -25,3 +25,6 @@ desktop.ini
 
 # Editor artifacts
 .pi/
+
+# Adhoc ticket files
+.ticket-adhoc-*.md
