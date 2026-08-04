@@ -17,7 +17,6 @@ from ticket_pipeline.planning import (
     PlanningError,
     parse_gap_plan,
 )
-from ticket_pipeline.strategies import manual as manual_strategy
 from ticket_pipeline.strategies import refactor as refactor_strategy
 from ticket_pipeline.strategies import tdd as tdd_strategy
 
