@@ -268,12 +268,7 @@ def build_implement_criterion_fix_prompt(
 def build_implement_criterion_direct_prompt(
     criterion: str, plan_context: str, strategy: str = "manual"
 ) -> str:
-    prompt_file = (
-        IMPLEMENT_CRITERION_DIRECT_PROMPT_FILE
-        if strategy == "manual"
-        else IMPLEMENT_CRITERION_DIRECT_STRATEGY_PROMPT_FILE
-    )
-    instructions = lib.load_prompt_body(prompt_file)
+    instructions = lib.load_prompt_body(IMPLEMENT_CRITERION_DIRECT_STRATEGY_PROMPT_FILE)
     return (
         f"{instructions}\n\n---\n\n"
         f"Here is the relevant Implementation Plan context for this "
@@ -292,12 +287,7 @@ def build_implement_criterion_direct_fix_prompt(
     fresh_start: bool = False,
     strategy: str = "manual",
 ) -> str:
-    prompt_file = (
-        IMPLEMENT_CRITERION_DIRECT_PROMPT_FILE
-        if strategy == "manual"
-        else IMPLEMENT_CRITERION_DIRECT_STRATEGY_PROMPT_FILE
-    )
-    instructions = lib.load_prompt_body(prompt_file)
+    instructions = lib.load_prompt_body(IMPLEMENT_CRITERION_DIRECT_STRATEGY_PROMPT_FILE)
     changed_list = "\n".join(f"- {p}" for p in changed_so_far) or "- (none recorded)"
     failure_desc = (
         "A previous attempt failed and its changes have been reverted. "
