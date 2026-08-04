@@ -60,9 +60,7 @@ def _safe_path(path_str: str) -> Path:
     return resolved
 
 
-def read_file(
-    path: str, start_line: int | None = None, end_line: int | None = None
-) -> str:
+def read_file(path: str, start_line: int | None = None, end_line: int | None = None) -> str:
     """
     Read a file's content. With no range, returns the raw full text plus
     a trailing line-count note (e.g. so a model sizing up a file before
@@ -194,9 +192,7 @@ def search_files(
         return f"(no matches for {pattern!r} under {path})"
     output = "\n".join(results)
     if truncated:
-        output += (
-            f"\n(showing first {max_results} matches - narrow your pattern or path)"
-        )
+        output += f"\n(showing first {max_results} matches - narrow your pattern or path)"
     return output
 
 
@@ -692,9 +688,7 @@ def make_executor(
         nonlocal compile_calls
         if name == ASK_USER_PROMPT_TOOL_NAME:
             question = args.get("question", "(no question provided)")
-            raise ClarificationNeeded(
-                f"model requested human clarification mid-task: {question}"
-            )
+            raise ClarificationNeeded(f"model requested human clarification mid-task: {question}")
         if name == ASK_USER_QUESTION_TOOL_NAME:
             question = args.get("question", "(no question provided)")
             if not interactive:
@@ -711,9 +705,7 @@ def make_executor(
             )
         if name == RUN_COMMAND_TOOL_NAME:
             command = args.get("command", "(no command provided)")
-            log.warning(
-                "-- Refused run_command(%r) - recoverable, not aborting.", command
-            )
+            log.warning("-- Refused run_command(%r) - recoverable, not aborting.", command)
             return (
                 "ERROR: run_command is not supported - there is no shell behind this tool, "
                 "ever, calling it again will not work either. Use search_files instead of "
@@ -784,9 +776,7 @@ def make_executor(
                     return f"ERROR: refused to overwrite protected file: {path}"
                 result = write_file(path, args["content"])
                 full_read_paths.discard(path)
-                partial_ranges.difference_update(
-                    {key for key in partial_ranges if key[0] == path}
-                )
+                partial_ranges.difference_update({key for key in partial_ranges if key[0] == path})
                 if written_paths is not None:
                     written_paths.append(path)
                 return result
@@ -798,9 +788,7 @@ def make_executor(
                     return f"ERROR: refused to overwrite protected file: {path}"
                 result = edit_file(path, args["old_text"], args["new_text"])
                 full_read_paths.discard(path)
-                partial_ranges.difference_update(
-                    {key for key in partial_ranges if key[0] == path}
-                )
+                partial_ranges.difference_update({key for key in partial_ranges if key[0] == path})
                 if written_paths is not None:
                     written_paths.append(path)
                 return result

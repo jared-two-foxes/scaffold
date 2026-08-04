@@ -160,9 +160,7 @@ def mechanical_complexity_check(
         signals.append(f"{n} acceptance criteria (threshold: {threshold})")
     if conjunction_hits:
         unique = list(dict.fromkeys(h.lower() for h in conjunction_hits))
-        signals.append(
-            f"scope conjunction(s) in ticket text: {', '.join(repr(h) for h in unique)}"
-        )
+        signals.append(f"scope conjunction(s) in ticket text: {', '.join(repr(h) for h in unique)}")
 
     if n < SIMPLE_THRESHOLD and not signals:
         return (
@@ -173,9 +171,7 @@ def mechanical_complexity_check(
 
     if n >= threshold:
         verdict = (
-            MechanicalVerdict.COMPLEX
-            if n >= COMPLEX_THRESHOLD
-            else MechanicalVerdict.AMBIGUOUS
+            MechanicalVerdict.COMPLEX if n >= COMPLEX_THRESHOLD else MechanicalVerdict.AMBIGUOUS
         )
         return (
             verdict,
@@ -260,13 +256,9 @@ def run_split_step(
     try:
         result = lib.run_ai_step_with_retry(
             lambda: ai_client.run_with_tools(
-                build_split_prompt(
-                    ticket_content, mechanical_explanation, review_context
-                ),
+                build_split_prompt(ticket_content, mechanical_explanation, review_context),
                 tools.READ_ONLY_TOOLS,
-                tools.make_executor(
-                    allow_write=False, preloaded_paths={TICKET_DEDUP_KEY}
-                ),
+                tools.make_executor(allow_write=False, preloaded_paths={TICKET_DEDUP_KEY}),
                 "split-ticket",
                 model=model,
                 summarize_call=tools.summarize_tool_call,
@@ -277,9 +269,7 @@ def run_split_step(
         lib.die(str(e))
     if SPLIT_FILE_REPORT_MARKER not in result.text:
         lib.render_step_output(result.text, level=0)
-        lib.die(
-            "Complexity reviewer did not produce a valid report (see output above)."
-        )
+        lib.die("Complexity reviewer did not produce a valid report (see output above).")
     return result.text
 
 
@@ -385,9 +375,7 @@ def main() -> None:
 
     # 3. AI step
     render.print_line(f"-- Running AI complexity review for {args.ticket_id} ...")
-    report = run_split_step(
-        ticket_content, mechanical_explanation, args.model, review_context
-    )
+    report = run_split_step(ticket_content, mechanical_explanation, args.model, review_context)
     saved_path = save_split(args.ticket_id, ticket_content, report)
 
     render.print_line()

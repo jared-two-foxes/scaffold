@@ -86,9 +86,7 @@ class AgentPlanningStrategy:
         self.max_invalid_submissions = max_invalid_submissions
 
     def plan(self, request: PlanningRequest) -> PlanningResult:
-        log.info(
-            "-- Agent planning strategy: starting session for %s", request.ticket_id
-        )
+        log.info("-- Agent planning strategy: starting session for %s", request.ticket_id)
 
         # Write ticket snapshot
         lib.TICKET_FILE.write_text(request.ticket_content, encoding="utf-8")

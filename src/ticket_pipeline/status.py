@@ -110,9 +110,7 @@ def show_status(show_log: bool = False) -> None:
     vtag = "manual" if frame.verification == "manual" else "test"
 
     _print_section("▶ Current criterion:")
-    render.print_line(
-        f"  [{vtag} | {frame.status}] {_strip_html_comment(frame.criterion)}"
-    )
+    render.print_line(f"  [{vtag} | {frame.status}] {_strip_html_comment(frame.criterion)}")
 
     # Show plan context if available (truncated)
     if frame.plan_context:

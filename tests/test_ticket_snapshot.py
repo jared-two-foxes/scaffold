@@ -186,7 +186,7 @@ class TestResolveTicketFramesSnapshot(unittest.TestCase):
 
 class TestReviewFindingsSnapshot(unittest.TestCase):
     def test_review_findings_carry_ticket_snapshot(self):
-        review_text = "CHANGES REQUESTED\n- fix the bug"
+        review_text = "## Findings\n\n- [ ] fix the bug"
         captured: dict[str, object] = {}
 
         def fake_filter(frames):
@@ -233,6 +233,11 @@ class TestValidateThreadsTicketSnapshot(unittest.TestCase):
                 patch.object(lib, "run_smoke_gate"),
                 patch.object(lib, "git_changed_files", return_value=["src/example.py"]),
                 patch.object(lib, "run_review_gate", return_value=("CHANGES REQUESTED", "review")),
+                patch.object(
+                    next_step.tools,
+                    "write_file_block",
+                    side_effect=lambda path: (lambda content: content),
+                ),
                 patch.object(next_step, "do_push_review_findings") as mock_review,
             ):
                 next_step.do_ticket_validate(
@@ -331,6 +336,11 @@ class TestValidateMissedSnapshotCarryforward(unittest.TestCase):
                 patch.object(lib, "run_smoke_gate"),
                 patch.object(lib, "git_changed_files", return_value=["src/example.py"]),
                 patch.object(lib, "run_review_gate", return_value=("APPROVED", "review")),
+                patch.object(
+                    next_step.tools,
+                    "write_file_block",
+                    side_effect=lambda path: (lambda content: content),
+                ),
                 patch.object(next_step.sys, "exit") as mock_exit,
             ):
                 seeded_frames = push_ticket.resolve_ticket_frames(
@@ -535,11 +545,10 @@ class TestValidateOnlyAndFromGapPlanWithoutSnapshots(unittest.TestCase):
                 ),
             ):
                 push_ticket.main()
-
-            stack = lib.load_stack()
-            self.assertEqual(1, len(stack))
-            self.assertEqual(lib.VALIDATING_STATUS, stack[0].status)
-            self.assertIsNone(stack[0].ticket_snapshot)
+                stack = lib.load_stack()
+                self.assertEqual(1, len(stack))
+                self.assertEqual(lib.VALIDATING_STATUS, stack[0].status)
+                self.assertIsNone(stack[0].ticket_snapshot)
 
             ctx = self._make_ctx()
             with (
@@ -558,6 +567,11 @@ class TestValidateOnlyAndFromGapPlanWithoutSnapshots(unittest.TestCase):
                 patch.object(lib, "run_smoke_gate"),
                 patch.object(lib, "git_changed_files", return_value=["src/example.py"]),
                 patch.object(lib, "run_review_gate", return_value=("APPROVED", "review")),
+                patch.object(
+                    next_step.tools,
+                    "write_file_block",
+                    side_effect=lambda path: (lambda content: content),
+                ),
                 patch.object(next_step.sys, "exit") as mock_exit,
             ):
                 next_step.do_ticket_validate(
@@ -620,11 +634,10 @@ class TestValidateOnlyAndFromGapPlanWithoutSnapshots(unittest.TestCase):
                 ),
             ):
                 push_ticket.main()
-
-            frames = lib.load_stack()
-            self.assertEqual(1, len(frames))
-            self.assertEqual("ticket", frames[0].origin)
-            self.assertIsNone(frames[0].ticket_snapshot)
+                frames = lib.load_stack()
+                self.assertEqual(1, len(frames))
+                self.assertEqual("ticket", frames[0].origin)
+                self.assertIsNone(frames[0].ticket_snapshot)
 
             ctx = self._make_ctx()
             with (
@@ -643,6 +656,11 @@ class TestValidateOnlyAndFromGapPlanWithoutSnapshots(unittest.TestCase):
                 patch.object(lib, "run_smoke_gate"),
                 patch.object(lib, "git_changed_files", return_value=["src/example.py"]),
                 patch.object(lib, "run_review_gate", return_value=("APPROVED", "review")),
+                patch.object(
+                    next_step.tools,
+                    "write_file_block",
+                    side_effect=lambda path: (lambda content: content),
+                ),
                 patch.object(next_step.sys, "exit") as mock_exit,
             ):
                 next_step.do_ticket_validate(

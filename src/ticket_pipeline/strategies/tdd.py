@@ -35,22 +35,16 @@ def do_await_impl(
     if len(test_results) == 1:
         render.print_line("-- Test written. Implement now:")
     else:
-        render.print_line(
-            f"-- {len(red)} of {len(test_results)} test(s) still to implement:"
-        )
+        render.print_line(f"-- {len(red)} of {len(test_results)} test(s) still to implement:")
     for f, n, _ in red:
         render.print_line(f"   {f} :: {n}")
     if green:
         render.print_line("   Already passing (no action needed on these):")
         for f, n, _ in green:
-            tag = (
-                " - unconfirmed, weak-test risk" if n in frame.unconfirmed_tests else ""
-            )
+            tag = " - unconfirmed, weak-test risk" if n in frame.unconfirmed_tests else ""
             render.print_line(f"     {f} :: {n}{tag}")
     render.print_line(f"   Criterion: {frame.criterion}")
-    render.print_line(
-        "   Manual implementation required (--skip-implementation is set)."
-    )
+    render.print_line("   Manual implementation required (--skip-implementation is set).")
     render.print_line("   Implement it by hand, then run 'next_step' to re-check.")
     render.print_line(
         "   (Or run 'next_step' without --skip-implementation for AI implementation.)"
@@ -135,9 +129,7 @@ def do_write_test(
         _handle_no_test_written(stack, frame, ctx)
         return
     if compile_result is None or compile_result.returncode != 0:
-        exit_code = (
-            compile_result.returncode if compile_result is not None else "unknown"
-        )
+        exit_code = compile_result.returncode if compile_result is not None else "unknown"
         lib.die_with_log(
             "test-criterion",
             f"Test does not compile after retries (exit {exit_code}). See output above.",
@@ -169,21 +161,15 @@ def do_write_test(
 
     if not red_names and not unconfirmed:
         paths = lib.extract_referenced_paths(f"{frame.criterion}\n{frame.plan_context}")
-        mechanically_confirmed = bool(paths) and bool(
-            set(paths) & set(lib.git_changed_files())
-        )
+        mechanically_confirmed = bool(paths) and bool(set(paths) & set(lib.git_changed_files()))
         if not mechanically_confirmed and not ctx.accept_manual:
             render.print_line()
-            render.print_line(
-                "-- Tests passed but no plan-referenced file appears in git changes."
-            )
+            render.print_line("-- Tests passed but no plan-referenced file appears in git changes.")
             render.print_line(f"   Criterion: {frame.criterion}")
             render.print_line(
                 "   Verify the implementation touches a file named in the plan context,"
             )
-            render.print_line(
-                "   or run 'next_step --accept-manual' to confirm it's done."
-            )
+            render.print_line("   or run 'next_step --accept-manual' to confirm it's done.")
             sys.exit(0)
         log.info(
             "-- Test(s) passed without implementation - this criterion's gap didn't reproduce."
@@ -256,15 +242,11 @@ def _handle_no_test_written(
     render.print_line("-- Tester wrote no test files for this criterion.")
     render.print_line(
         "-- The criterion may already be satisfied, but it could not be "
-        "confirmed mechanically"
-        + (" or by an AI re-check" if not skip_ai else "")
-        + "."
+        "confirmed mechanically" + (" or by an AI re-check" if not skip_ai else "") + "."
     )
     render.print_line("-- Review the criterion and the current code:")
     render.print_line(f"   {frame.criterion}")
-    render.print_line(
-        "-- If satisfied, run 'next_step --accept-no-test' to pop this frame."
-    )
+    render.print_line("-- If satisfied, run 'next_step --accept-no-test' to pop this frame.")
     render.print_line(
         "-- If not satisfied, investigate why the tester produced nothing "
         "(the gap plan's 'why:' may be stale - the refactor may have "
@@ -279,9 +261,7 @@ def recheck_test_frame(
     frame: "lib.CriterionFrame",
     ctx: "lib.StepContext",
 ) -> None:
-    results = lib.run_scoped_tests(
-        frame.test_names, ctx.commands, "phase check", quiet=True
-    )
+    results = lib.run_scoped_tests(frame.test_names, ctx.commands, "phase check", quiet=True)
     test_results = list(zip(frame.test_files, frame.test_names, results))
     red_names = [n for n, r in zip(frame.test_names, results) if r.returncode != 0]
     frame.unconfirmed_tests = [n for n in frame.unconfirmed_tests if n not in red_names]
@@ -297,21 +277,15 @@ def recheck_test_frame(
 
     if not frame.unconfirmed_tests:
         paths = lib.extract_referenced_paths(f"{frame.criterion}\n{frame.plan_context}")
-        mechanically_confirmed = bool(paths) and bool(
-            set(paths) & set(lib.git_changed_files())
-        )
+        mechanically_confirmed = bool(paths) and bool(set(paths) & set(lib.git_changed_files()))
         if mechanically_confirmed or ctx.accept_manual:
             frame.status = "done"
             lib.save_stack(stack)
             return
         render.print_line()
-        render.print_line(
-            "-- Tests passed but no plan-referenced file appears in git changes."
-        )
+        render.print_line("-- Tests passed but no plan-referenced file appears in git changes.")
         render.print_line(f"   Criterion: {frame.criterion}")
-        render.print_line(
-            "   Verify the implementation touches a file named in the plan context,"
-        )
+        render.print_line("   Verify the implementation touches a file named in the plan context,")
         render.print_line("   or run 'next_step --accept-manual' to confirm it's done.")
         sys.exit(0)
 
@@ -374,9 +348,7 @@ def manual_test_authoring(
     test_files, test_names = _parse_manual_test_refs(frame, manual_test_refs)
     frame.test_files = test_files
     frame.test_names = test_names
-    compile_result = lib.run_command(
-        ctx.commands["test_compile_cmd"], "manual test compile gate"
-    )
+    compile_result = lib.run_command(ctx.commands["test_compile_cmd"], "manual test compile gate")
     if compile_result.returncode != 0:
         lib.die_with_log(
             "manual-test",
@@ -453,24 +425,14 @@ def implement(frame, ctx, feedback=None, previous_changed_files=None):
         )
         sys.exit(1)
     if frame.verification == "test-refactor":
-        render.print_line(
-            "-- This is a test-refactor criterion whose rewrite came back RED."
-        )
-        render.print_line(
-            "   There is no production code to implement - the rewrite itself"
-        )
+        render.print_line("-- This is a test-refactor criterion whose rewrite came back RED.")
+        render.print_line("   There is no production code to implement - the rewrite itself")
         render.print_line("   is incorrect. Fix the test by hand (keep its assertions")
-        render.print_line(
-            "   functionally identical; change only the structural elements"
-        )
-        render.print_line(
-            "   the criterion describes), then run 'next_step' to re-check."
-        )
+        render.print_line("   functionally identical; change only the structural elements")
+        render.print_line("   the criterion describes), then run 'next_step' to re-check.")
         sys.exit(1)
 
-    red_results = lib.run_scoped_tests(
-        frame.test_names, ctx.commands, "pre-implement red check"
-    )
+    red_results = lib.run_scoped_tests(frame.test_names, ctx.commands, "pre-implement red check")
     still_red = [n for n, r in zip(frame.test_names, red_results) if r.returncode != 0]
     if not still_red:
         render.print_line(
@@ -508,16 +470,12 @@ def implement(frame, ctx, feedback=None, previous_changed_files=None):
     render.print_line()
     render.print_line(f"-- Implemented: {frame.criterion}")
     if len(frame.test_names) == 1:
-        render.print_line(
-            f"   Test now green: {frame.test_files[0]} :: {frame.test_names[0]}"
-        )
+        render.print_line(f"   Test now green: {frame.test_files[0]} :: {frame.test_names[0]}")
     else:
         render.print_line(f"   All {len(frame.test_names)} test(s) now green:")
         for test_file, test_name in zip(frame.test_files, frame.test_names):
             render.print_line(f"     {test_file} :: {test_name}")
-    render.print_line(
-        f"   Files changed ({len(changed_files)}): {', '.join(changed_files)}"
-    )
+    render.print_line(f"   Files changed ({len(changed_files)}): {', '.join(changed_files)}")
     render.print_line(f"-- Token usage: {ai_client.usage}")
 
 

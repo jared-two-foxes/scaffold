@@ -81,9 +81,7 @@ def _make_submission(
                 source_criterion="Do the thing",
                 disposition="remaining",
                 rationale="Not yet implemented.",
-                planned_changes=(
-                    PlannedChange(path="src/foo.py", description="Add foo"),
-                ),
+                planned_changes=(PlannedChange(path="src/foo.py", description="Add foo"),),
                 verification="test",
                 implementation_strategy="tdd",
             ),
@@ -207,22 +205,16 @@ class AgentToolsTests(unittest.TestCase):
             self.assertNotIn(forbidden, names)
 
     def test_summarize_submit_plan(self):
-        summary = summarize_agent_tool_call(
-            SUBMIT_PLAN_TOOL_NAME, {"criteria": [{}, {}]}
-        )
+        summary = summarize_agent_tool_call(SUBMIT_PLAN_TOOL_NAME, {"criteria": [{}, {}]})
         self.assertIn("submit_plan", summary)
         self.assertIn("2", summary)
 
     def test_summarize_planning_failed(self):
-        summary = summarize_agent_tool_call(
-            PLANNING_FAILED_TOOL_NAME, {"reason": "oops"}
-        )
+        summary = summarize_agent_tool_call(PLANNING_FAILED_TOOL_NAME, {"reason": "oops"})
         self.assertIn("oops", summary)
 
     def test_summarize_ask_user_input(self):
-        summary = summarize_agent_tool_call(
-            ASK_USER_INPUT_TOOL_NAME, {"question": "What?"}
-        )
+        summary = summarize_agent_tool_call(ASK_USER_INPUT_TOOL_NAME, {"question": "What?"})
         self.assertIn("What?", summary)
 
 
@@ -279,9 +271,7 @@ class ReadOnlyExecutorTests(unittest.TestCase):
 
     def test_preloaded_paths_not_re_read(self):
         exec_ = make_read_only_executor(preloaded_paths={"src/b.py"})
-        with patch(
-            "ticket_pipeline.planning.agent_runner.tool_lib.read_file"
-        ) as mock_read:
+        with patch("ticket_pipeline.planning.agent_runner.tool_lib.read_file") as mock_read:
             result = exec_("read_file", {"path": "src/b.py"})
         mock_read.assert_not_called()
         self.assertIn("duplicate", result)
@@ -306,9 +296,7 @@ def _make_fake_post(responses):
         call_index[0] += 1
         resp = responses[idx]
         if resp is None:
-            return {
-                "choices": [{"message": {"content": "plain text", "tool_calls": None}}]
-            }
+            return {"choices": [{"message": {"content": "plain text", "tool_calls": None}}]}
         return {"choices": [{"message": {"content": None, "tool_calls": resp}}]}
 
     return fake_post
@@ -416,14 +404,10 @@ class AgentRunnerTests(unittest.TestCase):
         responses = [
             [
                 _make_tool_call(SUBMIT_PLAN_TOOL_NAME, submit_args, call_id="c1"),
-                _make_tool_call(
-                    "read_file", {"path": "should_not_be_called.py"}, call_id="c2"
-                ),
+                _make_tool_call("read_file", {"path": "should_not_be_called.py"}, call_id="c2"),
             ],
         ]
-        with patch(
-            "ticket_pipeline.planning.agent_runner.tool_lib.read_file"
-        ) as mock_read:
+        with patch("ticket_pipeline.planning.agent_runner.tool_lib.read_file") as mock_read:
             result = self._run(responses)
         mock_read.assert_not_called()
         self.assertEqual(SUBMIT_PLAN_TOOL_NAME, result.tool_name)
@@ -574,9 +558,7 @@ class SubmissionValidationTests(unittest.TestCase):
             "rationale": "Already done.",
             "evidence": [{"observation": "present at src/x.py", "path": "src/x.py"}],
         }
-        submission, errors = validate_submission(
-            _minimal_submit_args([criterion]), ["AC-1"]
-        )
+        submission, errors = validate_submission(_minimal_submit_args([criterion]), ["AC-1"])
         self.assertIsNotNone(submission)
         self.assertEqual([], errors)
 
@@ -589,9 +571,7 @@ class SubmissionValidationTests(unittest.TestCase):
             "rationale": "Done.",
             "evidence": [{"observation": "found", "path": "src/x.py"}],
         }
-        submission, errors = validate_submission(
-            _minimal_submit_args([criterion]), ["AC-1"]
-        )
+        submission, errors = validate_submission(_minimal_submit_args([criterion]), ["AC-1"])
         self.assertIsNotNone(submission)
         self.assertEqual([], errors)
         assert submission is not None
@@ -694,9 +674,7 @@ class ResultAdapterTests(unittest.TestCase):
         submission = _make_submission(criteria=(remaining,))
         strategy = self._make_strategy()
         result = strategy._to_planning_result(submission, "plan", "gap")
-        self.assertEqual(
-            ("tests/test_x.py::test_old",), result.criteria[0].existing_test_refs
-        )
+        self.assertEqual(("tests/test_x.py::test_old",), result.criteria[0].existing_test_refs)
 
     def test_assumptions_become_diagnostics(self):
         submission = _make_submission(
@@ -717,18 +695,14 @@ class ArtifactRenderingTests(unittest.TestCase):
             ticket_summary="Ticket X",
             approach_summary="Use approach Y",
             assumptions=(AgentAssumption(question="Q?", answer="A", basis="B"),),
-            repository_findings=(
-                AgentEvidence(path="src/main.py", observation="main file"),
-            ),
+            repository_findings=(AgentEvidence(path="src/main.py", observation="main file"),),
             criteria=(
                 AgentCriterionAssessment(
                     criterion_id="AC-1",
                     source_criterion="Do the thing",
                     disposition="remaining",
                     rationale="not done",
-                    planned_changes=(
-                        PlannedChange(path="src/x.py", description="add x"),
-                    ),
+                    planned_changes=(PlannedChange(path="src/x.py", description="add x"),),
                     verification="test",
                     implementation_strategy="tdd",
                     plan_context="Some context",
@@ -913,9 +887,7 @@ class CriterionExtractionTests(unittest.TestCase):
 
     def test_assign_criterion_ids_stable(self):
         ids = assign_criterion_ids(["First", "Second", "Third"])
-        self.assertEqual(
-            [("AC-1", "First"), ("AC-2", "Second"), ("AC-3", "Third")], ids
-        )
+        self.assertEqual([("AC-1", "First"), ("AC-2", "Second"), ("AC-3", "Third")], ids)
 
 
 # ---------------------------------------------------------------------------
@@ -943,24 +915,22 @@ class FakeTranscriptIntegrationTests(unittest.TestCase):
         from ticket_pipeline.lib import pipeline_lib as lib
         from ticket_pipeline.planning import build_ticket_frames
 
-        ticket_content = "# Test Ticket\n\nDescription.\n\n## Acceptance Criteria\n\n- [ ] Add foo support\n"  # noqa: E501
+        ticket_content = (
+            "# Test Ticket\n\nDescription.\n\n## Acceptance Criteria\n\n- [ ] Add foo support\n"  # noqa: E501
+        )
 
         submit_args = {
             "ticket_summary": "Add foo support",
             "approach_summary": "Implement Foo class in src/foo.py",
             "assumptions": [],
-            "repository_findings": [
-                {"path": "src/", "observation": "No foo module found"}
-            ],
+            "repository_findings": [{"path": "src/", "observation": "No foo module found"}],
             "criteria": [
                 {
                     "criterion_id": "AC-1",
                     "source_criterion": "Add foo support",
                     "disposition": "remaining",
                     "rationale": "No foo module exists.",
-                    "planned_changes": [
-                        {"path": "src/foo.py", "description": "Create Foo class"}
-                    ],
+                    "planned_changes": [{"path": "src/foo.py", "description": "Create Foo class"}],
                     "verification": "test",
                     "implementation_strategy": "tdd",
                     "plan_context": "Create src/foo.py with Foo class.",
@@ -1183,9 +1153,7 @@ class FakeTranscriptIntegrationTests(unittest.TestCase):
                     {
                         "message": {
                             "content": None,
-                            "tool_calls": [
-                                _make_tool_call(SUBMIT_PLAN_TOOL_NAME, invalid_args)
-                            ],
+                            "tool_calls": [_make_tool_call(SUBMIT_PLAN_TOOL_NAME, invalid_args)],
                         }
                     }
                 ]

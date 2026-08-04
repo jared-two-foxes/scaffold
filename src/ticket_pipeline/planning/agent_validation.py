@@ -114,9 +114,7 @@ def validate_submission(
             )
 
         if not source or not source.strip():
-            criterion_errors.append(
-                "source_criterion is required and must be non-empty."
-            )
+            criterion_errors.append("source_criterion is required and must be non-empty.")
 
         if not disposition:
             criterion_errors.append("disposition is required.")
@@ -134,9 +132,7 @@ def validate_submission(
         verification = item.get("verification")
         impl_strategy = item.get("implementation_strategy")
         existing_test_refs = tuple(
-            r
-            for r in item.get("existing_test_refs", [])
-            if isinstance(r, str) and r.strip()
+            r for r in item.get("existing_test_refs", []) if isinstance(r, str) and r.strip()
         )
         for ref in existing_test_refs:
             if "::" not in ref:
@@ -154,9 +150,7 @@ def validate_submission(
                     f"{cid}: remaining criteria must have at least one planned_change."
                 )
             if not verification:
-                criterion_errors.append(
-                    f"{cid}: remaining criteria must specify verification."
-                )
+                criterion_errors.append(f"{cid}: remaining criteria must specify verification.")
             elif verification not in VALID_VERIFICATION_MODES:
                 criterion_errors.append(
                     f"{cid}: verification {verification!r} is not valid; "
@@ -179,9 +173,7 @@ def validate_submission(
                     "with a concrete repository observation."
                 )
             if planned_changes:
-                criterion_errors.append(
-                    f"{cid}: satisfied criteria must not have planned_changes."
-                )
+                criterion_errors.append(f"{cid}: satisfied criteria must not have planned_changes.")
 
         elif disposition == "not_applicable":
             if planned_changes:
@@ -240,8 +232,6 @@ def validate_submission(
         criteria=tuple(parsed_criteria),
         cross_cutting_changes=_parse_planned_changes(args.get("cross_cutting_changes")),
         risks=tuple(r for r in args.get("risks", []) if isinstance(r, str)),
-        validation_notes=tuple(
-            n for n in args.get("validation_notes", []) if isinstance(n, str)
-        ),
+        validation_notes=tuple(n for n in args.get("validation_notes", []) if isinstance(n, str)),
     )
     return submission, []

@@ -39,18 +39,14 @@ def implement(frame, ctx, feedback=None, previous_changed_files=None):
 
     render.print_line()
     render.print_line(f"-- Implemented: {frame.criterion}")
-    render.print_line(
-        f"   Files changed ({len(changed_files)}): {', '.join(changed_files)}"
-    )
+    render.print_line(f"   Files changed ({len(changed_files)}): {', '.join(changed_files)}")
     render.print_line(f"-- Token usage: {ai_client.usage}")
     return changed_files
 
 
 def recheck(stack, frame, ctx):
     paths = lib.extract_referenced_paths(f"{frame.criterion}\n{frame.plan_context}")
-    mechanically_confirmed = bool(paths) and bool(
-        set(paths) & set(lib.git_changed_files())
-    )
+    mechanically_confirmed = bool(paths) and bool(set(paths) & set(lib.git_changed_files()))
     if mechanically_confirmed or ctx.accept_manual:
         frame.status = "done"
         lib.save_stack(stack)

@@ -92,9 +92,7 @@ def grade_test_criterion_compiles_and_red(
     """
     commands = lib.load_pipeline_config(Path(lib.PIPELINE_CONFIG_FILE))
 
-    compile_result = lib.run_command(
-        commands["test_compile_cmd"], "bench test compile gate"
-    )
+    compile_result = lib.run_command(commands["test_compile_cmd"], "bench test compile gate")
     if compile_result.returncode != 0:
         tail = (compile_result.stdout + compile_result.stderr)[-1500:]
         return (
@@ -102,12 +100,8 @@ def grade_test_criterion_compiles_and_red(
             f"test does not compile (exit {compile_result.returncode}): {tail}",
         )
 
-    red_results = lib.run_scoped_tests(
-        qualified_test_names, commands, "bench red check"
-    )
-    false_greens = [
-        n for n, r in zip(qualified_test_names, red_results) if r.returncode == 0
-    ]
+    red_results = lib.run_scoped_tests(qualified_test_names, commands, "bench red check")
+    false_greens = [n for n, r in zip(qualified_test_names, red_results) if r.returncode == 0]
     if false_greens:
         return False, (
             f"test(s) passed without implementation - gap didn't reproduce "
@@ -167,9 +161,7 @@ def grade_sa501_debug_redaction_named(plan_text: str) -> tuple[bool, str]:
     lowered = plan_text.lower()
     mentions_target_file = "email_config.rs" in lowered
     mentions_field = "postmark_signing_secret" in lowered
-    mentions_debug_update = "debug" in lowered and (
-        "redact" in lowered or "[redacted]" in lowered
-    )
+    mentions_debug_update = "debug" in lowered and ("redact" in lowered or "[redacted]" in lowered)
     if not mentions_target_file:
         return False, "plan never references the existing email_config.rs"
     if not mentions_field:
@@ -208,9 +200,7 @@ def grade_sa502_already_implemented(plan_text: str) -> tuple[bool, str]:
     lowered = plan_text.lower()
     if "none - all criteria satisfied" in lowered:
         return True, "plan/gap-plan correctly recognizes nothing remains unsatisfied"
-    mentions_target = (
-        "rate_limit_config.rs" in lowered or "quote_resend_rate_limit" in lowered
-    )
+    mentions_target = "rate_limit_config.rs" in lowered or "quote_resend_rate_limit" in lowered
     recognizes_done = any(
         phrase in lowered
         for phrase in (
@@ -291,11 +281,7 @@ def main() -> None:
     if args.block in ("plan", "narrow", "plan-narrow"):
         grader = GRADERS.get((args.ticket_name, args.block))
         if grader is None:
-            print(
-                json.dumps(
-                    {"error": f"no grader for ({args.ticket_name}, {args.block})"}
-                )
-            )
+            print(json.dumps({"error": f"no grader for ({args.ticket_name}, {args.block})"}))
             sys.exit(1)
 
     ticket_content = args.ticket_file.read_text(encoding="utf-8")
@@ -311,9 +297,7 @@ def main() -> None:
         # the same per-block token/cost accounting as real pipeline runs,
         # broken out by fixture, for free.
         if args.block == "plan":
-            output_text = lib.run_plan_step(
-                ticket_content, args.model, ticket_id=args.ticket_name
-            )
+            output_text = lib.run_plan_step(ticket_content, args.model, ticket_id=args.ticket_name)
             success, reason = grader(output_text)
         elif args.block == "narrow":
             if not args.plan_file:
@@ -336,9 +320,7 @@ def main() -> None:
             if not args.criterion:
                 raise ValueError("--criterion is required for --block test-criterion")
             plan_content = args.plan_file.read_text(encoding="utf-8")
-            plan_context = lib.extract_plan_context_for_criterion(
-                args.criterion, plan_content
-            )
+            plan_context = lib.extract_plan_context_for_criterion(args.criterion, plan_content)
             file_paths, qualified_test_names = lib.run_test_for_criterion(
                 args.criterion, plan_context, args.model, ticket_id=args.ticket_name
             )
@@ -347,9 +329,7 @@ def main() -> None:
             )
     except SystemExit as e:
         error = f"block aborted (exit {e.code}) - see die() output above"
-    except (
-        Exception
-    ) as e:  # noqa: BLE001 - report any failure as a graded trial, not a crash
+    except Exception as e:  # noqa: BLE001 - report any failure as a graded trial, not a crash
         error = f"{type(e).__name__}: {e}"
     duration_s = time.monotonic() - start
 

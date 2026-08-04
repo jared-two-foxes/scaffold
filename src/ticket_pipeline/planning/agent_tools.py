@@ -308,9 +308,7 @@ AGENT_PLANNING_TOOLS: list[dict] = [
     ASK_USER_INPUT_SCHEMA,
 ]
 
-TERMINAL_TOOL_NAMES: frozenset[str] = frozenset(
-    {SUBMIT_PLAN_TOOL_NAME, PLANNING_FAILED_TOOL_NAME}
-)
+TERMINAL_TOOL_NAMES: frozenset[str] = frozenset({SUBMIT_PLAN_TOOL_NAME, PLANNING_FAILED_TOOL_NAME})
 
 
 def summarize_agent_tool_call(name: str, args: dict) -> str:

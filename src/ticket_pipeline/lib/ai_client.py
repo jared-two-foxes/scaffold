@@ -289,9 +289,7 @@ class Provider:
                 if self.api_key_file
                 else f"${self.api_key_env}"
             )
-            raise AIError(
-                f"No API key found for provider '{self.name}' (checked {where})."
-            )
+            raise AIError(f"No API key found for provider '{self.name}' (checked {where}).")
         return api_key
 
     def request_headers(self) -> dict:
@@ -372,10 +370,7 @@ def _copilot_auth_headers() -> dict:
     global _copilot_session_token, _copilot_session_expires_at
     # 60s margin so a token that's about to expire isn't handed to a
     # request that then takes a few seconds to actually go out.
-    if (
-        _copilot_session_token is None
-        or time.time() >= _copilot_session_expires_at - 60
-    ):
+    if _copilot_session_token is None or time.time() >= _copilot_session_expires_at - 60:
         oauth_token = _load_copilot_oauth_token()
         req = urllib.request.Request(
             COPILOT_TOKEN_EXCHANGE_URL,
@@ -481,9 +476,7 @@ def _post_chat_completion(payload: dict, label: str) -> dict:
         except urllib.error.HTTPError as e:
             error_body = e.read().decode()
             if e.code not in RETRYABLE_HTTP_STATUSES or attempt >= MAX_RETRIES:
-                raise AIError(
-                    f"{label} request failed: HTTP {e.code}: {error_body}"
-                ) from e
+                raise AIError(f"{label} request failed: HTTP {e.code}: {error_body}") from e
         except urllib.error.URLError as e:
             if attempt >= MAX_RETRIES:
                 hint = (
@@ -578,9 +571,7 @@ def run_with_tools(
     while True:
         turn += 1
         if turn > max_turns:
-            msg = (
-                f"{label}: exceeded {max_turns} turns with no final answer - aborting."
-            )
+            msg = f"{label}: exceeded {max_turns} turns with no final answer - aborting."
             log.critical(msg)
             raise StepBudgetExceeded(msg)
         parsed = _post_chat_completion(

@@ -47,9 +47,7 @@ def main() -> None:
         choices=list(verbosity.LEVELS),
         help="Console verbosity (default: info).",
     )
-    parser.add_argument(
-        "feedback", nargs="+", help="Feedback text to attach to the top criterion."
-    )
+    parser.add_argument("feedback", nargs="+", help="Feedback text to attach to the top criterion.")
     args = parser.parse_args()
     verbosity.setup_logging(args.log_level)
 
@@ -60,9 +58,7 @@ def main() -> None:
 
     frame = stack[0]
     if frame.status == lib.VALIDATING_STATUS:
-        lib.die(
-            "The top frame is the validation sentinel; there is no criterion to redirect."
-        )
+        lib.die("The top frame is the validation sentinel; there is no criterion to redirect.")
 
     try:
         target = lib.resolve_feedback_target(frame, args.target)
@@ -88,18 +84,13 @@ def main() -> None:
             "previous test-writing attempt can be rolled back safely."
         )
     if target == lib.FEEDBACK_TARGET_IMPLEMENTOR:
-        if (
-            frame.verification == "refactor"
-            and frame.status != lib.BASELINE_CONFIRMED_STATUS
-        ):
+        if frame.verification == "refactor" and frame.status != lib.BASELINE_CONFIRMED_STATUS:
             lib.die(
                 "Implementor feedback for a refactor criterion requires the frame to be in the "
                 "baseline-confirmed pause state first."
             )
         if frame.verification == "test" and (
-            frame.status != "test-written"
-            or not frame.test_files
-            or not frame.test_names
+            frame.status != "test-written" or not frame.test_files or not frame.test_names
         ):
             lib.die(
                 "Implementor feedback for a test criterion requires a test-written frame with "

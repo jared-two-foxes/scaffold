@@ -39,9 +39,7 @@ def do_refactor_setup(
             ticket=frame.ticket,
         )
 
-    results = lib.run_scoped_tests(
-        test_names, commands, "refactor baseline check", quiet=True
-    )
+    results = lib.run_scoped_tests(test_names, commands, "refactor baseline check", quiet=True)
     red_names = [n for n, r in zip(test_names, results) if r.returncode != 0]
     if red_names:
         red_list = "\n".join(f"  - {n}" for n in red_names)
@@ -79,9 +77,7 @@ def recheck_refactor_tests(
     commands: dict,
     git_cfg: "lib.GitConfig | None" = None,
 ) -> None:
-    results = lib.run_scoped_tests(
-        frame.test_names, commands, "refactor recheck", quiet=True
-    )
+    results = lib.run_scoped_tests(frame.test_names, commands, "refactor recheck", quiet=True)
     red_names = [n for n, r in zip(frame.test_names, results) if r.returncode != 0]
     if red_names:
         frame.status = lib.BASELINE_CONFIRMED_STATUS
@@ -105,9 +101,7 @@ def recheck_refactor_tests(
         frame.status = lib.BASELINE_CONFIRMED_STATUS
         lib.save_stack(stack)
         render.print_line()
-        render.print_line(
-            "-- Safety-net tests are GREEN but no production file has changed yet."
-        )
+        render.print_line("-- Safety-net tests are GREEN but no production file has changed yet.")
         if frame.test_names:
             render.print_line("   Safety-net test(s) (still GREEN):")
             for f, n in zip(frame.test_files, frame.test_names):
@@ -140,12 +134,8 @@ def implement(frame, ctx, feedback=None, previous_changed_files=None):
         )
         sys.exit(1)
 
-    green_results = lib.run_scoped_tests(
-        frame.test_names, ctx.commands, "pre-refactor green check"
-    )
-    red_names = [
-        n for n, r in zip(frame.test_names, green_results) if r.returncode != 0
-    ]
+    green_results = lib.run_scoped_tests(frame.test_names, ctx.commands, "pre-refactor green check")
+    red_names = [n for n, r in zip(frame.test_names, green_results) if r.returncode != 0]
     if red_names:
         render.print_line(
             "-- Safety-net test(s) are RED - the refactor cannot proceed "
@@ -179,16 +169,11 @@ def implement(frame, ctx, feedback=None, previous_changed_files=None):
 
     render.print_line()
     render.print_line("-- Refactored: " + frame.criterion)
-    render.print_line(
-        "   All " + str(len(frame.test_names)) + " safety-net test(s) still GREEN:"
-    )
+    render.print_line("   All " + str(len(frame.test_names)) + " safety-net test(s) still GREEN:")
     for test_file, test_name in zip(frame.test_files, frame.test_names):
         render.print_line("     " + test_file + " :: " + test_name)
     render.print_line(
-        "   Files changed ("
-        + str(len(changed_files))
-        + "): "
-        + ", ".join(changed_files)
+        "   Files changed (" + str(len(changed_files)) + "): " + ", ".join(changed_files)
     )
     render.print_line("-- Token usage: " + str(ai_client.usage))
     return changed_files

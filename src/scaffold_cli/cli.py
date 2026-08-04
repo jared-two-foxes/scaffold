@@ -122,9 +122,7 @@ _GROUPS: list[tuple[str, dict[str, _Command]]] = [
     ),
 ]
 
-_COMMANDS: dict[str, _Command] = {
-    name: cmd for _, group in _GROUPS for name, cmd in group.items()
-}
+_COMMANDS: dict[str, _Command] = {name: cmd for _, group in _GROUPS for name, cmd in group.items()}
 
 
 def _print_top_level_help() -> None:

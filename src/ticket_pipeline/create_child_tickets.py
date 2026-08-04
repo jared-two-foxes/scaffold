@@ -48,9 +48,7 @@ log = verbosity.get_logger(__name__)
 VERDICT_RE = re.compile(r"^###\s*Verdict\s*\n+(\S+)", re.MULTILINE)
 CHILD_HEADER_RE = re.compile(r"^####\s*Child\s+\d+:\s*(.+?)\s*$", re.MULTILINE)
 DESCRIPTION_RE = re.compile(r"\*\*Description:\*\*\s*(.+?)(?:\n\*\*|\Z)", re.DOTALL)
-CRITERIA_RE = re.compile(
-    r"\*\*Acceptance Criteria:\*\*\s*\n((?:^\s*-.*(?:\n|\Z))+)", re.MULTILINE
-)
+CRITERIA_RE = re.compile(r"\*\*Acceptance Criteria:\*\*\s*\n((?:^\s*-.*(?:\n|\Z))+)", re.MULTILINE)
 DEPENDS_RE = re.compile(r"\*\*Depends on:\*\*\s*(.+?)\s*$", re.MULTILINE)
 
 
@@ -123,9 +121,7 @@ def build_child_body(child: ChildTicket) -> str:
     """
     lines = [child.description, "", "## Acceptance Criteria"]
     for criterion in child.criteria:
-        checkboxed = (
-            criterion if CHECKBOX_PREFIX_RE.match(criterion) else f"[ ] {criterion}"
-        )
+        checkboxed = criterion if CHECKBOX_PREFIX_RE.match(criterion) else f"[ ] {criterion}"
         lines.append(f"- {checkboxed}")
     if child.depends_on:
         lines += ["", f"**Depends on:** {child.depends_on}"]
@@ -192,9 +188,7 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument(
-        "ticket_id", help="The split (parent) ticket's Linear ID, e.g. NEB-42"
-    )
+    parser.add_argument("ticket_id", help="The split (parent) ticket's Linear ID, e.g. NEB-42")
     parser.add_argument(
         "--split-file-in",
         type=Path,
@@ -231,18 +225,14 @@ def main() -> None:
 
     children = parse_child_tickets(report_text)
     if not children:
-        lib.die(
-            f"Verdict is '{verdict}' but no '#### Child N:' blocks were found in {split_file}."
-        )
+        lib.die(f"Verdict is '{verdict}' but no '#### Child N:' blocks were found in {split_file}.")
 
     render.print_line(
         f"-- {len(children)} proposed child ticket(s) for {args.ticket_id} (verdict: {verdict}):"
     )
     for i, child in enumerate(children, 1):
         depends_note = f" - depends on: {child.depends_on}" if child.depends_on else ""
-        render.print_line(
-            f"   {i}. {child.title} ({len(child.criteria)} criteria){depends_note}"
-        )
+        render.print_line(f"   {i}. {child.title} ({len(child.criteria)} criteria){depends_note}")
 
     if not args.yes:
         render.print_line()
@@ -255,9 +245,7 @@ def main() -> None:
     result = create_children(args.ticket_id, children)
 
     manifest_path = children_file_path(args.ticket_id)
-    manifest_path.write_text(
-        json.dumps(result.created, indent=2) + "\n", encoding="utf-8"
-    )
+    manifest_path.write_text(json.dumps(result.created, indent=2) + "\n", encoding="utf-8")
 
     if result.failure is not None:
         render.print_line(

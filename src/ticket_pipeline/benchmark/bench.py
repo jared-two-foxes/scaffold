@@ -354,9 +354,7 @@ def build_jobs(args) -> list[Job]:
                     )
                 )
     elif args.block == "narrow":
-        variants = (
-            ["good", "bad"] if args.plan_fixture == "both" else [args.plan_fixture]
-        )
+        variants = ["good", "bad"] if args.plan_fixture == "both" else [args.plan_fixture]
         for variant in variants:
             plan_file = fixtures_dir / f"plan-{variant}.md"
             if not plan_file.is_file():
@@ -380,9 +378,7 @@ def build_jobs(args) -> list[Job]:
             raise SystemExit(f"missing gap-plan fixture: {gap_plan_file}")
         criterion = args.criterion or DEFAULT_CRITERIA.get(args.ticket_name)
         if not criterion:
-            raise SystemExit(
-                f"no --criterion given and no default for ticket '{args.ticket_name}'"
-            )
+            raise SystemExit(f"no --criterion given and no default for ticket '{args.ticket_name}'")
         for model in models:
             for trial in range(args.trials):
                 jobs.append(
@@ -490,11 +486,7 @@ def main() -> None:
     if args.base_ref is None:
         args.base_ref = resolve_fixture_base_ref(Path(args.fixtures_dir))
 
-    if (
-        args.block in CARGO_BLOCKS
-        and args.concurrency > 1
-        and not args.allow_concurrent_cargo
-    ):
+    if args.block in CARGO_BLOCKS and args.concurrency > 1 and not args.allow_concurrent_cargo:
         print(
             f"-- --block {args.block} forces --concurrency 1 by default (was {args.concurrency}): "
             f"concurrent cargo compiles corrupted builds on this machine (pagefile exhaustion). "
@@ -503,11 +495,7 @@ def main() -> None:
         )
         args.concurrency = 1
 
-    out_path = (
-        Path(args.out)
-        if args.out
-        else Path(f"bench-{args.block}-{int(time.time())}.jsonl")
-    )
+    out_path = Path(args.out) if args.out else Path(f"bench-{args.block}-{int(time.time())}.jsonl")
 
     jobs = build_jobs(args)
     if args.block in CARGO_BLOCKS:
@@ -522,9 +510,7 @@ def main() -> None:
         ThreadPoolExecutor(max_workers=args.concurrency) as pool,
         out_path.open("w", encoding="utf-8") as out_f,
     ):
-        futures = {
-            pool.submit(run_trial, job, args.repo, args.base_ref): job for job in jobs
-        }
+        futures = {pool.submit(run_trial, job, args.repo, args.base_ref): job for job in jobs}
         for future in as_completed(futures):
             job = futures[future]
             r = future.result()

@@ -25,9 +25,7 @@ DEFAULT_MODEL = "opencode:gpt-5.4-mini"
 DEFAULT_MAX_ATTEMPTS = 3
 
 IMPLEMENT_CRITERION_PROMPT_FILE = lib.PROMPTS_DIR / "implement-criterion.prompt.md"
-IMPLEMENT_CRITERION_DIRECT_PROMPT_FILE = (
-    lib.PROMPTS_DIR / "implement-criterion-direct.prompt.md"
-)
+IMPLEMENT_CRITERION_DIRECT_PROMPT_FILE = lib.PROMPTS_DIR / "implement-criterion-direct.prompt.md"
 IMPLEMENT_CRITERION_DIRECT_STRATEGY_PROMPT_FILE = (
     lib.PROMPTS_DIR / "implement-criterion-direct-strategy.prompt.md"
 )
@@ -69,9 +67,7 @@ def _extract_function_block(content: str, qualified_test_name: str) -> str | Non
     can't parse.
     """
     short_name = qualified_test_name.rsplit("::", 1)[-1]
-    match = re.search(
-        rf"^[ \t]*.*\b{re.escape(short_name)}\s*\(", content, re.MULTILINE
-    )
+    match = re.search(rf"^[ \t]*.*\b{re.escape(short_name)}\s*\(", content, re.MULTILINE)
     if not match:
         return None
     brace_start = content.find("{", match.end())
@@ -127,9 +123,7 @@ def verify_test_unchanged(
         )
 
 
-def snapshot_tests(
-    test_files: list[str], test_names: list[str]
-) -> dict[str, str | None]:
+def snapshot_tests(test_files: list[str], test_names: list[str]) -> dict[str, str | None]:
     """
     original_block per test_name (keyed by name - TEST_WITNESS parsing
     already requires names to be unique within a frame, since
@@ -141,9 +135,7 @@ def snapshot_tests(
     snapshots: dict[str, str | None] = {}
     for test_file, test_name in zip(test_files, test_names):
         original_content = (
-            Path(test_file).read_text(encoding="utf-8")
-            if Path(test_file).is_file()
-            else None
+            Path(test_file).read_text(encoding="utf-8") if Path(test_file).is_file() else None
         )
         original_block = (
             _extract_function_block(original_content, test_name)
@@ -241,9 +233,7 @@ def build_implement_criterion_fix_prompt(
                 f"produced the wrong behavior, so try a different approach.\n{still_red_list}\n\n"
             )
             if fresh_start
-            else (
-                f"and it compiles, but {test_label} still fail:\n{still_red_list}\n\n"
-            )
+            else (f"and it compiles, but {test_label} still fail:\n{still_red_list}\n\n")
         )
         failure_desc += (
             'Every test named above under "failing test(s)" must end up passing '
@@ -436,14 +426,10 @@ def build_implement_feedback_prompt(
     verification: str = "test",
 ) -> str:
     instructions = lib.load_prompt_body(IMPLEMENT_REFINE_PROMPT_FILE)
-    changed_list = (
-        "\n".join(f"- {p}" for p in previous_changed_files) or "- (none recorded)"
-    )
+    changed_list = "\n".join(f"- {p}" for p in previous_changed_files) or "- (none recorded)"
     test_block = ""
     if frame.test_files and frame.test_names:
-        label = (
-            "Safety-net tests" if verification == "refactor" else "Tests to preserve"
-        )
+        label = "Safety-net tests" if verification == "refactor" else "Tests to preserve"
         test_block = f"\n\n{label}:\n" + "\n".join(
             f"- {f} :: {n}" for f, n in zip(frame.test_files, frame.test_names)
         )
@@ -554,11 +540,7 @@ def run_implement_direct_with_refine(
             attempt_changed.clear()
             return run_with_tools(
                 prompt,
-                (
-                    tools.READ_WRITE_TOOLS_WITH_COMPILE
-                    if allow_compile
-                    else tools.READ_WRITE_TOOLS
-                ),
+                (tools.READ_WRITE_TOOLS_WITH_COMPILE if allow_compile else tools.READ_WRITE_TOOLS),
                 tools.make_executor(
                     written_paths=attempt_changed,
                     protected_paths=PROTECTED_PIPELINE_PATHS,
@@ -575,18 +557,12 @@ def run_implement_direct_with_refine(
                 attempt_step, "implement-criterion-direct", criterion=frame.criterion
             )
         except (AIError, tools.PipelineAbort) as e:
-            lib.die_with_log(
-                "implement-criterion-direct", str(e), criterion=frame.criterion
-            )
+            lib.die_with_log("implement-criterion-direct", str(e), criterion=frame.criterion)
         lib.render_step_output(result.text)
         if not attempt_changed:
-            paths = lib.extract_referenced_paths(
-                f"{frame.criterion}\n{frame.plan_context}"
-            )
+            paths = lib.extract_referenced_paths(f"{frame.criterion}\n{frame.plan_context}")
             if paths and set(paths) & set(lib.git_changed_files()):
-                return sorted(
-                    set(all_changed)
-                )  # a previous criterion already did the work
+                return sorted(set(all_changed))  # a previous criterion already did the work
             lib.die_with_log(
                 "implement-criterion-direct",
                 "Direct Implementor finished without writing any files.",
@@ -750,11 +726,7 @@ def run_implement_with_refine(
             attempt_changed.clear()
             return run_with_tools(
                 prompt,
-                (
-                    tools.READ_WRITE_TOOLS_WITH_COMPILE
-                    if allow_compile
-                    else tools.READ_WRITE_TOOLS
-                ),
+                (tools.READ_WRITE_TOOLS_WITH_COMPILE if allow_compile else tools.READ_WRITE_TOOLS),
                 tools.make_executor(
                     written_paths=attempt_changed,
                     protected_paths=PROTECTED_PIPELINE_PATHS,
@@ -774,13 +746,9 @@ def run_implement_with_refine(
             lib.die_with_log("implement-criterion", str(e), criterion=frame.criterion)
         lib.render_step_output(result.text)
         if not attempt_changed:
-            paths = lib.extract_referenced_paths(
-                f"{frame.criterion}\n{frame.plan_context}"
-            )
+            paths = lib.extract_referenced_paths(f"{frame.criterion}\n{frame.plan_context}")
             if paths and set(paths) & set(lib.git_changed_files()):
-                return sorted(
-                    set(all_changed)
-                )  # a previous criterion already did the work
+                return sorted(set(all_changed))  # a previous criterion already did the work
             lib.die_with_log(
                 "implement-criterion",
                 "Implementor finished without writing any files.",
@@ -832,9 +800,7 @@ def run_implement_with_refine(
             for n, r in zip(test_names, green_results)
             if r.returncode != 0
         )
-        last_result = next(
-            r for n, r in zip(test_names, green_results) if n in still_red
-        )
+        last_result = next(r for n, r in zip(test_names, green_results) if n in still_red)
         lib.log_event(
             "implement-criterion",
             "retry",

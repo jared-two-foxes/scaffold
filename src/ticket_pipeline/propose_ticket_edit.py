@@ -68,9 +68,7 @@ def load_review(ticket_id: str) -> tuple[str, str]:
         )
     text = path.read_text(encoding="utf-8")
     if review.REVIEW_FILE_REPORT_MARKER not in text:
-        lib.die(
-            f"{path} doesn't look like a review-ticket.py output file (missing report marker)."
-        )
+        lib.die(f"{path} doesn't look like a review-ticket.py output file (missing report marker).")
     ticket_part, _, report_part = text.partition(review.REVIEW_FILE_REPORT_MARKER)
     ticket_content = ticket_part.split(review.REVIEW_FILE_TICKET_MARKER, 1)[-1].strip()
     report = (review.REVIEW_FILE_REPORT_MARKER + report_part).strip()
@@ -109,9 +107,7 @@ def run_propose_step(ticket_content: str, report: str, model: str) -> str:
             lambda: ai_client.run_with_tools(
                 build_propose_prompt(ticket_content, report),
                 tools.READ_ONLY_TOOLS,
-                tools.make_executor(
-                    allow_write=False, preloaded_paths={TICKET_DEDUP_KEY}
-                ),
+                tools.make_executor(allow_write=False, preloaded_paths={TICKET_DEDUP_KEY}),
                 "propose-ticket-edit",
                 model=model,
                 summarize_call=tools.summarize_tool_call,
@@ -206,9 +202,7 @@ def main() -> None:
     args = parser.parse_args()
     verbosity.setup_logging(args.log_level)
     if args.ticket_file_out is None and not args.no_write:
-        parser.error(
-            "--ticket-file-out is required (or pass --no-write to skip writing)."
-        )
+        parser.error("--ticket-file-out is required (or pass --no-write to skip writing).")
 
     ticket_content, report = load_review(args.ticket_id)
     if not has_concerns(report):

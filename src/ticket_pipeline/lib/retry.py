@@ -38,17 +38,11 @@ class FixedBudgetPolicy:
     def should_continue(self, attempt, _failure_kind, _frame, _ctx):
         return attempt < self.max_attempts
 
-    def on_exhausted(
-        self, failure_kind, _error, _all_changed, last_result, frame, _ctx
-    ):
+    def on_exhausted(self, failure_kind, _error, _all_changed, last_result, frame, _ctx):
         from . import pipeline_lib as lib
 
         exit_code = last_result.returncode if last_result is not None else "unknown"
-        what = (
-            "Code does not compile"
-            if failure_kind == "compile"
-            else "test(s) still fail"
-        )
+        what = "Code does not compile" if failure_kind == "compile" else "test(s) still fail"
         lib.die_with_log(
             "implement-criterion",
             f"{what} after {self.max_attempts} attempt(s) (exit {exit_code}). "
@@ -66,9 +60,7 @@ class EndlessRetryPolicy:
     def should_continue(self, _attempt, _failure_kind, _frame, _ctx):
         return True
 
-    def on_exhausted(
-        self, _failure_kind, _error, _all_changed, _last_result, frame, _ctx
-    ):
+    def on_exhausted(self, _failure_kind, _error, _all_changed, _last_result, frame, _ctx):
         from . import pipeline_lib as lib
 
         lib.die_with_log(
@@ -118,8 +110,6 @@ def resolve_retry_policy(
     if cli_policy is None and "max_attempts" in retry_cfg:
         attempts_value = retry_cfg["max_attempts"]
         if not isinstance(attempts_value, int) or attempts_value <= 0:
-            raise ValueError(
-                f"{config_path}: [retry].max_attempts must be a positive integer"
-            )
+            raise ValueError(f"{config_path}: [retry].max_attempts must be a positive integer")
         attempts = attempts_value
     return FixedBudgetPolicy(attempts)

@@ -78,9 +78,7 @@ def init_git_repo(root: Path) -> None:
     import subprocess
 
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@example.com"], cwd=root, check=True
-    )
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
     subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
 
 
@@ -145,9 +143,7 @@ class ExtractVerificationModeScopedTests(unittest.TestCase):
         # an explicit verify tag - callers in the planning path must
         # reject None; callers creating CriterionFrame from prose may
         # supply their own explicit fallback.
-        scoped = (
-            "- [ ] `foo.rs` uses `Bar`. <!-- why: original covers 3 files; 2 done -->"
-        )
+        scoped = "- [ ] `foo.rs` uses `Bar`. <!-- why: original covers 3 files; 2 done -->"
         self.assertIsNone(lib.extract_verification_mode(scoped))
 
 
@@ -176,16 +172,11 @@ class ExtractPlanContextForCriterionScopedTests(unittest.TestCase):
         # and `xero_webhook.rs` in backticks, so plan-context extraction
         # matches just the two Implementation Plan lines for those files
         # - not the already-migrated `tests/foo.rs` entry.
-        context = lib.extract_plan_context_for_criterion(
-            SCOPED_SA528_CRITERION, SCOPED_GAP_PLAN
-        )
+        context = lib.extract_plan_context_for_criterion(SCOPED_SA528_CRITERION, SCOPED_GAP_PLAN)
         lines = context.splitlines()
         self.assertEqual(2, len(lines))
         self.assertTrue(
-            all(
-                "xero_reconcile_observability" in line or "xero_webhook" in line
-                for line in lines
-            )
+            all("xero_reconcile_observability" in line or "xero_webhook" in line for line in lines)
         )
         self.assertNotIn("foo.rs", context)
 
@@ -222,9 +213,7 @@ class ExtractPlanContextForCriterionScopedTests(unittest.TestCase):
             "behavior. <!-- why: scoped to one file; verify: test-refactor -->"
         )
 
-        context = lib.extract_plan_context_for_criterion(
-            criterion, CROSS_CONTAMINATED_GAP_PLAN
-        )
+        context = lib.extract_plan_context_for_criterion(criterion, CROSS_CONTAMINATED_GAP_PLAN)
 
         self.assertEqual(
             [
@@ -360,17 +349,13 @@ class SA528RegressionTests(unittest.TestCase):
             (root / "tests" / "xero_webhook.rs").write_text(
                 "fn webhook_handler() {}\n", encoding="utf-8"
             )
-            git_add(
-                root, "tests/xero_reconcile_observability.rs", "tests/xero_webhook.rs"
-            )
+            git_add(root, "tests/xero_reconcile_observability.rs", "tests/xero_webhook.rs")
 
             criterion = lib.extract_acceptance_criteria(SCOPED_GAP_PLAN)[0]
             frame = lib.CriterionFrame(
                 ticket="SA-528",
                 criterion=criterion,
-                plan_context=lib.extract_plan_context_for_criterion(
-                    criterion, SCOPED_GAP_PLAN
-                ),
+                plan_context=lib.extract_plan_context_for_criterion(criterion, SCOPED_GAP_PLAN),
                 test_files=None,
                 test_names=None,
                 status="pending",
