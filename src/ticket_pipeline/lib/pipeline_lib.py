@@ -191,9 +191,9 @@ AUTO_PREAMBLE = (
 DEFAULT_MODEL = "opencode:gpt-5.6-luna"  # ultimate fallback for unlested steps
 
 DEFAULT_STEP_MODELS: dict[str, str] = {
-    "review": "opencode:claude-sonnet-4-6",
-    "plan": "opencode:claude-sonnet-4-6",
-    "narrow": "opencode:claude-sonnet-4-6",
+    "review": "opencode:glm-5.2",
+    "plan": "opencode:glm-5.2",
+    "narrow": "opencode:glm-5.2",
 }
 
 FEEDBACK_READY_STATUS = "feedback-ready"
