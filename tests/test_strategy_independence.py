@@ -89,7 +89,7 @@ class PlannedCriterionExplicitnessTests(unittest.TestCase):
 _GAP_PLAN_WITH_TAGS = (
     "## Acceptance Criteria\n\n"
     "- [ ] Feature A works <!-- why: not yet; verify: test; strategy: direct -->\n"
-    "- [ ] Doc updated <!-- why: stale; verify: manual; strategy: manual -->\n"
+    "- [ ] Doc updated <!-- why: stale; verify: manual; strategy: direct -->\n"
 )
 
 _GAP_PLAN_MISSING_STRATEGY = (
@@ -126,7 +126,7 @@ class ParserRejectsImplicitDefaultsTests(unittest.TestCase):
         self.assertEqual("test", criteria[0].verification)
         self.assertEqual("direct", criteria[0].implementation_strategy)
         self.assertEqual("manual", criteria[1].verification)
-        self.assertEqual("manual", criteria[1].implementation_strategy)
+        self.assertEqual("direct", criteria[1].implementation_strategy)
 
 
 class ExtractFunctionsReturnNoneForMissingTagsTests(unittest.TestCase):
@@ -252,25 +252,25 @@ class RefactorStrategyIndependenceTests(unittest.TestCase):
 
 
 class ManualStrategyIndependenceTests(unittest.TestCase):
-    """Manual strategy must not invoke AI test generation or AI implementation."""
+    """Legacy manual strategy frames delegate to direct implementation."""
 
-    def test_manual_strategy_does_not_invoke_ai_implementation(self):
-        """Manual strategy must not call run_implement_direct_with_refine."""
+    def test_manual_strategy_invokes_ai_implementation(self):
+        """Backward-compatible manual frames must call direct implementation."""
         frame = _make_frame(strategy="manual", status="pending", verification="manual")
         with (
             mock.patch.object(lib, "load_stack", return_value=[frame]),
-            mock.patch.object(lib, "extract_referenced_paths", return_value=[]),
-            mock.patch.object(lib, "git_changed_files", return_value=[]),
-            mock.patch.object(manual_strategy, "do_await_manual_impl") as await_mock,
             mock.patch(
-                "ticket_pipeline.lib.implement.run_implement_direct_with_refine"
+                "ticket_pipeline.lib.implement.run_implement_direct_with_refine",
+                return_value=["src/example.py"],
             ) as impl_mock,
             mock.patch.object(tdd_strategy, "do_write_test") as write_test_mock,
         ):
-            next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
+            try:
+                next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
+            except SystemExit:
+                pass
 
-        await_mock.assert_called_once()
-        impl_mock.assert_not_called()
+        impl_mock.assert_called_once()
         write_test_mock.assert_not_called()
 
 
@@ -470,7 +470,7 @@ class TDDStrategyPathCheckTests(unittest.TestCase):
         self.assertNotEqual("done", frame.status)
 
     def test_tdd_recheck_done_when_diff_touches_plan_referenced_file(self):
-        """recheck_test_frame marks done when the diff includes a plan-referenced file."""
+        """recheck_test_frame marks done when the diff includes a plan-referenced path."""
         frame = lib.CriterionFrame(
             ticket="SA-1",
             criterion="- [ ] do the thing <!-- verify: test; strategy: tdd -->",
