@@ -31,7 +31,8 @@ def render_plan_context(assessment: AgentCriterionAssessment) -> str:
 
     if assessment.planned_changes:
         changes = "\n".join(
-            f"- {c.path}: {c.description}" + (f" [{', '.join(c.symbols)}]" if c.symbols else "")
+            f"- `{c.path}`: {c.description}"
+            + (f" [{', '.join(c.symbols)}]" if c.symbols else "")
             for c in assessment.planned_changes
         )
         parts.append(f"Planned changes:\n{changes}")

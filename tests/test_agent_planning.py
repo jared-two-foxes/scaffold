@@ -781,7 +781,7 @@ class ArtifactRenderingTests(unittest.TestCase):
         )
         ctx = render_plan_context(ac)
         self.assertIn("Explicit context", ctx)
-        self.assertIn("src/x.py", ctx)
+        self.assertIn("`src/x.py`", ctx)
         self.assertIn("src/z.py", ctx)
         self.assertIn("test", ctx)
         self.assertIn("tdd", ctx)
