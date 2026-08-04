@@ -14,14 +14,13 @@ from ticket_pipeline.lib.retry import (
     FixedBudgetPolicy,
     resolve_retry_policy,
 )
-from ticket_pipeline.strategies import manual as manual_strategy
 from ticket_pipeline.strategies import tdd as tdd_strategy
 
 
 class NextStepDispatchTests(unittest.TestCase):
     def _frame(self, *, verification="test", status="test-written", strategy=None):
         strategy = strategy or {
-            "manual": "manual",
+            "manual": "direct",
             "refactor": "refactor",
         }.get(verification, "tdd")
         return lib.CriterionFrame(
@@ -45,14 +44,18 @@ class NextStepDispatchTests(unittest.TestCase):
             next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
         recheck.assert_called_once()
 
-    def test_awaiting_manual_dispatches_to_manual_pause_handler(self):
-        frame = self._frame(verification="manual", status=manual_strategy.MANUAL_PENDING_STATUS)
+    def test_manual_verification_dispatches_to_direct_implementor(self):
+        frame = self._frame(verification="manual", status="pending", strategy="direct")
         with (
             mock.patch.object(lib, "load_stack", return_value=[frame]),
-            mock.patch("ticket_pipeline.strategies.manual.do_await_manual_impl") as run_pause,
+            mock.patch(
+                "ticket_pipeline.lib.implement.run_implement_direct_with_refine",
+                return_value=["src/example.py"],
+            ) as run_direct,
         ):
-            next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
-        run_pause.assert_called_once()
+            with self.assertRaises(SystemExit):
+                next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
+        run_direct.assert_called_once()
 
     def test_baseline_confirmed_dispatches_to_implementation_phase(self):
         frame = self._frame(verification="refactor", status=lib.BASELINE_CONFIRMED_STATUS)
@@ -91,10 +94,10 @@ class NextStepContinuousModeTests(unittest.TestCase):
             plan_context="ctx",
             test_files=None,
             test_names=None,
-            status=manual_strategy.MANUAL_PENDING_STATUS,
+            status="pending",
             origin="ticket",
             verification="manual",
-            strategy="manual",
+            strategy="direct",
         )
 
     def test_implementation_phase_continues_under_continuous(self):
@@ -163,14 +166,15 @@ class NextStepContinuousModeTests(unittest.TestCase):
                 )
         self.assertEqual(0, cm.exception.code)
 
-    def test_continuous_still_pauses_for_manual_acceptance_without_paths(self):
+    def test_continuous_direct_strategy_implements_manual_verification(self):
         frame = self._manual_frame()
-        with (
-            mock.patch.object(lib, "git_changed_files", return_value=["docs/guide.md"]),
-            mock.patch.object(lib, "extract_referenced_paths", return_value=[]),
-            mock.patch("ticket_pipeline.strategies.manual.do_await_manual_impl") as await_manual,
-        ):
-            manual_strategy.advance(
+        with mock.patch(
+            "ticket_pipeline.lib.implement.run_implement_direct_with_refine",
+            return_value=["docs/guide.md"],
+        ) as run_direct:
+            from ticket_pipeline.strategies import direct as direct_strategy
+
+            direct_strategy.advance(
                 [frame],
                 frame,
                 lib.StepContext(
@@ -182,7 +186,7 @@ class NextStepContinuousModeTests(unittest.TestCase):
                     max_attempts=2,
                 ),
             )
-        await_manual.assert_called_once()
+        run_direct.assert_called_once()
 
 
 class CliHelpTests(unittest.TestCase):
@@ -466,7 +470,7 @@ class SkipTestModeTests(unittest.TestCase):
         self.assertIn("only applies when the top frame is pending", die_with_log.call_args.args[1])
 
     def test_skip_test_rejects_non_supported_strategy(self):
-        frame = self._frame(verification="manual", strategy="manual")
+        frame = self._frame(verification="manual", strategy="refactor")
         with (
             mock.patch.object(lib, "load_stack", return_value=[frame]),
             mock.patch.object(
@@ -481,7 +485,7 @@ class SkipTestModeTests(unittest.TestCase):
                     lib.PIPELINE_CONFIG_FILE,
                     skip_test=True,
                 )
-        self.assertIn("not valid for strategy='manual'", die_with_log.call_args.args[1])
+        self.assertIn("not valid for strategy='refactor'", die_with_log.call_args.args[1])
 
     def test_skip_test_rejects_skip_implementation_combination(self):
         frame = self._frame()

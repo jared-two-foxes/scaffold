@@ -52,16 +52,18 @@ class StrategyDispatchTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
 
-    def test_manual_strategy_uses_manual_handler(self):
-        frame = self._frame(strategy="manual", status="pending", verification="manual")
+    def test_direct_strategy_dispatches_to_direct_implementor(self):
+        frame = self._frame(strategy="direct", status="pending", verification="manual")
         with (
             mock.patch.object(lib, "load_stack", return_value=[frame]),
-            mock.patch.object(lib, "extract_referenced_paths", return_value=[]),
-            mock.patch.object(lib, "git_changed_files", return_value=[]),
-            mock.patch("ticket_pipeline.strategies.manual.do_await_manual_impl") as manual_pause,
+            mock.patch(
+                "ticket_pipeline.lib.implement.run_implement_direct_with_refine",
+                return_value=["src/example.py"],
+            ) as run_direct,
         ):
-            next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
-        manual_pause.assert_called_once()
+            with self.assertRaises(SystemExit):
+                next_step.step("model", {"build_cmd": "true"}, False, lib.PIPELINE_CONFIG_FILE)
+        run_direct.assert_called_once()
 
     def test_refactor_strategy_uses_refactor_handler(self):
         frame = self._frame(strategy="refactor", status="pending", verification="refactor")

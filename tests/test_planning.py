@@ -26,7 +26,7 @@ GAP_PLAN = (
     "## Acceptance Criteria\n\n"
     "- [ ] Change behavior <!-- why: missing; verify: test; strategy: direct; "
     "existing_test: tests/a.py::test_old -->\n"
-    "- [ ] Refactor docs <!-- why: tidy; verify: manual; strategy: manual -->\n"
+    "- [ ] Refactor docs <!-- why: tidy; verify: manual; strategy: direct -->\n"
 )
 
 
@@ -92,7 +92,7 @@ class GapPlanParsingTests(unittest.TestCase):
             criteria[0].existing_test_refs,
         )
         self.assertEqual("manual", criteria[1].verification)
-        self.assertEqual("manual", criteria[1].implementation_strategy)
+        self.assertEqual("direct", criteria[1].implementation_strategy)
 
 
 class FrameFactoryTests(unittest.TestCase):
@@ -133,7 +133,7 @@ class FrameFactoryTests(unittest.TestCase):
                     criterion="- [ ] Do thing",
                     plan_context="Context",
                     verification="test",
-                    implementation_strategy="manual",
+                    implementation_strategy="direct",
                 ),
             )
         )
