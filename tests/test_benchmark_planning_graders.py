@@ -100,7 +100,7 @@ class StrategyNamesGraderTests(unittest.TestCase):
                 verification="test",
                 implementation_strategy=s,
             )
-            for s in ["tdd", "direct", "manual", "refactor"]
+            for s in ["tdd", "direct", "refactor"]
         ]
         result = PlanningResult(criteria=tuple(criteria))
         gate = grade_strategy_names(result)

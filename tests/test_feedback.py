@@ -28,7 +28,7 @@ class _chdir:
 class ResolveFeedbackTargetTests(unittest.TestCase):
     def _frame(self, verification="test", status="pending", strategy=None):
         strategy = strategy or {
-            "manual": "manual",
+            "manual": "direct",
             "refactor": "refactor",
         }.get(verification, "tdd")
         return lib.CriterionFrame(
