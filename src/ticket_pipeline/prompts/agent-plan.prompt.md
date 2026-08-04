@@ -127,10 +127,12 @@ Choose one of, **independently of the verification choice**:
 
 - `tdd`: write failing tests first, then implement. Use when a red/green
   test cycle meaningfully drives the implementation.
-- `direct`: implement first, then verify. A criterion tagged `verification: test`
-  may legitimately use `strategy: direct` — the presence of an automated
-  acceptance test does not require test-first implementation.
-- `manual`: implementation requires human action.
+- `direct`: implement first, then verify. Use when a red/green test cycle
+  does not meaningfully drive the implementation, including criteria that
+  are not TDD-driveable or require human action. A criterion tagged
+  `verification: test` may legitimately use `strategy: direct` — the
+  presence of an automated acceptance test does not require test-first
+  implementation.
 - `refactor`: restructure existing code without changing behaviour.
 
 **Key rule:** `verification: test` and `strategy: tdd` are independent
@@ -173,8 +175,8 @@ You MUST end the session with one of:
 
 Plain text without a terminal tool call is a protocol violation.
 
-`ask_user_input` is non-terminal in interactive mode - after an answer
-is returned to you, continue planning and eventually call `submit_plan`.
+`ask_user_input` is non-terminal in interactive mode - after an answer is
+returned to you, continue planning and eventually call `submit_plan`.
 
 Do not call `submit_plan` until you have:
 
