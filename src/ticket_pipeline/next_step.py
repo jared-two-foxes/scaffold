@@ -203,17 +203,16 @@ def do_pop(
     lib.pop_frame()
     new_stack = lib.load_stack()
 
-    # If we're returning to the validating sentinel for the same ticket,
-    # keep the snapshot alive even if the sentinel was created without one.
-    if (
-        new_stack
-        and new_stack[0].ticket == just_popped_ticket
-        and new_stack[0].status == lib.VALIDATING_STATUS
-        and new_stack[0].ticket_snapshot is None
-        and frame.ticket_snapshot is not None
-    ):
-        new_stack[0].ticket_snapshot = frame.ticket_snapshot
-        lib.save_stack(new_stack)
+    # Keep the snapshot alive on any remaining frames for this ticket so
+    # a later validation resume can reuse the original ticket text.
+    if frame.ticket_snapshot is not None:
+        snapshot_copied = False
+        for candidate in new_stack:
+            if candidate.ticket == just_popped_ticket and candidate.ticket_snapshot is None:
+                candidate.ticket_snapshot = frame.ticket_snapshot
+                snapshot_copied = True
+        if snapshot_copied:
+            lib.save_stack(new_stack)
 
     render.print_line()
     render.print_line(f"-- Criterion done: {just_popped_criterion}")
@@ -270,14 +269,12 @@ def do_ticket_validate(
     review_model = ctx.step_models.get("review", ctx.model)
     if ticket_snapshot is None:
         stack = lib.load_stack()
-        top = stack[0] if stack else None
-        if (
-            top is not None
-            and top.ticket == ticket_id
-            and top.status == lib.VALIDATING_STATUS
-            and top.ticket_snapshot is not None
-        ):
-            ticket_snapshot = top.ticket_snapshot
+        for frame in stack:
+            if frame.ticket == ticket_id and frame.ticket_snapshot is not None:
+                ticket_snapshot = frame.ticket_snapshot
+                break
+        if ticket_snapshot is None and lib.TICKET_FILE.is_file():
+            ticket_snapshot = lib.TICKET_FILE.read_text(encoding="utf-8")
     lib.ensure_validating_sentinel(ticket_id, ticket_snapshot=ticket_snapshot)
 
     render.print_line()

@@ -351,73 +351,82 @@ class TestValidateMissedSnapshotNoFetch(unittest.TestCase):
                     )
                 )
 
-        with tempfile.TemporaryDirectory() as tmp:
-            stack_file = Path(tmp) / ".criteria-stack.json"
-            ticket_file_in = Path(tmp) / "seeded_ticket.md"
-            ticket_file = Path(tmp) / ".ticket.md"
-            ticket_file_in.write_text(SAMPLE_TICKET, encoding="utf-8")
-            ctx = lib.StepContext(
+        ticket_file_in = Path(".test-seeded-ticket.md")
+        stack_file = Path(".test-criteria-stack.json")
+        ticket_file_in.write_text(SAMPLE_TICKET, encoding="utf-8")
+        self.addCleanup(lambda: ticket_file_in.unlink(missing_ok=True))
+        self.addCleanup(lambda: stack_file.unlink(missing_ok=True))
+
+        stack_state: list[lib.CriterionFrame] = []
+
+        def fake_load_stack():
+            return list(stack_state)
+
+        def fake_save_stack(frames):
+            stack_state[:] = list(frames)
+
+        ctx = lib.StepContext(
+            model="model",
+            step_models={},
+            commands={"test_cmd": "true"},
+            config_path=Path(".dev-pipeline.toml"),
+            continuous=False,
+            max_attempts=3,
+            retry_policy=None,
+            accept_green=False,
+            accept_manual=False,
+            accept_no_test=False,
+            skip_implementation=False,
+            allow_compile=True,
+            reset_on_retry=True,
+            git_cfg=None,
+        )
+
+        with (
+            patch.object(lib, "CRITERIA_STACK_FILE", stack_file),
+            patch.object(lib, "load_stack", side_effect=fake_load_stack),
+            patch.object(lib, "save_stack", side_effect=fake_save_stack),
+            patch.object(next_step.tools, "write_file_block", side_effect=lambda path: (lambda content: content)),
+            patch.object(lib, "fetch_ticket_text", side_effect=AssertionError("fetch_ticket_text should not be called")) as mock_fetch,
+            patch.object(push_ticket, "create_planning_strategy", return_value=FakePlanningStrategy()),
+            patch.object(lib, "filter_grounded_frames", side_effect=lambda frames: (frames, [], 0)),
+            patch.object(lib, "_resolve_plan_file", return_value=None),
+            patch.object(lib, "run_plan_step", return_value="## Implementation Plan\n"),
+            patch.object(lib, "run_narrow_step", side_effect=["## Acceptance Criteria\n- [ ] validate-missed criterion\n", "## Acceptance Criteria\n"]),
+            patch.object(lib, "extract_acceptance_criteria", side_effect=[["- [ ] validate-missed criterion"], []]),
+            patch.object(lib, "run_lint_gate"),
+            patch.object(lib, "run_command", return_value=type("Result", (), {"returncode": 0})()),
+            patch.object(lib, "load_smoke_cmd", return_value=None),
+            patch.object(lib, "run_smoke_gate"),
+            patch.object(lib, "git_changed_files", return_value=["src/example.py"]),
+            patch.object(lib, "run_review_gate", return_value=("APPROVED", "review")),
+            patch.object(next_step.sys, "exit") as mock_exit,
+        ):
+            seeded_frames = push_ticket.resolve_ticket_frames(
+                ticket_id="TEST-1",
                 model="model",
                 step_models={},
-                commands={"test_cmd": "true"},
-                config_path=Path(".dev-pipeline.toml"),
-                continuous=False,
-                max_attempts=3,
-                retry_policy=None,
-                accept_green=False,
-                accept_manual=False,
-                accept_no_test=False,
-                skip_implementation=False,
-                allow_compile=True,
-                reset_on_retry=True,
-                git_cfg=None,
+                ticket_file_in=ticket_file_in,
+                planning_strategy_name="mechanical",
             )
+            self.assertEqual(1, len(seeded_frames))
+            self.assertEqual(SAMPLE_TICKET, seeded_frames[0].ticket_snapshot)
 
-            with (
-                patch.object(lib, "CRITERIA_STACK_FILE", stack_file),
-                patch.object(lib, "TICKET_FILE", ticket_file),
-                patch.object(lib, "fetch_ticket_text", side_effect=AssertionError("fetch_ticket_text should not be called")) as mock_fetch,
-                patch.object(push_ticket, "create_planning_strategy", return_value=FakePlanningStrategy()),
-                patch.object(lib, "filter_grounded_frames", side_effect=lambda frames: (frames, [], 0)),
-                patch.object(lib, "_resolve_plan_file", return_value=None),
-                patch.object(lib, "run_plan_step", return_value="## Implementation Plan\n"),
-                patch.object(lib, "run_narrow_step", side_effect=["## Acceptance Criteria\n- [ ] validate-missed criterion\n", "## Acceptance Criteria\n"]),
-                patch.object(lib, "extract_acceptance_criteria", side_effect=[["- [ ] validate-missed criterion"], []]),
-                patch.object(lib, "run_lint_gate"),
-                patch.object(lib, "run_command", return_value=type("Result", (), {"returncode": 0})()),
-                patch.object(lib, "load_smoke_cmd", return_value=None),
-                patch.object(lib, "run_smoke_gate"),
-                patch.object(lib, "git_changed_files", return_value=["src/example.py"]),
-                patch.object(lib, "run_review_gate", return_value=("APPROVED", "review")),
-                patch.object(next_step.sys, "exit") as mock_exit,
-            ):
-                seeded_frames = push_ticket.resolve_ticket_frames(
-                    ticket_id="TEST-1",
-                    model="model",
-                    step_models={},
-                    ticket_file_in=ticket_file_in,
-                    planning_strategy_name="mechanical",
-                )
-                self.assertEqual(1, len(seeded_frames))
-                self.assertEqual(SAMPLE_TICKET, seeded_frames[0].ticket_snapshot)
+            next_step.do_ticket_validate("TEST-1", ctx, ticket_snapshot=seeded_frames[0].ticket_snapshot)
+            stack = lib.load_stack()
+            self.assertEqual(2, len(stack))
+            self.assertEqual("validate-missed", stack[0].origin)
+            self.assertEqual(SAMPLE_TICKET, stack[0].ticket_snapshot)
+            self.assertEqual(lib.VALIDATING_STATUS, stack[1].status)
+            self.assertEqual(SAMPLE_TICKET, stack[1].ticket_snapshot)
 
-                next_step.do_ticket_validate(
-                    "TEST-1", ctx, ticket_snapshot=seeded_frames[0].ticket_snapshot
-                )
-                stack = lib.load_stack()
-                self.assertEqual(2, len(stack))
-                self.assertEqual("validate-missed", stack[0].origin)
-                self.assertEqual(SAMPLE_TICKET, stack[0].ticket_snapshot)
-                self.assertEqual(lib.VALIDATING_STATUS, stack[1].status)
-                self.assertEqual(SAMPLE_TICKET, stack[1].ticket_snapshot)
+            next_step.do_pop(stack[0], ctx)
+            stack = lib.load_stack()
+            self.assertEqual(1, len(stack))
+            self.assertEqual(lib.VALIDATING_STATUS, stack[0].status)
+            self.assertEqual(SAMPLE_TICKET, stack[0].ticket_snapshot)
 
-                next_step.do_pop(stack[0], ctx)
-                stack = lib.load_stack()
-                self.assertEqual(1, len(stack))
-                self.assertEqual(lib.VALIDATING_STATUS, stack[0].status)
-                self.assertEqual(SAMPLE_TICKET, stack[0].ticket_snapshot)
+            next_step.step("model", {"test_cmd": "true"}, False, Path(".dev-pipeline.toml"))
 
-                next_step.step("model", {"test_cmd": "true"}, False, Path(".dev-pipeline.toml"))
-
-            mock_fetch.assert_not_called()
-            self.assertGreaterEqual(mock_exit.call_count, 2)
+        mock_fetch.assert_not_called()
+        self.assertGreaterEqual(mock_exit.call_count, 2)
