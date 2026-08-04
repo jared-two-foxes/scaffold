@@ -786,6 +786,22 @@ class ArtifactRenderingTests(unittest.TestCase):
         self.assertIn("test", ctx)
         self.assertIn("tdd", ctx)
 
+    def test_rendered_plan_context_paths_are_extractable(self):
+        from ticket_pipeline.lib import pipeline_lib as lib
+
+        path = "src/ticket_pipeline/planning/agent_rendering.py"
+        assessment = AgentCriterionAssessment(
+            criterion_id="AC-1",
+            source_criterion="Update plan rendering",
+            disposition="remaining",
+            rationale="The renderer needs a change.",
+            planned_changes=(PlannedChange(path=path, description="Update rendering"),),
+        )
+
+        plan_context = render_plan_context(assessment)
+
+        self.assertIn(path, lib.extract_referenced_paths(plan_context))
+
 
 # ---------------------------------------------------------------------------
 # 8. Factory: config loading
