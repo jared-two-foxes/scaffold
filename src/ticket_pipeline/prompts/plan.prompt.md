@@ -61,8 +61,8 @@ unambiguous checklist of done-conditions).
   files just because the ticket's path doesn't match reality. Only plan
   a genuinely new file when the search confirms nothing implements that
   functionality yet.
-- Produce an ordered list: [file or component]: [one-sentence
-  description of the change].
+- Produce an ordered list: `[file or component]`: [one-sentence
+  description of the change]. Backtick-quote the file path in every entry.
 - Estimate complexity: trivial (<50 lines changed, no auth/secrets/
   payment/migration concerns, single tightly-coupled scope) or complex
   (everything else).
@@ -93,8 +93,8 @@ Ticket: ENG-123 (or "prompt" if no ticket was supplied)
 (or "None")
 
 ## Implementation Plan
-- [file or component]: [one-sentence description of the change]
-(ordered list)
+- `[file or component]`: [one-sentence description of the change]
+(ordered list; backtick-quote the file path in every entry)
 
 ## Complexity
 trivial | complex
@@ -113,6 +113,10 @@ reading the codebase.
 For the Step 2 fail-fast case only, begin the response with:
 
 > **🤖 Planner**
+>
+> No explicit acceptance criteria found in the source. Add an
+> "Acceptance Criteria" or "Definition of Done" section to the ticket
+> (or prompt), then re-run this prompt.
 
 That response is never written to disk - the caller detects it isn't a
 valid plan and stops. For the success case, your entire final response
@@ -137,5 +141,4 @@ Your task: Plan the implementation for this feature request.
 
 Optionally attach a file tree and/or key source files for additional
 codebase context before sending - drag them into the chat or reference
-them with `#file:`. Not required: if omitted, search the codebase
-yourself in Step 3.
+them with `#file:`. Not required: if omitted, search the codebase.
