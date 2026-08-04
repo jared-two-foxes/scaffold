@@ -188,7 +188,7 @@ AUTO_PREAMBLE = (
     "best inference from the ticket context. Then produce the full implementation plan.\n\n"
 )
 
-DEFAULT_MODEL = "opencode:gpt-5.4-mini"  # ultimate fallback for unlested steps
+DEFAULT_MODEL = "opencode:gpt-5.6-luna"  # ultimate fallback for unlested steps
 
 DEFAULT_STEP_MODELS: dict[str, str] = {
     "review": "opencode:claude-sonnet-4-6",
