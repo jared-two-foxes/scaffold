@@ -187,9 +187,7 @@ def do_pop(
     # along into the next criterion's commit.
     if ctx.git_cfg is not None and ctx.git_cfg.git_workflow:
         try:
-            sha = lib.commit_criterion(
-                ctx.git_cfg, just_popped_ticket, just_popped_criterion
-            )
+            sha = lib.commit_criterion(ctx.git_cfg, just_popped_ticket, just_popped_criterion)
             if sha is not None:
                 frame.commit_sha = sha
                 lib.log_event(
@@ -218,9 +216,7 @@ def do_pop(
     render.print_line(f"-- Criterion done: {just_popped_criterion}")
 
     if not new_stack or new_stack[0].ticket != just_popped_ticket:
-        do_ticket_validate(
-            just_popped_ticket, ctx, ticket_snapshot=frame.ticket_snapshot
-        )
+        do_ticket_validate(just_popped_ticket, ctx, ticket_snapshot=frame.ticket_snapshot)
         return
 
     if not ctx.continuous:
@@ -278,9 +274,7 @@ def do_ticket_validate(
     lib.ensure_validating_sentinel(ticket_id, ticket_snapshot=ticket_snapshot)
 
     render.print_line()
-    render.print_line(
-        f"-- All criteria for {ticket_id} done. Running full ticket validation ..."
-    )
+    render.print_line(f"-- All criteria for {ticket_id} done. Running full ticket validation ...")
 
     if ticket_snapshot is not None:
         ticket_content = ticket_snapshot
@@ -310,9 +304,7 @@ def do_ticket_validate(
             lib.CriterionFrame(
                 ticket=ticket_id,
                 criterion=criterion,
-                plan_context=lib.extract_plan_context_for_criterion(
-                    criterion, gap_plan_content
-                ),
+                plan_context=lib.extract_plan_context_for_criterion(criterion, gap_plan_content),
                 test_files=None,
                 test_names=None,
                 status="pending",
@@ -328,9 +320,7 @@ def do_ticket_validate(
             )
             for criterion in remaining
         ]
-        missed_frames, newly_declined, skipped_count = lib.filter_grounded_frames(
-            candidate_frames
-        )
+        missed_frames, newly_declined, skipped_count = lib.filter_grounded_frames(candidate_frames)
         if missed_frames:
             lib.push_frames(missed_frames)
         render.print_line()
@@ -407,12 +397,8 @@ def do_ticket_validate(
         render.print_line("   Acceptance criteria: all satisfied")
         render.print_line("   Lint: clean")
         render.print_line("   Test suite: passed")
-        render.print_line(
-            f"   Smoke test: {'passed' if smoke_cmd else 'skipped (not configured)'}"
-        )
-        render.print_line(
-            f"   Files reviewed ({len(changed_files)}): {', '.join(changed_files)}"
-        )
+        render.print_line(f"   Smoke test: {'passed' if smoke_cmd else 'skipped (not configured)'}")
+        render.print_line(f"   Files reviewed ({len(changed_files)}): {', '.join(changed_files)}")
         render.print_line("   Code review: APPROVED")
         render.print_line()
         render.print_line(f"-- {ticket_id} fully validated. Success.")
@@ -450,9 +436,7 @@ def print_declined_criteria(
         return
     render.print_line()
     noun = "criterion" if len(newly_declined) == 1 else "criteria"
-    render.print_line(
-        f"-- {len(newly_declined)} {noun} failed mechanical grounding - NOT pushed:"
-    )
+    render.print_line(f"-- {len(newly_declined)} {noun} failed mechanical grounding - NOT pushed:")
     for frame, reasons in newly_declined:
         render.print_line(f"   {frame.criterion}")
         for reason in reasons:
@@ -493,9 +477,7 @@ def do_push_review_findings(
         )
         for finding in findings
     ]
-    new_frames, newly_declined, skipped_count = lib.filter_grounded_frames(
-        candidate_frames
-    )
+    new_frames, newly_declined, skipped_count = lib.filter_grounded_frames(candidate_frames)
     if new_frames:
         lib.push_frames(new_frames)
     render.print_line()
@@ -811,9 +793,7 @@ def main() -> None:
     model, step_models = lib.resolve_step_models(config_path, args.model)
     git_cfg = lib.load_git_config(config_path)
     try:
-        retry_policy = resolve_retry_policy(
-            config_path, args.retry_policy, args.max_attempts
-        )
+        retry_policy = resolve_retry_policy(config_path, args.retry_policy, args.max_attempts)
     except ValueError as e:
         parser.error(str(e))
     allow_compile_cfg = tools_cfg.get("compile", True)

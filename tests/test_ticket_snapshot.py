@@ -12,7 +12,6 @@ Tests for ticket snapshot persistence across the criteria-stack pipeline:
 """
 
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -194,9 +193,11 @@ class TestReviewFindingsSnapshot(unittest.TestCase):
             captured["frames"] = frames
             return frames, [], 0
 
-        with patch.object(lib, "filter_grounded_frames", side_effect=fake_filter), patch.object(
-            lib, "push_frames"
-        ) as mock_push, patch.object(next_step.sys, "exit") as mock_exit:
+        with (
+            patch.object(lib, "filter_grounded_frames", side_effect=fake_filter),
+            patch.object(lib, "push_frames") as mock_push,
+            patch.object(next_step.sys, "exit") as mock_exit,
+        ):
             next_step.do_push_review_findings(
                 "TEST-1",
                 review_text,
@@ -215,37 +216,45 @@ class TestValidateThreadsTicketSnapshot(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             stack_file = Path(tmp) / ".criteria-stack.json"
             ticket_file = Path(tmp) / ".ticket.md"
-            with patch.object(lib, "CRITERIA_STACK_FILE", stack_file), patch.object(
-                lib, "TICKET_FILE", ticket_file
-            ), patch.object(lib, "ensure_validating_sentinel") as mock_sentinel, patch.object(
-                lib, "fetch_ticket_text"
-            ) as mock_fetch, patch.object(lib, "_resolve_plan_file", return_value=None), patch.object(
-                lib, "run_plan_step", return_value="## Implementation Plan\n"
-            ), patch.object(lib, "run_narrow_step", return_value="## Acceptance Criteria\n"), patch.object(
-                lib, "extract_acceptance_criteria", return_value=[]
-            ), patch.object(lib, "run_lint_gate"), patch.object(
-                lib, "run_command", return_value=type("Result", (), {"returncode": 0})()
-            ), patch.object(lib, "load_smoke_cmd", return_value=None), patch.object(
-                lib, "run_smoke_gate"
-            ), patch.object(lib, "git_changed_files", return_value=["src/example.py"]), patch.object(
-                lib, "run_review_gate", return_value=("CHANGES REQUESTED", "review")
-            ), patch.object(next_step, "do_push_review_findings") as mock_review:
-                next_step.do_ticket_validate("TEST-1", next_step.lib.StepContext(
-                    model="model",
-                    step_models={},
-                    commands={"test_cmd": "true"},
-                    config_path=Path(".dev-pipeline.toml"),
-                    continuous=False,
-                    max_attempts=3,
-                    retry_policy=None,
-                    accept_green=False,
-                    accept_manual=False,
-                    accept_no_test=False,
-                    skip_implementation=False,
-                    allow_compile=True,
-                    reset_on_retry=True,
-                    git_cfg=None,
-                ), ticket_snapshot=SAMPLE_TICKET)
+            with (
+                patch.object(lib, "CRITERIA_STACK_FILE", stack_file),
+                patch.object(lib, "TICKET_FILE", ticket_file),
+                patch.object(lib, "ensure_validating_sentinel") as mock_sentinel,
+                patch.object(lib, "fetch_ticket_text") as mock_fetch,
+                patch.object(lib, "_resolve_plan_file", return_value=None),
+                patch.object(lib, "run_plan_step", return_value="## Implementation Plan\n"),
+                patch.object(lib, "run_narrow_step", return_value="## Acceptance Criteria\n"),
+                patch.object(lib, "extract_acceptance_criteria", return_value=[]),
+                patch.object(lib, "run_lint_gate"),
+                patch.object(
+                    lib, "run_command", return_value=type("Result", (), {"returncode": 0})()
+                ),
+                patch.object(lib, "load_smoke_cmd", return_value=None),
+                patch.object(lib, "run_smoke_gate"),
+                patch.object(lib, "git_changed_files", return_value=["src/example.py"]),
+                patch.object(lib, "run_review_gate", return_value=("CHANGES REQUESTED", "review")),
+                patch.object(next_step, "do_push_review_findings") as mock_review,
+            ):
+                next_step.do_ticket_validate(
+                    "TEST-1",
+                    next_step.lib.StepContext(
+                        model="model",
+                        step_models={},
+                        commands={"test_cmd": "true"},
+                        config_path=Path(".dev-pipeline.toml"),
+                        continuous=False,
+                        max_attempts=3,
+                        retry_policy=None,
+                        accept_green=False,
+                        accept_manual=False,
+                        accept_no_test=False,
+                        skip_implementation=False,
+                        allow_compile=True,
+                        reset_on_retry=True,
+                        git_cfg=None,
+                    ),
+                    ticket_snapshot=SAMPLE_TICKET,
+                )
 
         mock_sentinel.assert_called_once_with("TEST-1", ticket_snapshot=SAMPLE_TICKET)
         mock_fetch.assert_not_called()
@@ -293,14 +302,31 @@ class TestValidateMissedSnapshotCarryforward(unittest.TestCase):
                 patch.object(lib, "CRITERIA_STACK_FILE", stack_file),
                 patch.object(lib, "TICKET_FILE", ticket_file),
                 patch.object(lib, "fetch_ticket_text") as mock_fetch,
-                patch.object(push_ticket, "create_planning_strategy", return_value=FakePlanningStrategy()),
-                patch.object(lib, "filter_grounded_frames", side_effect=lambda frames: (frames, [], 0)),
+                patch.object(
+                    push_ticket, "create_planning_strategy", return_value=FakePlanningStrategy()
+                ),
+                patch.object(
+                    lib, "filter_grounded_frames", side_effect=lambda frames: (frames, [], 0)
+                ),
                 patch.object(lib, "_resolve_plan_file", return_value=None),
                 patch.object(lib, "run_plan_step", return_value="## Implementation Plan\n"),
-                patch.object(lib, "run_narrow_step", side_effect=["## Acceptance Criteria\n- [ ] validate-missed criterion\n", "## Acceptance Criteria\n"]),
-                patch.object(lib, "extract_acceptance_criteria", side_effect=[["- [ ] validate-missed criterion"], []]),
+                patch.object(
+                    lib,
+                    "run_narrow_step",
+                    side_effect=[
+                        "## Acceptance Criteria\n- [ ] validate-missed criterion\n",
+                        "## Acceptance Criteria\n",
+                    ],
+                ),
+                patch.object(
+                    lib,
+                    "extract_acceptance_criteria",
+                    side_effect=[["- [ ] validate-missed criterion"], []],
+                ),
                 patch.object(lib, "run_lint_gate"),
-                patch.object(lib, "run_command", return_value=type("Result", (), {"returncode": 0})()),
+                patch.object(
+                    lib, "run_command", return_value=type("Result", (), {"returncode": 0})()
+                ),
                 patch.object(lib, "load_smoke_cmd", return_value=None),
                 patch.object(lib, "run_smoke_gate"),
                 patch.object(lib, "git_changed_files", return_value=["src/example.py"]),
@@ -317,7 +343,9 @@ class TestValidateMissedSnapshotCarryforward(unittest.TestCase):
                 self.assertEqual(1, len(seeded_frames))
                 self.assertEqual(SAMPLE_TICKET, seeded_frames[0].ticket_snapshot)
 
-                next_step.do_ticket_validate("TEST-1", ctx, ticket_snapshot=seeded_frames[0].ticket_snapshot)
+                next_step.do_ticket_validate(
+                    "TEST-1", ctx, ticket_snapshot=seeded_frames[0].ticket_snapshot
+                )
                 stack = lib.load_stack()
                 self.assertEqual(2, len(stack))
                 self.assertEqual("validate-missed", stack[0].origin)
@@ -387,14 +415,35 @@ class TestValidateMissedSnapshotNoFetch(unittest.TestCase):
             patch.object(lib, "CRITERIA_STACK_FILE", stack_file),
             patch.object(lib, "load_stack", side_effect=fake_load_stack),
             patch.object(lib, "save_stack", side_effect=fake_save_stack),
-            patch.object(next_step.tools, "write_file_block", side_effect=lambda path: (lambda content: content)),
-            patch.object(lib, "fetch_ticket_text", side_effect=AssertionError("fetch_ticket_text should not be called")) as mock_fetch,
-            patch.object(push_ticket, "create_planning_strategy", return_value=FakePlanningStrategy()),
+            patch.object(
+                next_step.tools,
+                "write_file_block",
+                side_effect=lambda path: (lambda content: content),
+            ),
+            patch.object(
+                lib,
+                "fetch_ticket_text",
+                side_effect=AssertionError("fetch_ticket_text should not be called"),
+            ) as mock_fetch,
+            patch.object(
+                push_ticket, "create_planning_strategy", return_value=FakePlanningStrategy()
+            ),
             patch.object(lib, "filter_grounded_frames", side_effect=lambda frames: (frames, [], 0)),
             patch.object(lib, "_resolve_plan_file", return_value=None),
             patch.object(lib, "run_plan_step", return_value="## Implementation Plan\n"),
-            patch.object(lib, "run_narrow_step", side_effect=["## Acceptance Criteria\n- [ ] validate-missed criterion\n", "## Acceptance Criteria\n"]),
-            patch.object(lib, "extract_acceptance_criteria", side_effect=[["- [ ] validate-missed criterion"], []]),
+            patch.object(
+                lib,
+                "run_narrow_step",
+                side_effect=[
+                    "## Acceptance Criteria\n- [ ] validate-missed criterion\n",
+                    "## Acceptance Criteria\n",
+                ],
+            ),
+            patch.object(
+                lib,
+                "extract_acceptance_criteria",
+                side_effect=[["- [ ] validate-missed criterion"], []],
+            ),
             patch.object(lib, "run_lint_gate"),
             patch.object(lib, "run_command", return_value=type("Result", (), {"returncode": 0})()),
             patch.object(lib, "load_smoke_cmd", return_value=None),
@@ -413,7 +462,9 @@ class TestValidateMissedSnapshotNoFetch(unittest.TestCase):
             self.assertEqual(1, len(seeded_frames))
             self.assertEqual(SAMPLE_TICKET, seeded_frames[0].ticket_snapshot)
 
-            next_step.do_ticket_validate("TEST-1", ctx, ticket_snapshot=seeded_frames[0].ticket_snapshot)
+            next_step.do_ticket_validate(
+                "TEST-1", ctx, ticket_snapshot=seeded_frames[0].ticket_snapshot
+            )
             stack = lib.load_stack()
             self.assertEqual(2, len(stack))
             self.assertEqual("validate-missed", stack[0].origin)
@@ -466,14 +517,22 @@ class TestValidateOnlyAndFromGapPlanWithoutSnapshots(unittest.TestCase):
                 patch.object(lib, "PLAN_FILE", plan_file),
                 patch.object(lib, "GAP_PLAN_FILE", gap_plan_file),
                 patch.object(lib, "resolve_step_models", return_value=("model", {})),
-                patch.object(lib, "load_git_config", return_value=type("GitConfig", (), {"git_workflow": False})()),
-                patch.object(push_ticket.sys, "argv", [
-                    "push-ticket",
-                    "TEST-1",
-                    "--validate-only",
-                    "--log-level",
-                    "warning",
-                ]),
+                patch.object(
+                    lib,
+                    "load_git_config",
+                    return_value=type("GitConfig", (), {"git_workflow": False})(),
+                ),
+                patch.object(
+                    push_ticket.sys,
+                    "argv",
+                    [
+                        "push-ticket",
+                        "TEST-1",
+                        "--validate-only",
+                        "--log-level",
+                        "warning",
+                    ],
+                ),
             ):
                 push_ticket.main()
 
@@ -492,14 +551,18 @@ class TestValidateOnlyAndFromGapPlanWithoutSnapshots(unittest.TestCase):
                 patch.object(lib, "run_narrow_step", return_value="## Acceptance Criteria\n"),
                 patch.object(lib, "extract_acceptance_criteria", return_value=[]),
                 patch.object(lib, "run_lint_gate"),
-                patch.object(lib, "run_command", return_value=type("Result", (), {"returncode": 0})()),
+                patch.object(
+                    lib, "run_command", return_value=type("Result", (), {"returncode": 0})()
+                ),
                 patch.object(lib, "load_smoke_cmd", return_value=None),
                 patch.object(lib, "run_smoke_gate"),
                 patch.object(lib, "git_changed_files", return_value=["src/example.py"]),
                 patch.object(lib, "run_review_gate", return_value=("APPROVED", "review")),
                 patch.object(next_step.sys, "exit") as mock_exit,
             ):
-                next_step.do_ticket_validate("TEST-1", ctx, ticket_snapshot=stack[0].ticket_snapshot)
+                next_step.do_ticket_validate(
+                    "TEST-1", ctx, ticket_snapshot=stack[0].ticket_snapshot
+                )
 
             mock_fetch.assert_called_once_with("TEST-1")
             mock_exit.assert_called_once_with(0)
@@ -533,16 +596,28 @@ class TestValidateOnlyAndFromGapPlanWithoutSnapshots(unittest.TestCase):
                 patch.object(lib, "PLAN_FILE", plan_file),
                 patch.object(lib, "GAP_PLAN_FILE", gap_plan_file),
                 patch.object(lib, "resolve_step_models", return_value=("model", {})),
-                patch.object(lib, "load_git_config", return_value=type("GitConfig", (), {"git_workflow": False})()),
-                patch.object(push_ticket, "planning_result_from_gap_plan", return_value=planning_result),
-                patch.object(lib, "filter_grounded_frames", side_effect=lambda frames: (frames, [], 0)),
-                patch.object(push_ticket.sys, "argv", [
-                    "push-ticket",
-                    "TEST-1",
-                    "--from-gap-plan",
-                    "--log-level",
-                    "warning",
-                ]),
+                patch.object(
+                    lib,
+                    "load_git_config",
+                    return_value=type("GitConfig", (), {"git_workflow": False})(),
+                ),
+                patch.object(
+                    push_ticket, "planning_result_from_gap_plan", return_value=planning_result
+                ),
+                patch.object(
+                    lib, "filter_grounded_frames", side_effect=lambda frames: (frames, [], 0)
+                ),
+                patch.object(
+                    push_ticket.sys,
+                    "argv",
+                    [
+                        "push-ticket",
+                        "TEST-1",
+                        "--from-gap-plan",
+                        "--log-level",
+                        "warning",
+                    ],
+                ),
             ):
                 push_ticket.main()
 
@@ -561,14 +636,18 @@ class TestValidateOnlyAndFromGapPlanWithoutSnapshots(unittest.TestCase):
                 patch.object(lib, "run_narrow_step", return_value="## Acceptance Criteria\n"),
                 patch.object(lib, "extract_acceptance_criteria", return_value=[]),
                 patch.object(lib, "run_lint_gate"),
-                patch.object(lib, "run_command", return_value=type("Result", (), {"returncode": 0})()),
+                patch.object(
+                    lib, "run_command", return_value=type("Result", (), {"returncode": 0})()
+                ),
                 patch.object(lib, "load_smoke_cmd", return_value=None),
                 patch.object(lib, "run_smoke_gate"),
                 patch.object(lib, "git_changed_files", return_value=["src/example.py"]),
                 patch.object(lib, "run_review_gate", return_value=("APPROVED", "review")),
                 patch.object(next_step.sys, "exit") as mock_exit,
             ):
-                next_step.do_ticket_validate("TEST-1", ctx, ticket_snapshot=frames[0].ticket_snapshot)
+                next_step.do_ticket_validate(
+                    "TEST-1", ctx, ticket_snapshot=frames[0].ticket_snapshot
+                )
 
             mock_fetch.assert_called_once_with("TEST-1")
             mock_exit.assert_called_once_with(0)

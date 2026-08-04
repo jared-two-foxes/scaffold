@@ -943,7 +943,7 @@ class FakeTranscriptIntegrationTests(unittest.TestCase):
         from ticket_pipeline.lib import pipeline_lib as lib
         from ticket_pipeline.planning import build_ticket_frames
 
-        ticket_content = "# Test Ticket\n\nDescription.\n\n## Acceptance Criteria\n\n- [ ] Add foo support\n"
+        ticket_content = "# Test Ticket\n\nDescription.\n\n## Acceptance Criteria\n\n- [ ] Add foo support\n"  # noqa: E501
 
         submit_args = {
             "ticket_summary": "Add foo support",
