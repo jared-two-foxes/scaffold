@@ -141,7 +141,7 @@ SUBMIT_PLAN_SCHEMA = {
                             },
                             "implementation_strategy": {
                                 "type": "string",
-                                "enum": ["tdd", "direct", "manual", "refactor"],
+                                "enum": ["tdd", "direct", "refactor"],
                             },
                             "existing_test_refs": {
                                 "type": "array",
