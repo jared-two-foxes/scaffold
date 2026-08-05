@@ -2538,7 +2538,8 @@ def git_diff_for_file(path: str) -> str:
 #
 # Adds git as a second source of truth alongside the stack: push-ticket
 # creates a ticket/<id> branch; next-step commits each criterion on POP;
-# TICKET_VALIDATE merges (or opens a PR) after approval; reset-criterion
+# TICKET_VALIDATE hands the branch off for a PR after approval;
+# reset-criterion
 # rolls one criterion back via `git reset --hard`. All git operations
 # live here in pipeline code (never handed to the model as a shell) -
 # the same "no shell for the model" rule every other subprocess call in
@@ -2547,12 +2548,10 @@ def git_diff_for_file(path: str) -> str:
 # unaffected - every helper below no-ops or refuses cleanly when
 # git_workflow is off.
 #
-# Two tiers of post-validation handoff: Tier 1 (local merge) needs only
-# git. Tier 2 (push + GitHub PR) additionally requires the `gh` CLI,
-# installed and authenticated via `gh auth login`; with `gh` absent it
-# degrades to a pushed-but-un-PR'd branch with a warning (see
-# create_github_pr). Leave pr_on_validate false (the default) to skip
-# Tier 2 entirely.
+# Post-validation handoff pushes the ticket branch and optionally opens a
+# GitHub PR. This additionally requires the `gh` CLI when PR creation is
+# enabled; with `gh` absent it degrades to a pushed-but-un-PR'd branch with
+# a warning (see create_github_pr).
 #
 # Pipeline state files (.criteria-stack.json, .pipeline-git-state.json,
 # ...) are gitignored (see ensure_gitignore_entries) so a `git reset
@@ -2567,27 +2566,22 @@ class GitConfig:
     by default; the whole git-native workflow stays dormant unless
     `git_workflow = true`.
 
-    Tier 1 (local merge on validate) needs nothing beyond git itself.
-    Tier 2 (push + open a GitHub PR) additionally requires the `gh` CLI
-    to be installed and authenticated (`gh auth login`) - see
-    create_github_pr. With `gh` absent, the branch is still pushed and a
-    warning is logged; the PR must be opened manually. Set
-    `pr_on_validate = false` (the default) to skip Tier 2 entirely.
+    Post-validation PR handoff additionally requires the `gh` CLI to be
+    installed and authenticated (`gh auth login`) - see create_github_pr.
+    With `gh` absent, the branch is still pushed and a warning is logged;
+    the PR must be opened manually. Set `pr_on_validate = false` (the
+    default) to leave the ticket branch intact without opening a PR.
     """
 
     git_workflow: bool = False
     base_branch: str | None = None  # merge/PR target; defaults to
     # the branch push-ticket ran on
-    git_merge_on_validate: bool = True  # Tier 1: local merge after
-    # validation approves. Only
-    # meaningful when git_workflow.
-    forge: str = "none"  # "none" | "github" (Tier 2).
+    forge: str = "none"  # "none" | "github".
     # "github" enables PR creation
     # (requires the `gh` CLI).
     forge_remote: str = "origin"  # remote to push the ticket
     # branch to for a PR
-    pr_on_validate: bool = False  # Tier 2: push + open a PR
-    # instead of a local merge.
+    pr_on_validate: bool = False  # push + open a PR.
     # Requires forge = "github"
     # and the `gh` CLI.
     branch_prefix: str = "ticket/"  # ticket/<id> by default
@@ -2623,7 +2617,7 @@ def ticket_branch_name(cfg: GitConfig, ticket_id: str) -> str:
 
 # --- pipeline-git-state sidecar (.pipeline-git-state.json) ---------------
 # Maps ticket_id -> base_branch, written by push-ticket when it creates
-# the ticket branch, read by TICKET_VALIDATE's merge/PR path. A sidecar
+# the ticket branch, read by TICKET_VALIDATE's PR path. A sidecar
 # (not a frame field) because base_branch is per-ticket and the sentinel
 # frame that would carry it is popped *before* the merge runs.
 
@@ -2793,12 +2787,6 @@ def git_reset_hard(sha: str) -> None:
         raise GitError(f"git reset --hard {sha} failed: {r.stderr.strip()}")
 
 
-def git_merge_no_ff(branch: str) -> None:
-    r = _git("merge", "--no-ff", branch, "-m", f"Merge {branch}")
-    if r.returncode != 0:
-        raise GitError(f"git merge --no-ff {branch} failed: {r.stderr.strip()}")
-
-
 def git_branch_delete(name: str) -> None:
     r = _git("branch", "-d", name)
     if r.returncode != 0:
@@ -2872,9 +2860,7 @@ def create_github_pr(
     Prerequisite: the `gh` CLI installed and authenticated. With `gh`
     absent the branch is *still pushed* (the `git push` runs before the
     `gh` check) and a warning is logged prompting a manual PR - a
-    non-fatal degradation, never a crash. To avoid the push-without-PR
-    state entirely, either install `gh` or leave `pr_on_validate`
-    false (the default) and rely on Tier 1's local merge.
+    non-fatal degradation, never a crash.
     """
     git_push(cfg.forge_remote, branch)
     render.print_line(f"-- git_workflow: pushed {branch} to {cfg.forge_remote}.")
@@ -2907,59 +2893,26 @@ def post_validate_git(
     title: str | None = None,
     body: str | None = None,
 ) -> None:
-    """Layer 3: after TICKET_VALIDATE approves, merge the ticket branch
-    back to its base (Tier 1) or push + open a PR (Tier 2). No-op when
-    git_workflow is off. Leaves the working tree on the base branch on a
-    local merge, or on the ticket branch after a PR (review happens on
-    the remote). Clears the per-ticket base_branch sidecar once the
-    branch is merged locally - a PR keeps it so a later local merge of
-    the same branch still knows where to land.
-
-    Tier 1 (git_merge_on_validate, default) needs only git. Tier 2
-    (pr_on_validate = true + forge = "github") needs the `gh` CLI; with
-    `gh` missing it degrades to a pushed branch + warning (see
-    create_github_pr), never a crash."""
+    """Layer 3: after TICKET_VALIDATE approves, optionally push the ticket
+    branch and open a GitHub PR. No-op when git_workflow is off, when no
+    ticket branch exists, or when PR handoff is not enabled. The non-PR
+    path leaves the ticket branch intact. With `gh` missing, PR creation
+    degrades to a pushed branch + warning (see create_github_pr), never a
+    crash."""
     if not cfg.git_workflow:
         return
     branch = ticket_branch_name(cfg, ticket_id)
     if not git_branch_exists(branch):
-        log.info("-- git_workflow: ticket branch %s not found - nothing to merge.", branch)
+        log.info("-- git_workflow: ticket branch %s not found - nothing to hand off.", branch)
+        return
+    if not (cfg.pr_on_validate and cfg.forge == "github"):
         return
     base = lookup_git_base_branch(ticket_id) or cfg.base_branch or git_current_branch()
 
-    if cfg.pr_on_validate and cfg.forge == "github":
-        try:
-            create_github_pr(cfg, ticket_id, branch, base, title, body)
-        except GitError as e:
-            log.warning("-- git_workflow: PR creation failed (non-fatal): %s", e)
-        return
-
-    if not cfg.git_merge_on_validate:
-        log.info(
-            "-- git_workflow: git_merge_on_validate is off - leaving %s "
-            "unmerged. Merge it manually into %s when ready.",
-            branch,
-            base,
-        )
-        return
-
     try:
-        git_checkout(base)
-        git_merge_no_ff(branch)
-        render.print_line(f"-- git_workflow: merged {branch} into {base}.")
-        git_branch_delete(branch)
-        clear_git_base_branch(ticket_id)
+        create_github_pr(cfg, ticket_id, branch, base, title, body)
     except GitError as e:
-        # A merge conflict or checkout failure is non-fatal to the
-        # validation verdict itself (the work is done and approved) -
-        # surface it loudly and leave the branch for a manual merge.
-        log.warning(
-            "-- git_workflow: post-validate merge failed (non-fatal): %s. "
-            "Branch %s is intact; merge it into %s manually.",
-            e,
-            branch,
-            base,
-        )
+        log.warning("-- git_workflow: PR creation failed (non-fatal): %s", e)
 
 
 # --- .gitignore management -------------------------------------------------

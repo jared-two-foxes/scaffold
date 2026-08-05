@@ -44,13 +44,12 @@ class GitConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             (Path(d) / "cfg.toml").write_text(
                 'git_workflow = true\nbase_branch = "main"\n'
-                'git_merge_on_validate = false\nbranch_prefix = "t/"\n',
+                'branch_prefix = "t/"\n',
                 encoding="utf-8",
             )
             cfg = lib.load_git_config(Path(d) / "cfg.toml")
             self.assertTrue(cfg.git_workflow)
             self.assertEqual(cfg.base_branch, "main")
-            self.assertFalse(cfg.git_merge_on_validate)
             self.assertEqual(cfg.branch_prefix, "t/")
 
     def test_ticket_branch_name_uses_prefix(self):
@@ -323,8 +322,8 @@ class CommitCriterionTests(unittest.TestCase):
         self.assertIn("src.rs", r.stdout)
 
 
-class PostValidateMergeTests(unittest.TestCase):
-    """Layer 3 Tier 1: local merge of ticket/<id> back to base."""
+class PostValidateGitTests(unittest.TestCase):
+    """post_validate_git leaves ticket branches intact unless configured otherwise."""
 
     def setUp(self):
         self._cwd = os.getcwd()
@@ -338,22 +337,6 @@ class PostValidateMergeTests(unittest.TestCase):
         os.chdir(self._cwd)
         self._tmp.cleanup()
 
-    def test_merges_ticket_branch_into_base_and_deletes_branch(self):
-        base = lib.git_current_branch()  # master/main
-        lib.git_create_branch("ticket/SA-1")
-        (self.root / "feat.txt").write_text("feat\n", encoding="utf-8")
-        lib.git_commit("ticket/SA-1: feat")
-        lib.record_git_base_branch("SA-1", base)
-
-        cfg = lib.GitConfig(git_workflow=True, git_merge_on_validate=True)
-        lib.post_validate_git(cfg, "SA-1")
-
-        # Back on base, branch gone, feat present.
-        self.assertEqual(lib.git_current_branch(), base)
-        self.assertFalse(lib.git_branch_exists("ticket/SA-1"))
-        self.assertTrue((self.root / "feat.txt").exists())
-        self.assertIsNone(lib.lookup_git_base_branch("SA-1"))
-
     def test_noop_when_workflow_off(self):
         lib.git_create_branch("ticket/SA-2")
         (self.root / "x.txt").write_text("x\n", encoding="utf-8")
@@ -363,19 +346,19 @@ class PostValidateMergeTests(unittest.TestCase):
         # Still on the ticket branch, nothing merged.
         self.assertEqual(lib.git_current_branch(), "ticket/SA-2")
 
-    def test_no_merge_when_disabled_leaves_branch(self):
+    def test_no_merge_when_no_pr_configured_leaves_branch(self):
         base = lib.git_current_branch()
         lib.git_create_branch("ticket/SA-3")
         (self.root / "y.txt").write_text("y\n", encoding="utf-8")
         lib.git_commit("y")
         lib.record_git_base_branch("SA-3", base)
-        cfg = lib.GitConfig(git_workflow=True, git_merge_on_validate=False)
+        cfg = lib.GitConfig(git_workflow=True)
         lib.post_validate_git(cfg, "SA-3")
         self.assertEqual(lib.git_current_branch(), "ticket/SA-3")
         self.assertTrue(lib.git_branch_exists("ticket/SA-3"))
 
     def test_missing_branch_is_noop(self):
-        cfg = lib.GitConfig(git_workflow=True, git_merge_on_validate=True)
+        cfg = lib.GitConfig(git_workflow=True)
         # No branch created - should log and return, not raise.
         lib.post_validate_git(cfg, "SA-999")
 
@@ -397,7 +380,6 @@ class LoadPipelineConfigAllowsGitKeysTests(unittest.TestCase):
         (Path(self._tmp.name) / "cfg.toml").write_text(
             'test_cmd = "pytest"\n'
             "git_workflow = true\n"
-            "git_merge_on_validate = true\n"
             'smoke_cmd = "echo ok"\n'
             "[step_models]\n"
             'review = "opencode:x"\n',
@@ -465,7 +447,7 @@ class ResetWorkflowTests(unittest.TestCase):
         write_commit(self.root, "README.md", "hi\n", "init")
         os.chdir(self.root)
         self.base = lib.git_current_branch()
-        self.cfg = lib.GitConfig(git_workflow=True, git_merge_on_validate=True)
+        self.cfg = lib.GitConfig(git_workflow=True)
         # Enable git_workflow in the repo's own config so reset-workflow's
         # default --config picks it up.
         (self.root / lib.PIPELINE_CONFIG_FILE.name).write_text(

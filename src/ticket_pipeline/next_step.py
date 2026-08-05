@@ -383,11 +383,11 @@ def do_ticket_validate(
         render.print_line("   Code review: APPROVED")
         render.print_line()
         render.print_line(f"-- {ticket_id} fully validated. Success.")
-        # Layer 3: merge the ticket branch back to its base (Tier 1) or
-        # push + open a PR (Tier 2). Runs after the sentinel is popped so
-        # a failure here can't leave a stale "still needs validating"
-        # marker. Non-fatal: the verdict is already APPROVED, so a merge
-        # conflict or push failure is surfaced as a warning, not a die.
+        # Layer 3: push the ticket branch and open a PR for review. The
+        # branch is left intact by default. Runs after the sentinel is popped
+        # so a failure here can't leave a stale "still needs validating"
+        # marker. Non-fatal: the verdict is already APPROVED, so a push
+        # failure is surfaced as a warning, not a die.
         if ctx.git_cfg is not None:
             lib.post_validate_git(
                 ctx.git_cfg,
