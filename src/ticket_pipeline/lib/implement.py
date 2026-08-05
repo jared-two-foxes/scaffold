@@ -552,7 +552,17 @@ def run_implement_direct_with_refine(
         if not attempt_changed:
             paths = lib.extract_referenced_paths(f"{frame.criterion}\n{frame.plan_context}")
             if paths and set(paths) & set(lib.git_changed_files()):
-                return sorted(set(all_changed))  # a previous criterion already did the work
+                build_result = lib.run_command(
+                    commands["build_cmd"],
+                    f"build gate (no new files, attempt {attempt}, {limit_desc})",
+                )
+                if build_result.returncode == 0:
+                    return sorted(set(all_changed))  # a previous criterion already did the work
+                lib.die_with_log(
+                    "implement-criterion-direct",
+                    "build gate failed while verifying files changed by a previous criterion.",
+                    criterion=frame.criterion,
+                )
             lib.die_with_log(
                 "implement-criterion-direct",
                 "Direct Implementor finished without writing any files.",
@@ -738,7 +748,17 @@ def run_implement_with_refine(
         if not attempt_changed:
             paths = lib.extract_referenced_paths(f"{frame.criterion}\n{frame.plan_context}")
             if paths and set(paths) & set(lib.git_changed_files()):
-                return sorted(set(all_changed))  # a previous criterion already did the work
+                green_results = lib.run_scoped_tests(
+                    test_names, commands, f"green check (attempt {attempt}, {limit_desc})"
+                )
+                still_red = [n for n, r in zip(test_names, green_results) if r.returncode != 0]
+                if not still_red:
+                    return sorted(set(all_changed))  # a previous criterion already did the work
+                lib.die_with_log(
+                    "implement-criterion",
+                    "still-red scoped test(s): " + ", ".join(still_red),
+                    criterion=frame.criterion,
+                )
             lib.die_with_log(
                 "implement-criterion",
                 "Implementor finished without writing any files.",

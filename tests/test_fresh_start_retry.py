@@ -103,6 +103,13 @@ class FreshStartRetryTests(unittest.TestCase):
                 implement_lib.lib, "extract_referenced_paths", return_value=["src/lib.py"]
             ),
             mock.patch.object(implement_lib.lib, "git_changed_files", return_value=["src/lib.py"]),
+            mock.patch.object(
+                implement_lib.lib,
+                "run_command",
+                return_value=subprocess.CompletedProcess(
+                    args=["build"], returncode=0, stdout="", stderr=""
+                ),
+            ),
         ):
             changed = implement_lib.run_implement_direct_with_refine(
                 frame, "model", {"build_cmd": "build"}, 2, retry_policy=FixedBudgetPolicy(2)
