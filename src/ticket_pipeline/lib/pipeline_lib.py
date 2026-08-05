@@ -2787,6 +2787,25 @@ def git_reset_hard(sha: str) -> None:
         raise GitError(f"git reset --hard {sha} failed: {r.stderr.strip()}")
 
 
+def git_squash_branch(branch: str, base: str, message: str) -> str:
+    """Squash the commits on ``branch`` since ``base`` into one commit.
+
+    The soft reset leaves the cumulative branch diff staged, so commit the
+    index directly rather than staging the worktree afresh.  An empty diff
+    is not an error; in that case the branch's current head is returned.
+    """
+    git_checkout(branch)
+    r = _git("reset", "--soft", base)
+    if r.returncode != 0:
+        raise GitError(f"git reset --soft {base} failed: {r.stderr.strip()}")
+    if not git_has_staged_changes():
+        return git_current_head()
+    r = _git("commit", "-m", message)
+    if r.returncode != 0:
+        raise GitError(f"git commit failed: {r.stderr.strip()}")
+    return git_current_head()
+
+
 def git_branch_delete(name: str) -> None:
     r = _git("branch", "-d", name)
     if r.returncode != 0:
@@ -2851,6 +2870,7 @@ def create_github_pr(
     base: str,
     title: str | None,
     body: str | None,
+    force: bool = False,
 ) -> None:
     """Layer 3 Tier 2: push the ticket branch and open a GitHub PR via
     the `gh` CLI - the simplest robust path, reusing whatever auth `gh`
@@ -2862,7 +2882,7 @@ def create_github_pr(
     `gh` check) and a warning is logged prompting a manual PR - a
     non-fatal degradation, never a crash.
     """
-    git_push(cfg.forge_remote, branch)
+    git_push(cfg.forge_remote, branch, force=force)
     render.print_line(f"-- git_workflow: pushed {branch} to {cfg.forge_remote}.")
     if not _gh_available():
         log.warning(
@@ -2910,7 +2930,8 @@ def post_validate_git(
     base = lookup_git_base_branch(ticket_id) or cfg.base_branch or git_current_branch()
 
     try:
-        create_github_pr(cfg, ticket_id, branch, base, title, body)
+        git_squash_branch(branch, base, title or f"{cfg.branch_prefix}{ticket_id}")
+        create_github_pr(cfg, ticket_id, branch, base, title, body, force=True)
     except GitError as e:
         log.warning("-- git_workflow: PR creation failed (non-fatal): %s", e)
 
