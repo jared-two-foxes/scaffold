@@ -19,9 +19,9 @@ from ticket_pipeline.lib import render
 # Status constants — mirror next_step.py's definitions. Duplicated as
 # literals rather than imported to avoid next_step's import-time side
 # effects (it pulls in ai_client, tools, subprocess gates, etc.).
-_VALIDATING = lib.VALIDATING_STATUS  # "validating"
-_GREEN_UNCONFIRMED = "green-unconfirmed"  # GREEN_UNCONFIRMED_STATUS
-_MANUAL_PENDING = "awaiting-manual-impl"  # MANUAL_PENDING_STATUS
+_VALIDATING = lib.VALIDATING_STATUS
+_GREEN_UNCONFIRMED = "green-unconfirmed"
+_MANUAL_PENDING = "awaiting-manual-impl"
 _FEEDBACK_READY = lib.FEEDBACK_READY_STATUS
 
 
@@ -67,7 +67,6 @@ def _recent_failures(log_path: Path, ticket: str, limit: int = 3) -> list[dict]:
         return []
     failures: list[dict] = []
     try:
-        # Read all lines, reverse to get newest first
         lines = log_path.read_text(encoding="utf-8").splitlines()
         for line in reversed(lines):
             line = line.strip()
@@ -98,8 +97,6 @@ def show_status(show_log: bool = False) -> None:
         render.print_line("  → Run 'scaffold push-ticket <id>' to start.")
         return
 
-    # All frames should be for the same ticket (or the last frame is a
-    # validating sentinel for a ticket whose real frames are gone).
     ticket = stack[0].ticket
     total = len(stack)
 
@@ -112,12 +109,10 @@ def show_status(show_log: bool = False) -> None:
     _print_section("▶ Current criterion:")
     render.print_line(f"  [{vtag} | {frame.status}] {_strip_html_comment(frame.criterion)}")
 
-    # Show plan context if available (truncated)
     if frame.plan_context:
         context = _truncate(frame.plan_context, 200)
         render.print_line(f"  Context: {context}")
 
-    # Show test info if available
     if frame.test_files and frame.test_names:
         render.print_line("  Tests:")
         for f, n in zip(frame.test_files, frame.test_names):
@@ -126,7 +121,6 @@ def show_status(show_log: bool = False) -> None:
                 unconfirmed_tag = " — UNCONFIRMED"
             render.print_line(f"    {f} :: {n}{unconfirmed_tag}")
 
-    # Show origin if not the default
     if frame.origin != "ticket":
         render.print_line(f"  Origin: {frame.origin}")
     if frame.status == _FEEDBACK_READY and frame.feedback_target:
@@ -134,17 +128,14 @@ def show_status(show_log: bool = False) -> None:
     if frame.feedback:
         render.print_line(f"  Feedback: {_truncate(frame.feedback, 200)}")
 
-    # Dispatch on status to give actionable guidance
     _print_section("Next action:")
     _dispatch_guidance(frame, ticket)
 
-    # Show remaining criteria as a brief list
     if total > 1:
         _print_section(f"Remaining ({total - 1} more):")
         for i, f in enumerate(stack[1:], start=2):
             render.print_line(_format_frame_brief(f, i))
 
-    # Show recent failures if requested
     if show_log:
         failures = _recent_failures(lib.PIPELINE_LOG_FILE, ticket)
         if failures:
@@ -162,7 +153,6 @@ def _dispatch_guidance(frame: "lib.CriterionFrame", ticket: str) -> None:
     status = frame.status
     verification = frame.verification
 
-    # --- Validating (ticket validation in progress) ---
     if status == _VALIDATING:
         _print_guidance(
             [
@@ -184,9 +174,7 @@ def _dispatch_guidance(frame: "lib.CriterionFrame", ticket: str) -> None:
             return
         if target == lib.FEEDBACK_TARGET_IMPLEMENTOR:
             _print_guidance(
-                [
-                    "Run 'scaffold next-step' to re-run the Implementor with your queued feedback.",
-                ]
+                ["Run 'scaffold next-step' to re-run the Implementor with your queued feedback."]
             )
             return
         _print_guidance(
@@ -197,7 +185,6 @@ def _dispatch_guidance(frame: "lib.CriterionFrame", ticket: str) -> None:
         )
         return
 
-    # --- Green-unconfirmed ---
     if status == _GREEN_UNCONFIRMED:
         _print_guidance(
             [
@@ -210,8 +197,23 @@ def _dispatch_guidance(frame: "lib.CriterionFrame", ticket: str) -> None:
         )
         return
 
-    # --- Manual criteria ---
-    if verification == "manual" and status in ("pending", _MANUAL_PENDING):
+    if status == _MANUAL_PENDING:
+        paths = lib.extract_referenced_paths(f"{frame.criterion}\n{frame.plan_context}")
+        guidance = []
+        if paths:
+            guidance.append(f"Make the change to: {', '.join(paths)}")
+        else:
+            guidance.append("Make the change described in the criterion.")
+        guidance.extend(
+            [
+                "Then run: scaffold next-step",
+                "(Implement manually, then the pipeline will re-check the criterion.)",
+            ]
+        )
+        _print_guidance(guidance)
+        return
+
+    if verification == "manual" and status == "pending":
         paths = lib.extract_referenced_paths(f"{frame.criterion}\n{frame.plan_context}")
         if paths:
             files_str = ", ".join(paths)
@@ -219,46 +221,37 @@ def _dispatch_guidance(frame: "lib.CriterionFrame", ticket: str) -> None:
                 [
                     f"Make the change to: {files_str}",
                     "Then run: scaffold next-step",
-                    "(If the file(s) are still unchanged, that rerun lets the "
-                    "pipeline attempt the change automatically.)",
+                    "(If the file(s) are still unchanged, that rerun lets the pipeline attempt the change automatically.)",
                 ]
             )
         else:
             _print_guidance(
                 [
-                    "Make the change described in the criterion, or re-run "
-                    "scaffold next-step to let the pipeline try it.",
+                    "Make the change described in the criterion, or re-run scaffold next-step to let the pipeline try it.",
                     "Afterward, run: scaffold next-step --accept-manual",
                     "(No specific file could be identified for mechanical checking.)",
                 ]
             )
         return
 
-    # --- Test criteria: pending (WRITE_TEST not yet run) ---
     if status == "pending":
         _print_guidance(
             [
                 "Run: scaffold next-step",
-                "(Writes a failing test for this criterion, then AI-implements "
-                "automatically when needed.)",
+                "(Writes a failing test for this criterion, then AI-implements automatically when needed.)",
                 "Or skip test generation and hand directly to the Implementor:",
                 "  scaffold next-step --skip-test",
                 "Or write the test by hand, then run:",
-                "  scaffold next-step --manual-test --manual-test-ref "
-                "<file>::<qualified_test_name>",
+                "  scaffold next-step --manual-test --manual-test-ref <file>::<qualified_test_name>",
                 "  (replace placeholders with the real test reference)",
             ]
         )
         return
 
-    # --- Test criteria: test-written (awaiting implementation or re-check) ---
     if status == "test-written":
         if not frame.test_files or not frame.test_names:
             _print_guidance(
-                [
-                    "Run: scaffold next-step",
-                    "(Test metadata is missing — will retry WRITE_TEST.)",
-                ]
+                ["Run: scaffold next-step", "(Test metadata is missing — will retry WRITE_TEST.)"]
             )
             return
         _print_guidance(
@@ -270,21 +263,11 @@ def _dispatch_guidance(frame: "lib.CriterionFrame", ticket: str) -> None:
         )
         return
 
-    # --- Done (shouldn't normally be seen, but handle gracefully) ---
     if status == "done":
-        _print_guidance(
-            [
-                "Criterion is done. Run: scaffold next-step  (pops and advances)",
-            ]
-        )
+        _print_guidance(["Criterion is done. Run: scaffold next-step  (pops and advances)"])
         return
 
-    # --- Unknown status ---
-    _print_guidance(
-        [
-            f"Unrecognized status '{status}'. Run: scaffold next-step",
-        ]
-    )
+    _print_guidance([f"Unrecognized status '{status}'. Run: scaffold next-step"])
 
 
 def main() -> None:

@@ -7,8 +7,9 @@ from ..lib import ai_client, render
 from ..lib import implement as implement_lib
 from ..lib import pipeline_lib as lib
 
-PHASES = ["pending", "implemented", "done"]
+PHASES = ["pending", "implemented", "awaiting-manual-impl", "done"]
 IMPL_AWAITING_STATUS = "pending"
+MANUAL_PENDING_STATUS = "awaiting-manual-impl"
 
 
 def implement(frame, ctx, feedback=None, previous_changed_files=None):
@@ -44,6 +45,21 @@ def implement(frame, ctx, feedback=None, previous_changed_files=None):
     return changed_files
 
 
+def do_await_impl(frame):
+    render.print_line()
+    render.print_line("-- Manual implementation required (--skip-implementation is set):")
+    render.print_line(f"   Criterion: {frame.criterion}")
+    plan_context = frame.plan_context or ""
+    if plan_context:
+        render.print_line("   Plan context:")
+        render.print_line(f"   {plan_context}")
+    paths = lib.extract_referenced_paths(f"{frame.criterion}\n{plan_context}")
+    if paths:
+        render.print_line(f"   Referenced files: {', '.join(paths)}")
+    render.print_line("   Implement it by hand, then run 'next_step' to re-check.")
+    sys.exit(0)
+
+
 def recheck(stack, frame, ctx):
     paths = lib.extract_referenced_paths(f"{frame.criterion}\n{frame.plan_context}")
     mechanically_confirmed = bool(paths) and bool(set(paths) & set(lib.git_changed_files()))
@@ -67,6 +83,11 @@ def recheck(stack, frame, ctx):
 def advance(stack, frame, ctx):
     if frame.status == "pending":
         next_step._record_base_commit_if_needed(stack, frame, ctx.git_cfg)
+        if ctx.skip_implementation:
+            frame.status = MANUAL_PENDING_STATUS
+            lib.save_stack(stack)
+            do_await_impl(frame)
+            return
         frame.status = "implemented"
         implement(frame, ctx)
         lib.save_stack(stack)
@@ -75,6 +96,10 @@ def advance(stack, frame, ctx):
         sys.exit(0)
 
     if frame.status == "implemented":
+        recheck(stack, frame, ctx)
+        return
+
+    if frame.status == MANUAL_PENDING_STATUS:
         recheck(stack, frame, ctx)
         return
 

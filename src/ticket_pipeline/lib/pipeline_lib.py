@@ -2890,7 +2890,7 @@ def create_github_pr(
             "created. Install gh or open the PR manually."
         )
         return
-    args = ["pr", "create", "--base", base, "--head", branch]
+    args = ["gh", "pr", "create", "--base", base, "--head", branch]
     if title:
         args += ["--title", title]
     if body:
