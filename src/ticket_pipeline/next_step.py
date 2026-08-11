@@ -347,7 +347,7 @@ def do_ticket_validate(
     smoke_cmd = lib.load_smoke_cmd(ctx.config_path)
     lib.run_smoke_gate(smoke_cmd)
 
-    changed_files = lib.git_changed_files()
+    changed_files = lib.git_changed_files(git_cfg=ctx.git_cfg, ticket_id=ticket_id)
     if not changed_files:
         lib.die_with_log(
             "review",

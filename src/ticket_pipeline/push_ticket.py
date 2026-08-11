@@ -122,7 +122,9 @@ def prepare_git_branch(ticket_id: str, cfg: "lib.GitConfig", force: bool) -> Non
         )
     branch = lib.ticket_branch_name(cfg, ticket_id)
     base_branch = cfg.base_branch or lib.git_current_branch()
-    if lib.git_branch_exists(branch):
+    base_commit = lib.git_current_head()
+    branch_exists = lib.git_branch_exists(branch)
+    if branch_exists:
         if not force and lib.git_current_branch() != branch:
             log.info(
                 "-- git_workflow: ticket branch %s already exists; checking it out.",
@@ -133,6 +135,10 @@ def prepare_git_branch(ticket_id: str, cfg: "lib.GitConfig", force: bool) -> Non
         lib.git_create_branch(branch)
         render.print_line(f"-- git_workflow: created branch {branch} from {base_branch}.")
     lib.record_git_base_branch(ticket_id, base_branch)
+    if lib.lookup_git_base_commit(ticket_id) is None:
+        if branch_exists:
+            base_commit = lib.git_merge_base(branch, base_branch)
+        lib.record_git_base_commit(ticket_id, base_commit)
 
 
 def print_declined_criteria(

@@ -221,13 +221,15 @@ def _dispatch_guidance(frame: "lib.CriterionFrame", ticket: str) -> None:
                 [
                     f"Make the change to: {files_str}",
                     "Then run: scaffold next-step",
-                    "(If the file(s) are still unchanged, that rerun lets the pipeline attempt the change automatically.)",
+                    "(If the file(s) are still unchanged, that rerun lets the "
+                    "pipeline attempt the change automatically.)",
                 ]
             )
         else:
             _print_guidance(
                 [
-                    "Make the change described in the criterion, or re-run scaffold next-step to let the pipeline try it.",
+                    "Make the change described in the criterion, or re-run "
+                    "scaffold next-step to let the pipeline try it.",
                     "Afterward, run: scaffold next-step --accept-manual",
                     "(No specific file could be identified for mechanical checking.)",
                 ]
@@ -238,11 +240,13 @@ def _dispatch_guidance(frame: "lib.CriterionFrame", ticket: str) -> None:
         _print_guidance(
             [
                 "Run: scaffold next-step",
-                "(Writes a failing test for this criterion, then AI-implements automatically when needed.)",
+                "(Writes a failing test for this criterion, then AI-implements "
+                "automatically when needed.)",
                 "Or skip test generation and hand directly to the Implementor:",
                 "  scaffold next-step --skip-test",
                 "Or write the test by hand, then run:",
-                "  scaffold next-step --manual-test --manual-test-ref <file>::<qualified_test_name>",
+                "  scaffold next-step --manual-test --manual-test-ref "
+                "<file>::<qualified_test_name>",
                 "  (replace placeholders with the real test reference)",
             ]
         )

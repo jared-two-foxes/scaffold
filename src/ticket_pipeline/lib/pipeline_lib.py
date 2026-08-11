@@ -2386,7 +2386,6 @@ def run_scoped_tests(
     quiet: bool = False,
     file_paths: list[str] | None = None,
 ) -> list[subprocess.CompletedProcess]:
-
     """
     Like run_scoped_test, but for a criterion tracking more than one
     test: derives the criterion's single test-binary target once, then
@@ -2478,19 +2477,59 @@ _SCAFFOLDING_PATHS = frozenset(
         CRITERIA_STACK_FILE,
         DECLINED_CRITERIA_FILE,
         GIT_STATE_FILE,
+        Path(".gitignore"),
+        LEGACY_PLAN_FILE,
+        Path(".ticket.md"),
+        Path(".implementation-plan.md"),
+        Path(".updated-plan.md"),
+        Path(".gap-plan.md"),
+        Path(".pipeline-log.jsonl"),
+        Path(".criteria-stack.json"),
+        Path(".declined-criteria.json"),
+        Path(".pipeline-git-state.json"),
     )
 )
 
 
-def git_changed_files() -> list[str]:
+def git_changed_files(
+    git_cfg: "GitConfig | None" = None, ticket_id: str | None = None
+) -> list[str]:
     """
-    The only source of truth for "what did the human touch" when there's
-    no automated agent tracking writes: tracked changes against HEAD
-    (staged or not) plus new untracked files, deduped, minus this
-    pipeline's own scaffolding files (see _SCAFFOLDING_PATHS). Trusted
-    host tooling, not ticket-derived input - run as an argv list same as
-    run_command, no shell.
+    Return the files changed by the human, deduped and excluding pipeline
+    scaffolding. In git-workflow mode, include committed changes from the
+    ticket's recorded base commit through HEAD as well as current worktree
+    changes. Without git-workflow (or without a recorded base), retain the
+    usual HEAD/worktree behavior.
+
+    Trusted host tooling, not ticket-derived input - run as argv lists, with
+    no shell.
     """
+    files: list[str] = []
+    if git_cfg is not None and git_cfg.git_workflow and ticket_id is not None:
+        base_commit = lookup_git_base_commit(ticket_id)
+        if base_commit:
+            committed = subprocess.run(
+                ["git", "diff", "--name-only", f"{base_commit}..HEAD"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if committed.returncode == 0:
+                files.extend(committed.stdout.splitlines())
+            else:
+                log.warning(
+                    "-- git_workflow: could not inspect recorded base commit %s; "
+                    "falling back to worktree changes: %s",
+                    base_commit,
+                    committed.stderr.strip(),
+                )
+        else:
+            log.warning(
+                "-- git_workflow: no recorded base commit for ticket %s; "
+                "falling back to worktree changes.",
+                ticket_id,
+            )
+
     tracked = subprocess.run(
         ["git", "diff", "--name-only", "HEAD"],
         capture_output=True,
@@ -2503,12 +2542,20 @@ def git_changed_files() -> list[str]:
         text=True,
         check=False,
     )
-    files = tracked.stdout.splitlines() + untracked.stdout.splitlines()
+    files.extend(tracked.stdout.splitlines())
+    files.extend(untracked.stdout.splitlines())
+
     seen: set[str] = set()
     deduped = []
     for f in files:
         f = f.strip()
-        if f and f not in seen and f not in _SCAFFOLDING_PATHS:
+        if (
+            f
+            and f not in seen
+            and f != ".scaffold"
+            and not f.startswith(".scaffold/")
+            and f not in _SCAFFOLDING_PATHS
+        ):
             seen.add(f)
             deduped.append(f)
     return deduped
@@ -2616,13 +2663,13 @@ def ticket_branch_name(cfg: GitConfig, ticket_id: str) -> str:
 
 
 # --- pipeline-git-state sidecar (.pipeline-git-state.json) ---------------
-# Maps ticket_id -> base_branch, written by push-ticket when it creates
-# the ticket branch, read by TICKET_VALIDATE's PR path. A sidecar
-# (not a frame field) because base_branch is per-ticket and the sentinel
-# frame that would carry it is popped *before* the merge runs.
+# Maps ticket_id -> {base_branch, base_commit}, written by push-ticket
+# when it creates the ticket branch, read by TICKET_VALIDATE's PR path.
+# A sidecar (not a frame field) because this is per-ticket state and the
+# sentinel frame that would carry it is popped before the merge runs.
 
 
-def load_git_state() -> dict[str, str]:
+def load_git_state() -> dict[str, dict[str, str | None]]:
     source_file, text = _load_state_file_with_legacy_fallback(GIT_STATE_FILE)
     if source_file is None or not text:
         return {}
@@ -2630,37 +2677,71 @@ def load_git_state() -> dict[str, str]:
         raw = json.loads(text)
     except json.JSONDecodeError:
         return {}
-    state = {k: v for k, v in raw.items() if isinstance(k, str) and isinstance(v, str)}
+    state: dict[str, dict[str, str | None]] = {}
+    if isinstance(raw, dict):
+        for ticket_id, value in raw.items():
+            if not isinstance(ticket_id, str):
+                continue
+            if isinstance(value, str):
+                # Migrate the original sidecar format in memory.
+                state[ticket_id] = {"base_branch": value, "base_commit": None}
+            elif isinstance(value, dict):
+                branch = value.get("base_branch")
+                commit = value.get("base_commit")
+                state[ticket_id] = {
+                    "base_branch": branch if isinstance(branch, str) else None,
+                    "base_commit": commit if isinstance(commit, str) else None,
+                }
     if source_file != GIT_STATE_FILE:
         save_git_state(state)
         source_file.unlink()
+    elif state != raw:
+        save_git_state(state)
     return state
 
 
-def save_git_state(state: dict[str, str]) -> None:
+def save_git_state(state: dict[str, dict[str, str | None]]) -> None:
     SCAFFOLD_TEMP_DIR.mkdir(parents=True, exist_ok=True)
     tmp = SCAFFOLD_TEMP_DIR / (GIT_STATE_FILE.name + ".tmp")
     tmp.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
     os.replace(tmp, GIT_STATE_FILE)
 
 
-def record_git_base_branch(ticket_id: str, base_branch: str) -> None:
+def record_git_base_branch(ticket_id: str, base_branch: str) -> str:
     state = load_git_state()
-    state[ticket_id] = base_branch
+    entry = state.get(ticket_id, {"base_branch": base_branch, "base_commit": None})
+    entry["base_branch"] = base_branch
+    state[ticket_id] = entry
     save_git_state(state)
+    return base_branch
 
 
 def lookup_git_base_branch(ticket_id: str) -> str | None:
-    return load_git_state().get(ticket_id)
+    entry = load_git_state().get(ticket_id)
+    return entry["base_branch"] if entry else None
 
 
-def clear_git_base_branch(ticket_id: str) -> None:
+def record_git_base_commit(ticket_id: str, base_commit: str) -> str:
     state = load_git_state()
-    state.pop(ticket_id, None)
+    entry = state.setdefault(ticket_id, {"base_branch": None, "base_commit": None})
+    entry["base_commit"] = base_commit
+    save_git_state(state)
+    return base_commit
+
+
+def lookup_git_base_commit(ticket_id: str) -> str | None:
+    entry = load_git_state().get(ticket_id)
+    return entry["base_commit"] if entry else None
+
+
+def clear_git_base_branch(ticket_id: str) -> str | None:
+    state = load_git_state()
+    entry = state.pop(ticket_id, None)
     if state:
         save_git_state(state)
     elif GIT_STATE_FILE.is_file():
         GIT_STATE_FILE.unlink()
+    return entry["base_branch"] if entry else None
 
 
 # --- low-level git helpers (all argv, no shell) --------------------------
@@ -2693,6 +2774,13 @@ def git_current_head() -> str:
     r = _git("rev-parse", "HEAD")
     if r.returncode != 0:
         raise GitError(f"git rev-parse HEAD failed: {r.stderr.strip() or r.stdout.strip()}")
+    return r.stdout.strip()
+
+
+def git_merge_base(a: str, b: str) -> str:
+    r = _git("merge-base", a, b)
+    if r.returncode != 0:
+        raise GitError(f"git merge-base {a} {b} failed: {r.stderr.strip()}")
     return r.stdout.strip()
 
 
@@ -2927,11 +3015,13 @@ def post_validate_git(
         return
     if not (cfg.pr_on_validate and cfg.forge == "github"):
         return
-    base = lookup_git_base_branch(ticket_id) or cfg.base_branch or git_current_branch()
+    base_branch = lookup_git_base_branch(ticket_id) or cfg.base_branch or git_current_branch()
+    base_commit = lookup_git_base_commit(ticket_id)
+    squash_base = base_commit or base_branch
 
     try:
-        git_squash_branch(branch, base, title or f"{cfg.branch_prefix}{ticket_id}")
-        create_github_pr(cfg, ticket_id, branch, base, title, body, force=True)
+        git_squash_branch(branch, squash_base, title or f"{cfg.branch_prefix}{ticket_id}")
+        create_github_pr(cfg, ticket_id, branch, base_branch, title, body, force=True)
     except GitError as e:
         log.warning("-- git_workflow: PR creation failed (non-fatal): %s", e)
 

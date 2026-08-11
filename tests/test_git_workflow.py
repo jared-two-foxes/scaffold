@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ticket_pipeline.lib import pipeline_lib as lib
 
@@ -43,8 +44,7 @@ class GitConfigTests(unittest.TestCase):
     def test_reads_enabled_config(self):
         with tempfile.TemporaryDirectory() as d:
             (Path(d) / "cfg.toml").write_text(
-                'git_workflow = true\nbase_branch = "main"\n'
-                'branch_prefix = "t/"\n',
+                'git_workflow = true\nbase_branch = "main"\nbranch_prefix = "t/"\n',
                 encoding="utf-8",
             )
             cfg = lib.load_git_config(Path(d) / "cfg.toml")
@@ -171,11 +171,9 @@ class GitHelperTests(unittest.TestCase):
 
     def test_user_is_dirty_ignores_pipeline_managed_files(self):
         self.assertFalse(lib.git_user_is_dirty())
-        # Pipeline state files and .gitignore don't count as user work.
         lib.CRITERIA_STACK_FILE.write_text("[]\n", encoding="utf-8")
         (self.root / ".gitignore").write_text(".criteria-stack.json\n", encoding="utf-8")
         self.assertFalse(lib.git_user_is_dirty())
-        # A real user file does.
         (self.root / "src.rs").write_text("fn main(){}", encoding="utf-8")
         self.assertTrue(lib.git_user_is_dirty())
 
@@ -204,6 +202,47 @@ class GitHelperTests(unittest.TestCase):
         self.assertTrue((self.root / "b.txt").exists())
         lib.git_reset_hard(base)
         self.assertFalse((self.root / "b.txt").exists())
+
+    def test_changed_files_includes_clean_committed_ticket_branch(self):
+        base_commit = lib.git_current_head()
+        lib.git_create_branch("ticket/SA-1")
+        write_commit(self.root, "committed.txt", "committed\n", "ticket work")
+        lib.record_git_base_commit("SA-1", base_commit)
+
+        self.assertEqual(
+            lib.git_changed_files(lib.GitConfig(git_workflow=True), "SA-1"),
+            ["committed.txt"],
+        )
+
+    def test_changed_files_includes_committed_and_dirty_ticket_work(self):
+        base_commit = lib.git_current_head()
+        lib.git_create_branch("ticket/SA-2")
+        write_commit(self.root, "committed.txt", "committed\n", "ticket work")
+        (self.root / "committed.txt").write_text("committed and staged\n", encoding="utf-8")
+        subprocess.run(["git", "add", "committed.txt"], cwd=self.root, check=True)
+        (self.root / "unstaged.txt").write_text("unstaged\n", encoding="utf-8")
+        (self.root / ".scaffold" / "pipeline.md").parent.mkdir(exist_ok=True)
+        (self.root / ".scaffold" / "pipeline.md").write_text("pipeline\n", encoding="utf-8")
+        (self.root / "untracked.txt").write_text("untracked\n", encoding="utf-8")
+        lib.record_git_base_commit("SA-2", base_commit)
+
+        self.assertEqual(
+            set(lib.git_changed_files(lib.GitConfig(git_workflow=True), "SA-2")),
+            {"committed.txt", "unstaged.txt", "untracked.txt"},
+        )
+
+    def test_changed_files_without_git_workflow_retains_worktree_behavior(self):
+        base_commit = lib.git_current_head()
+        write_commit(self.root, "committed.txt", "committed\n", "committed work")
+        (self.root / "unstaged.txt").write_text("unstaged\n", encoding="utf-8")
+        (self.root / "untracked.txt").write_text("untracked\n", encoding="utf-8")
+
+        self.assertEqual(
+            set(lib.git_changed_files(lib.GitConfig(git_workflow=False), "SA-3")),
+            {"unstaged.txt", "untracked.txt"},
+        )
+        self.assertNotIn("committed.txt", lib.git_changed_files())
+        self.assertNotEqual(base_commit, lib.git_current_head())
 
 
 class EnsureGitignoreTests(unittest.TestCase):
@@ -255,20 +294,42 @@ class GitStateSidecarTests(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_record_lookup_clear(self):
+        base_commit = "0123456789abcdef0123456789abcdef01234567"
         self.assertEqual(lib.lookup_git_base_branch("SA-1"), None)
+        self.assertIsNone(lib.lookup_git_base_commit("SA-1"))
         lib.record_git_base_branch("SA-1", "main")
+        lib.record_git_base_commit("SA-1", base_commit)
         self.assertEqual(lib.lookup_git_base_branch("SA-1"), "main")
+        self.assertEqual(lib.lookup_git_base_commit("SA-1"), base_commit)
         lib.record_git_base_branch("SA-2", "dev")
-        self.assertEqual(lib.load_git_state(), {"SA-1": "main", "SA-2": "dev"})
+        self.assertEqual(
+            lib.load_git_state(),
+            {
+                "SA-1": {"base_branch": "main", "base_commit": base_commit},
+                "SA-2": {"base_branch": "dev", "base_commit": None},
+            },
+        )
         lib.clear_git_base_branch("SA-1")
         self.assertIsNone(lib.lookup_git_base_branch("SA-1"))
+        self.assertIsNone(lib.lookup_git_base_commit("SA-1"))
         self.assertEqual(lib.lookup_git_base_branch("SA-2"), "dev")
 
     def test_legacy_root_git_state_file_migrates(self):
+        base_commit = "fedcba9876543210fedcba9876543210fedcba98"
         Path(".pipeline-git-state.json").write_text(
             json.dumps({"SA-1": "main"}) + "\n", encoding="utf-8"
         )
-        self.assertEqual(lib.load_git_state(), {"SA-1": "main"})
+        self.assertEqual(
+            lib.load_git_state(),
+            {"SA-1": {"base_branch": "main", "base_commit": None}},
+        )
+        lib.record_git_base_commit("SA-1", base_commit)
+        self.assertEqual(lib.lookup_git_base_branch("SA-1"), "main")
+        self.assertEqual(lib.lookup_git_base_commit("SA-1"), base_commit)
+        self.assertEqual(
+            lib.load_git_state()["SA-1"],
+            {"base_branch": "main", "base_commit": base_commit},
+        )
         self.assertTrue(lib.GIT_STATE_FILE.is_file())
         self.assertFalse(Path(".pipeline-git-state.json").exists())
 
@@ -305,9 +366,7 @@ class CommitCriterionTests(unittest.TestCase):
         self.assertIsNone(sha)
 
     def test_ignores_gitignored_pipeline_state(self):
-        # Simulate a pipeline state file present in the worktree.
         lib.CRITERIA_STACK_FILE.write_text("[]\n", encoding="utf-8")
-        # Make sure it's gitignored so commit_criterion doesn't stage it.
         (self.root / ".gitignore").write_text(".criteria-stack.json\n", encoding="utf-8")
         (self.root / "src.rs").write_text("x", encoding="utf-8")
         lib.commit_criterion(self.cfg, "SA-1", "- [ ] add src")
@@ -337,13 +396,45 @@ class PostValidateGitTests(unittest.TestCase):
         os.chdir(self._cwd)
         self._tmp.cleanup()
 
+    def test_prepare_git_branch_records_exact_base_commit_for_handoff(self):
+        from ticket_pipeline import push_ticket
+
+        base_branch = lib.git_current_branch()
+        exact_base_commit = lib.git_current_head()
+        cfg = lib.GitConfig(
+            git_workflow=True,
+            pr_on_validate=True,
+            forge="github",
+        )
+
+        push_ticket.prepare_git_branch("SA-5", cfg, force=False)
+
+        self.assertEqual(lib.lookup_git_base_branch("SA-5"), base_branch)
+        self.assertEqual(lib.lookup_git_base_commit("SA-5"), exact_base_commit)
+
+        # Move the base branch after branch creation, then make ticket work.
+        lib.git_checkout(base_branch)
+        write_commit(self.root, "unrelated.txt", "unrelated\n", "unrelated base work")
+        lib.git_checkout("ticket/SA-5")
+        write_commit(self.root, "ticket.txt", "ticket\n", "ticket work")
+
+        with (
+            mock.patch.object(lib, "git_squash_branch") as squash,
+            mock.patch.object(lib, "create_github_pr") as create_pr,
+        ):
+            lib.post_validate_git(cfg, "SA-5")
+
+        squash.assert_called_once_with("ticket/SA-5", exact_base_commit, "ticket/SA-5")
+        create_pr.assert_called_once_with(
+            cfg, "SA-5", "ticket/SA-5", base_branch, None, None, force=True
+        )
+
     def test_noop_when_workflow_off(self):
         lib.git_create_branch("ticket/SA-2")
         (self.root / "x.txt").write_text("x\n", encoding="utf-8")
         lib.git_commit("x")
         cfg = lib.GitConfig(git_workflow=False)
         lib.post_validate_git(cfg, "SA-2")
-        # Still on the ticket branch, nothing merged.
         self.assertEqual(lib.git_current_branch(), "ticket/SA-2")
 
     def test_no_merge_when_no_pr_configured_leaves_branch(self):
@@ -357,10 +448,29 @@ class PostValidateGitTests(unittest.TestCase):
         self.assertEqual(lib.git_current_branch(), "ticket/SA-3")
         self.assertTrue(lib.git_branch_exists("ticket/SA-3"))
 
-    def test_missing_branch_is_noop(self):
-        cfg = lib.GitConfig(git_workflow=True)
-        # No branch created - should log and return, not raise.
-        lib.post_validate_git(cfg, "SA-999")
+    def test_pr_handoff_squashes_from_recorded_base_commit(self):
+        base_branch = lib.git_current_branch()
+        base_commit = lib.git_current_head()
+        branch = "ticket/SA-4"
+        lib.git_create_branch(branch)
+        (self.root / "feature.txt").write_text("ticket work\n", encoding="utf-8")
+        lib.git_commit("ticket work")
+        lib.record_git_base_branch("SA-4", base_branch)
+        lib.record_git_base_commit("SA-4", base_commit)
+        cfg = lib.GitConfig(
+            git_workflow=True,
+            pr_on_validate=True,
+            forge="github",
+        )
+
+        with (
+            mock.patch.object(lib, "git_squash_branch") as squash,
+            mock.patch.object(lib, "create_github_pr") as create_pr,
+        ):
+            lib.post_validate_git(cfg, "SA-4")
+
+        squash.assert_called_once_with(branch, base_commit, "ticket/SA-4")
+        create_pr.assert_called_once_with(cfg, "SA-4", branch, base_branch, None, None, force=True)
 
 
 class LoadPipelineConfigAllowsGitKeysTests(unittest.TestCase):
@@ -375,8 +485,6 @@ class LoadPipelineConfigAllowsGitKeysTests(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_git_keys_accepted(self):
-        # Provide a toolchain command + git keys so the unknown-key
-        # check sees only allowed extras.
         (Path(self._tmp.name) / "cfg.toml").write_text(
             'test_cmd = "pytest"\n'
             "git_workflow = true\n"
@@ -385,7 +493,6 @@ class LoadPipelineConfigAllowsGitKeysTests(unittest.TestCase):
             'review = "opencode:x"\n',
             encoding="utf-8",
         )
-        # Should not die on unknown keys.
         cmds = lib.load_pipeline_config(Path(self._tmp.name) / "cfg.toml")
         self.assertEqual(cmds["test_cmd"], "pytest")
 
@@ -448,18 +555,13 @@ class ResetWorkflowTests(unittest.TestCase):
         os.chdir(self.root)
         self.base = lib.git_current_branch()
         self.cfg = lib.GitConfig(git_workflow=True)
-        # Enable git_workflow in the repo's own config so reset-workflow's
-        # default --config picks it up.
         (self.root / lib.PIPELINE_CONFIG_FILE.name).write_text(
             'test_cmd = "true"\ngit_workflow = true\n', encoding="utf-8"
         )
-        # Stand up a ticket branch as push-ticket would.
         lib.git_create_branch(lib.ticket_branch_name(self.cfg, "SA-1"))
         lib.record_git_base_branch("SA-1", self.base)
-        # A committed criterion (what next-step's POP would leave).
         (self.root / "feat.txt").write_text("feat\n", encoding="utf-8")
         lib.git_commit("ticket/SA-1: feat")
-        # A stack frame so _identify_ticket finds SA-1.
         lib.save_stack(
             [
                 lib.CriterionFrame(
@@ -506,7 +608,6 @@ class ResetWorkflowTests(unittest.TestCase):
         self.assertFalse(lib.git_branch_exists("ticket/SA-1"))
         self.assertFalse(lib.CRITERIA_STACK_FILE.is_file())
         self.assertIsNone(lib.lookup_git_base_branch("SA-1"))
-        # The ticket branch's committed work is gone with the branch.
         self.assertFalse((self.root / "feat.txt").exists())
 
     def test_keep_branch_leaves_branch_but_still_reverts(self):
@@ -514,7 +615,6 @@ class ResetWorkflowTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(lib.git_current_branch(), self.base)
         self.assertTrue(lib.git_branch_exists("ticket/SA-1"))
-        # State still cleared.
         self.assertFalse(lib.CRITERIA_STACK_FILE.is_file())
 
     def test_keep_stack_preserves_stack(self):
@@ -527,16 +627,11 @@ class ResetWorkflowTests(unittest.TestCase):
         (self.root / "uncommitted.txt").write_text("x", encoding="utf-8")
         code = self._run(["--yes", "--log-level", "warning"])
         self.assertNotEqual(code, 0)
-        # Nothing happened.
         self.assertTrue(lib.git_branch_exists("ticket/SA-1"))
         self.assertEqual(lib.git_current_branch(), "ticket/SA-1")
 
     def test_workflow_off_skips_git_and_clears_state(self):
-        # Switch off git_workflow: no branch teardown, just file cleanup.
         lib.GitConfig(git_workflow=False)
-        # Simulate by directly calling with workflow off - reload won't
-        # change the config file; instead exercise the off-path via the
-        # command using a config file.
         off_cfg = Path(self.root) / "off.toml"
         off_cfg.write_text('test_cmd = "true"\n', encoding="utf-8")
         import importlib
@@ -553,12 +648,10 @@ class ResetWorkflowTests(unittest.TestCase):
             "warning",
         ]
         reset_workflow.main()
-        # Branch untouched, stack cleared.
         self.assertTrue(lib.git_branch_exists("ticket/SA-1"))
         self.assertFalse(lib.CRITERIA_STACK_FILE.is_file())
 
     def test_identify_ticket_from_branch_when_stack_empty(self):
-        # Drop the stack; current branch is ticket/SA-1 -> id parsed from it.
         lib.CRITERIA_STACK_FILE.unlink()
         code = self._run(["--yes", "--log-level", "warning"])
         self.assertEqual(code, 0)
@@ -566,12 +659,9 @@ class ResetWorkflowTests(unittest.TestCase):
         self.assertEqual(lib.git_current_branch(), self.base)
 
     def test_no_ticket_identifiable_clears_state_only(self):
-        # On base branch, empty stack, empty sidecar, empty branch prefix
-        # match -> no git steps, just cleanup.
         lib.git_checkout(self.base)
         lib.CRITERIA_STACK_FILE.unlink()
         lib.clear_git_base_branch("SA-1")
-        # Re-add a stack so there's something to clear.
         lib.save_stack(
             [
                 lib.CriterionFrame(
@@ -585,12 +675,8 @@ class ResetWorkflowTests(unittest.TestCase):
                 )
             ]
         )
-        # Ticket branch still exists but we're not on it and stack says
-        # SA-1 -> it WILL identify SA-1 from stack. Force the no-identify
-        # path by clearing the stack too and removing the branch.
         lib.CRITERIA_STACK_FILE.unlink()
         lib._git("branch", "-D", "ticket/SA-1")
-        # Now nothing identifies a ticket.
         code = self._run(["--yes", "--log-level", "warning"])
         self.assertEqual(code, 0)
 
