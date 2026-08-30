@@ -69,6 +69,10 @@ class AIHTTPError(AIError):
         self.code = code
 
 
+class NonRetryableAIError(AIHTTPError):
+    """Raised for an HTTP 4xx failure that retrying cannot resolve."""
+
+
 class StepBudgetExceeded(AIError):
     """
     Raised by run_with_tools when a turn-count or cumulative-cost ceiling
@@ -452,7 +456,7 @@ PROVIDERS: dict[str, Provider] = {
     "copilot": COPILOT,
 }
 DEFAULT_PROVIDER = OPENCODE_ZEN
-DEFAULT_MODEL = "opencode:default"
+DEFAULT_MODEL = "opencode:gpt-5.6-luna"
 
 
 def resolve_provider(model: str) -> tuple[Provider, str]:
@@ -477,8 +481,9 @@ def _post(path: str, payload: dict, label: str, provider: Provider) -> dict:
     Shared HTTP transport: POST `payload` to `provider.base_url/{path}`
     with the provider's auth headers, a browser-like User-Agent, and the
     same retry/backoff ladder that _post_chat_completion used to have.
-    Returns the parsed JSON body on success. Raises AIHTTPError for HTTP
-    errors and AIError for network-level failures.
+    Returns the parsed JSON body on success. Raises NonRetryableAIError for
+    HTTP 4xx errors, AIHTTPError for retryable HTTP failures, and AIError for
+    network-level failures.
     """
     body = json.dumps(payload).encode()
     log.trace("%s request: %s", label, payload)
@@ -503,6 +508,32 @@ def _post(path: str, payload: dict, label: str, provider: Provider) -> dict:
         except urllib.error.HTTPError as e:
             error_body = e.read().decode()
             if e.code not in RETRYABLE_HTTP_STATUSES or attempt >= MAX_RETRIES:
+                model = payload.get("model", "<unknown>")
+                try:
+                    error_data = json.loads(error_body)
+                except json.JSONDecodeError:
+                    error_data = {}
+                error_text = error_body.lower()
+                error_type = str(
+                    (error_data.get("error") or {}).get("type", "")
+                    if isinstance(error_data, dict)
+                    else ""
+                ).lower()
+                unsupported = (
+                    "modelerror" in error_type
+                    or "modelerror" in error_text
+                    or ("model" in error_text and "not supported" in error_text)
+                )
+                if 400 <= e.code < 500:
+                    detail = (
+                        f"unsupported model '{model}': {error_body}"
+                        if unsupported
+                        else f"{error_body}"
+                    )
+                    raise NonRetryableAIError(
+                        e.code,
+                        f"{label} request failed for model '{model}': HTTP {e.code}: {detail}",
+                    ) from e
                 raise AIHTTPError(
                     e.code, f"{label} request failed: HTTP {e.code}: {error_body}"
                 ) from e
@@ -598,9 +629,7 @@ def _messages_to_responses_input(messages: list[dict]) -> list[dict]:
                         }
                     )
                 elif isinstance(content, list):
-                    input_items.append(
-                        {"type": "message", "role": "assistant", "content": content}
-                    )
+                    input_items.append({"type": "message", "role": "assistant", "content": content})
         elif role == "tool":
             input_items.append(
                 {

@@ -560,7 +560,7 @@ def run_ai_step_with_retry(
         attempt_start = _usage_snapshot()
         try:
             result = step_fn()
-        except ai_client.StepBudgetExceeded:
+        except (ai_client.StepBudgetExceeded, ai_client.NonRetryableAIError):
             raise
         except AIError as e:
             if attempt >= max_attempts:
