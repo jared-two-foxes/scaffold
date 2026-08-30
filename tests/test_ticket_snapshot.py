@@ -225,7 +225,6 @@ class TestValidateThreadsTicketSnapshot(unittest.TestCase):
                 patch.object(lib, "run_plan_step", return_value="## Implementation Plan\n"),
                 patch.object(lib, "run_narrow_step", return_value="## Acceptance Criteria\n"),
                 patch.object(lib, "extract_acceptance_criteria", return_value=[]),
-                patch.object(lib, "run_lint_gate"),
                 patch.object(
                     lib, "run_command", return_value=type("Result", (), {"returncode": 0})()
                 ),
@@ -328,7 +327,6 @@ class TestValidateMissedSnapshotCarryforward(unittest.TestCase):
                     "extract_acceptance_criteria",
                     side_effect=[["- [ ] validate-missed criterion"], []],
                 ),
-                patch.object(lib, "run_lint_gate"),
                 patch.object(
                     lib, "run_command", return_value=type("Result", (), {"returncode": 0})()
                 ),
@@ -454,7 +452,6 @@ class TestValidateMissedSnapshotNoFetch(unittest.TestCase):
                 "extract_acceptance_criteria",
                 side_effect=[["- [ ] validate-missed criterion"], []],
             ),
-            patch.object(lib, "run_lint_gate"),
             patch.object(lib, "run_command", return_value=type("Result", (), {"returncode": 0})()),
             patch.object(lib, "load_smoke_cmd", return_value=None),
             patch.object(lib, "run_smoke_gate"),
@@ -559,7 +556,6 @@ class TestValidateOnlyAndFromGapPlanWithoutSnapshots(unittest.TestCase):
                 patch.object(lib, "run_plan_step", return_value="## Implementation Plan\n"),
                 patch.object(lib, "run_narrow_step", return_value="## Acceptance Criteria\n"),
                 patch.object(lib, "extract_acceptance_criteria", return_value=[]),
-                patch.object(lib, "run_lint_gate"),
                 patch.object(
                     lib, "run_command", return_value=type("Result", (), {"returncode": 0})()
                 ),
@@ -648,7 +644,6 @@ class TestValidateOnlyAndFromGapPlanWithoutSnapshots(unittest.TestCase):
                 patch.object(lib, "run_plan_step", return_value="## Implementation Plan\n"),
                 patch.object(lib, "run_narrow_step", return_value="## Acceptance Criteria\n"),
                 patch.object(lib, "extract_acceptance_criteria", return_value=[]),
-                patch.object(lib, "run_lint_gate"),
                 patch.object(
                     lib, "run_command", return_value=type("Result", (), {"returncode": 0})()
                 ),

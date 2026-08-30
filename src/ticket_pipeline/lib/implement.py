@@ -223,6 +223,12 @@ def build_implement_criterion_fix_prompt(
             "deviate from the approach already taken unless the error itself "
             "proves that approach can't work."
         )
+    elif failure_kind == "lint":
+        failure_desc = (
+            "The previous attempt passed the build and scoped tests, but its "
+            "lint check still reports warnings. Fix the residual lint warnings "
+            "with the smallest targeted change."
+        )
     else:
         still_red_list = "\n".join(f"- {n}" for n in still_red)
         failure_desc = (
@@ -286,20 +292,27 @@ def build_implement_criterion_direct_fix_prompt(
     error_output: str,
     fresh_start: bool = False,
     strategy: str = "manual",
+    failure_kind: str = "compile",
 ) -> str:
     instructions = lib.load_prompt_body(IMPLEMENT_CRITERION_DIRECT_STRATEGY_PROMPT_FILE)
     changed_list = "\n".join(f"- {p}" for p in changed_so_far) or "- (none recorded)"
-    failure_desc = (
-        "A previous attempt failed and its changes have been reverted. "
-        "You are starting from a clean state. Do NOT try to reproduce the "
-        "previous approach. Read the error below, understand what went wrong, "
-        "and try a different approach."
-        if fresh_start
-        else "but the project does not build. Fix the build error with the "
-        "smallest targeted change - do not re-implement from scratch or "
-        "deviate from the approach already taken unless the error itself "
-        "proves that approach can't work."
-    )
+    if failure_kind == "lint":
+        failure_desc = (
+            "but the build passed and the scoped lint check still reports warnings. "
+            "Fix the residual lint warnings with the smallest targeted change."
+        )
+    else:
+        failure_desc = (
+            "A previous attempt failed and its changes have been reverted. "
+            "You are starting from a clean state. Do NOT try to reproduce the "
+            "previous approach. Read the error below, understand what went wrong, "
+            "and try a different approach."
+            if fresh_start
+            else "but the project does not build. Fix the build error with the "
+            "smallest targeted change - do not re-implement from scratch or "
+            "deviate from the approach already taken unless the error itself "
+            "proves that approach can't work."
+        )
     return (
         f"{instructions}\n\n---\n\n"
         f"Here is the relevant Implementation Plan context for this "
@@ -478,6 +491,7 @@ def run_implement_direct_with_refine(
     all_changed: list[str] = []
     last_error: str | None = None
     last_result: subprocess.CompletedProcess | None = None
+    failure_kind = "compile"
 
     attempt = 0
     while True:
@@ -510,8 +524,9 @@ def run_implement_direct_with_refine(
                     )
                 all_changed = []
             log.warning(
-                "-- Build failed (attempt %d, %s). Feeding the error back to "
+                "-- %s failed (attempt %d, %s). Feeding the error back to "
                 "Direct Implementor to fix.",
+                "Build" if failure_kind == "compile" else "Lint check",
                 attempt - 1,
                 limit_desc,
             )
@@ -522,6 +537,7 @@ def run_implement_direct_with_refine(
                 last_error,
                 fresh_start=fresh_start,
                 strategy=frame.strategy,
+                failure_kind=failure_kind,
             )
 
         attempt_changed: list[str] = []
@@ -574,8 +590,60 @@ def run_implement_direct_with_refine(
             commands["build_cmd"], f"build gate (attempt {attempt}, {limit_desc})"
         )
         if build_result.returncode == 0:
-            return sorted(set(all_changed))
+            # Keep the direct strategy on the same mechanical standard as the
+            # test-driven loop: fix and format only files written for this
+            # criterion, then check for residual lint warnings. A lint failure
+            # consumes the same attempt budget and is fed back to the model.
+            changed_files = sorted(set(all_changed))
+            if changed_files:
+                lint_fix_cmd = commands.get("clippy_fix_files_cmd")
+                if lint_fix_cmd:
+                    lib.run_command_with_files(
+                        lint_fix_cmd,
+                        f"lint fix (attempt {attempt}, {limit_desc})",
+                        changed_files,
+                    )
+                fmt_cmd = commands.get("fmt_fix_files_cmd")
+                if fmt_cmd:
+                    lib.run_command_with_files(
+                        fmt_cmd,
+                        f"format fix (attempt {attempt}, {limit_desc})",
+                        changed_files,
+                    )
+                lint_check_cmd = commands.get("clippy_check_files_cmd")
+                lint_result = (
+                    lib.run_command_with_files(
+                        lint_check_cmd,
+                        f"lint check (attempt {attempt}, {limit_desc})",
+                        changed_files,
+                    )
+                    if lint_check_cmd
+                    else None
+                )
+                if lint_result is not None and lint_result.returncode != 0:
+                    failure_kind = "lint"
+                    last_error = (lint_result.stdout or "") + (lint_result.stderr or "")
+                    last_result = lint_result
+                    lib.log_event(
+                        "implement-criterion-direct",
+                        "retry",
+                        error=f"lint failed (attempt {attempt}, {limit_desc})",
+                        criterion=frame.criterion,
+                    )
+                    if not policy.should_continue(attempt, failure_kind, frame, None):
+                        policy.on_exhausted(
+                            failure_kind,
+                            last_error or "",
+                            changed_files,
+                            last_result,
+                            frame,
+                            None,
+                        )
+                        return changed_files
+                    continue
+            return changed_files
 
+        failure_kind = "compile"
         last_error = (build_result.stdout or "") + (build_result.stderr or "")
         last_result = build_result
         lib.log_event(
@@ -584,9 +652,9 @@ def run_implement_direct_with_refine(
             error=f"build failed (attempt {attempt}, {limit_desc})",
             criterion=frame.criterion,
         )
-        if not policy.should_continue(attempt, "compile", frame, None):
+        if not policy.should_continue(attempt, failure_kind, frame, None):
             policy.on_exhausted(
-                "compile",
+                failure_kind,
                 last_error or "",
                 sorted(set(all_changed)),
                 last_result,
@@ -802,6 +870,60 @@ def run_implement_with_refine(
         )
         still_red = [n for n, r in zip(test_names, green_results) if r.returncode != 0]
         if not still_red:
+            # Keep the test files out of every implementation lint/format
+            # command: the tamper guard protects them, and formatters must
+            # not rewrite the witness while validating an attempt.
+            implementation_files = sorted(set(all_changed) - set(test_files))
+            if implementation_files:
+                lint_fix_cmd = commands.get("clippy_fix_files_cmd")
+                if lint_fix_cmd:
+                    lib.run_command_with_files(
+                        lint_fix_cmd,
+                        f"lint fix (attempt {attempt}, {limit_desc})",
+                        implementation_files,
+                    )
+                fmt_cmd = commands.get("fmt_fix_files_cmd")
+                if fmt_cmd:
+                    lib.run_command_with_files(
+                        fmt_cmd,
+                        f"format fix (attempt {attempt}, {limit_desc})",
+                        implementation_files,
+                    )
+                lint_check_cmd = commands.get("clippy_check_files_cmd")
+                lint_result = (
+                    lib.run_command_with_files(
+                        lint_check_cmd,
+                        f"lint check (attempt {attempt}, {limit_desc})",
+                        implementation_files,
+                    )
+                    if lint_check_cmd
+                    else None
+                )
+                if lint_result is not None and lint_result.returncode != 0:
+                    failure_kind = "lint"
+                    last_error = (lint_result.stdout or "") + (lint_result.stderr or "")
+                    last_result = lint_result
+                    lib.log_event(
+                        "implement-criterion",
+                        "retry",
+                        error=f"lint failed (attempt {attempt}, {limit_desc})",
+                        criterion=frame.criterion,
+                    )
+                    if not policy.should_continue(attempt, failure_kind, frame, None):
+                        policy.on_exhausted(
+                            failure_kind,
+                            last_error or "",
+                            sorted(set(all_changed)),
+                            last_result,
+                            frame,
+                            None,
+                        )
+                        return sorted(set(all_changed))
+                    continue
+                # Formatters and lint auto-fixers are allowed to touch only
+                # production files, but verify the witness again in case a
+                # toolchain command falls back to a project-wide invocation.
+                verify_tests_unchanged(test_files, test_names, snapshots, frame.criterion)
             return sorted(set(all_changed))
 
         failure_kind = "test-red"

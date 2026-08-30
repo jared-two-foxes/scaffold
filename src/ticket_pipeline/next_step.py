@@ -58,13 +58,23 @@ FEEDBACK_READY_STATUS = lib.FEEDBACK_READY_STATUS
 def _record_base_commit_if_needed(
     stack: list, frame: "lib.CriterionFrame", git_cfg: "lib.GitConfig | None"
 ) -> None:
-    if git_cfg is None or not git_cfg.git_workflow or frame.base_commit is not None:
+    if git_cfg is None or not git_cfg.git_workflow:
         return
-    try:
-        frame.base_commit = lib.git_current_head()
+
+    changed = False
+    if frame.criterion_start_worktree_files is None:
+        frame.criterion_start_worktree_files = lib.git_worktree_changed_files()
+        changed = True
+
+    if frame.base_commit is None:
+        try:
+            frame.base_commit = lib.git_current_head()
+            changed = True
+        except lib.GitError as e:
+            log.warning("-- git_workflow: could not record base_commit (non-fatal): %s", e)
+
+    if changed:
         lib.save_stack(stack)
-    except lib.GitError as e:
-        log.warning("-- git_workflow: could not record base_commit (non-fatal): %s", e)
 
 
 def _run_feedback_retry(
@@ -186,6 +196,22 @@ def do_pop(
     # happens so the stack advances; the uncommitted changes just ride
     # along into the next criterion's commit.
     if ctx.git_cfg is not None and ctx.git_cfg.git_workflow:
+        # Format the worktree-only changed files so the commit captures
+        # any formatter-applied changes. Non-fatal: if the command isn't
+        # available or fails, the POP still proceeds (the criterion is
+        # already green).
+        changed = lib.git_worktree_changed_files()
+        # Worktree changes can predate this criterion (for example, an
+        # unrelated file with existing format issues).  The formatter must
+        # receive only files first observed after this frame started.
+        pre_existing = set(frame.criterion_start_worktree_files or [])
+        criterion_changed = [path for path in changed if path not in pre_existing]
+        fmt_cmd = ctx.commands.get("fmt_fix_files_cmd")
+        if criterion_changed and fmt_cmd:
+            try:
+                lib.run_command_with_files(fmt_cmd, "fmt fix (per-criterion)", criterion_changed)
+            except Exception as e:
+                log.warning("-- git_workflow: format-fix before commit failed (non-fatal): %s", e)
         try:
             sha = lib.commit_criterion(ctx.git_cfg, just_popped_ticket, just_popped_criterion)
             if sha is not None:
@@ -331,8 +357,6 @@ def do_ticket_validate(
         render.print_line(f"-- Token usage: {ai_client.usage}")
         sys.exit(0)
         return
-
-    lib.run_lint_gate(ctx.commands)
 
     result = lib.run_command(ctx.commands["test_cmd"], "full test suite gate")
     if result.returncode != 0:

@@ -57,9 +57,7 @@ class ScaffoldPath(type(Path())):
 
     def write_text(self, data, encoding=None, errors=None, newline=None):
         self.parent.mkdir(parents=True, exist_ok=True)
-        return super().write_text(
-            data, encoding=encoding, errors=errors, newline=newline
-        )
+        return super().write_text(data, encoding=encoding, errors=errors, newline=newline)
 
     def open(self, mode="r", buffering=-1, encoding=None, errors=None, newline=None):
         self.parent.mkdir(parents=True, exist_ok=True)
@@ -91,9 +89,7 @@ SCAFFOLD_TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
 TICKET_FILE = ScaffoldPath(SCAFFOLD_TEMP_DIR, ".ticket.md")
 PLAN_FILE = ScaffoldPath(SCAFFOLD_TEMP_DIR, ".implementation-plan.md")
-LEGACY_PLAN_FILE = Path(
-    ".tdd-plan.md"
-)  # deprecated name; read as fallback during migration
+LEGACY_PLAN_FILE = Path(".tdd-plan.md")  # deprecated name; read as fallback during migration
 UPDATED_PLAN_FILE = ScaffoldPath(SCAFFOLD_TEMP_DIR, ".updated-plan.md")
 PIPELINE_CONFIG_FILE = Path(".dev-pipeline.toml")
 
@@ -180,7 +176,9 @@ def _load_state_file_with_legacy_fallback(
 # platform actually running the pipeline (see test-criterion.prompt.md's
 # Platform portability rule and review-test-quality.prompt.md's
 # platform-specific-API check).
-_HOST_PLATFORM_NOTE = f"The host platform is {platform.system()} (tests must compile and run on this platform)."
+_HOST_PLATFORM_NOTE = (
+    f"The host platform is {platform.system()} (tests must compile and run on this platform)."
+)
 
 # Always injected. Instructs the planner to self-clarify before planning,
 # since none of these scripts have a path for a human to answer follow-up
@@ -261,17 +259,12 @@ def resolve_step_models(
 # files do not identify one target, both commands fall back to their
 # package/workspace scope.
 #
-# fmt_fix_cmd/clippy_fix_cmd/fmt_check_cmd/clippy_cmd are used only by
-# next_step.py's TICKET_VALIDATE phase (run_lint_gate) - lint/style
-# checks run once, after every criterion in a ticket is implemented and
-# passing, right before code review - not as acceptance-criteria
-# evidence (see extract_plan_commands). Names
-# are inherited from the original Rust-only defaults (fmt/clippy) but are
-# generic format-fix/lint-fix/format-check/lint-check slots regardless of
-# toolchain - not worth a breaking key rename across every existing
-# .dev-pipeline.toml for what's just a label. The *_fix_cmd entries
-# attempt the mechanical, no-judgment-call fix before the
-# *_check_cmd/clippy_cmd gate gets to fail anything.
+# The format/lint command keys are used during implementation rather than
+# as a whole-ticket validation gate. The *_files_cmd variants run against
+# the current criterion's changed files (with {files} substituted where the
+# tool supports per-file operation); Rust and Bazel fall back to their
+# whole-project commands. The original names are retained for compatibility
+# with existing .dev-pipeline.toml files and whole-project validation tools.
 _toolchain_cache: toolchains.Toolchain | None = None
 _toolchain_detected = False
 
@@ -291,9 +284,7 @@ def get_toolchain() -> toolchains.Toolchain:
     return _toolchain_cache or toolchains.RUST
 
 
-def extract_test_output_signal(
-    output: str, pattern: str, context_lines: int = 15
-) -> str:
+def extract_test_output_signal(output: str, pattern: str, context_lines: int = 15) -> str:
     """
     Filter a test run's raw stdout+stderr down to the lines a human
     actually needs to see why it's red, using the current toolchain's
@@ -501,9 +492,7 @@ class _UsageSnapshot:
 
 def _usage_snapshot() -> _UsageSnapshot:
     cost, _unpriced = ai_client.usage.total_cost_usd()
-    return _UsageSnapshot(
-        ai_client.usage.prompt_tokens, ai_client.usage.completion_tokens, cost
-    )
+    return _UsageSnapshot(ai_client.usage.prompt_tokens, ai_client.usage.completion_tokens, cost)
 
 
 def _usage_delta(start: _UsageSnapshot) -> dict:
@@ -705,9 +694,7 @@ def build_planning_blocks(
             name="fetch_ticket",
             check=lambda: TICKET_FILE.is_file()
             and bool(TICKET_FILE.read_text(encoding="utf-8").strip()),
-            run=lambda: tools.write_file_block(str(TICKET_FILE))(
-                fetch_ticket_content()
-            ),
+            run=lambda: tools.write_file_block(str(TICKET_FILE))(fetch_ticket_content()),
         ),
         Block(
             name="planner",
@@ -806,9 +793,7 @@ def render_step_output(text: str, level: int = logging.DEBUG) -> None:
         render_markdown(text)
 
 
-def run_command(
-    command_str: str, label: str, quiet: bool = False
-) -> subprocess.CompletedProcess:
+def run_command(command_str: str, label: str, quiet: bool = False) -> subprocess.CompletedProcess:
     """
     Commands come from the project-local pipeline config, which is
     user-authored and trusted (unlike ticket-derived text) - shlex-split
@@ -841,6 +826,23 @@ def run_command(
     if result.stderr:
         log_fn(result.stderr)
     return result
+
+
+def run_command_with_files(
+    command_str: str, label: str, files: list[str], quiet: bool = False
+) -> subprocess.CompletedProcess:
+    """
+    Run a command after replacing a ``{files}`` placeholder with a
+    shlex-quoted, space-separated list of file paths. Used for per-file
+    format and lint commands that operate on only the files changed by
+    the current criterion (e.g. ``ruff format {files}`` →
+    ``ruff format 'src/foo.py' 'src/bar.py'``). If the command template
+    has no ``{files}`` placeholder the original string is run as-is.
+    """
+    if files and "{files}" in command_str:
+        quoted = " ".join(shlex.quote(f) for f in files)
+        command_str = command_str.replace("{files}", quoted)
+    return run_command(command_str, label, quiet=quiet)
 
 
 # ---------------------------------------------------------------------------
@@ -897,9 +899,7 @@ def _resolve_bare_filename(name: str) -> str | None:
     matches = []
     for root, dir_names, file_names in os.walk("."):
         dir_names[:] = [
-            d
-            for d in dir_names
-            if d not in _PREFETCH_SEARCH_PRUNE and not d.startswith(".")
+            d for d in dir_names if d not in _PREFETCH_SEARCH_PRUNE and not d.startswith(".")
         ]
         if name in file_names:
             matches.append(str(Path(root, name)).removeprefix(".\\").removeprefix("./"))
@@ -969,8 +969,7 @@ def prefetch_referenced_files(
             continue
         if len(content) > PREFETCH_MAX_CHARS_PER_FILE:
             content = (
-                content[:PREFETCH_MAX_CHARS_PER_FILE]
-                + "\n... (truncated - read_file for the rest)"
+                content[:PREFETCH_MAX_CHARS_PER_FILE] + "\n... (truncated - read_file for the rest)"
             )
         sections.append(f"### {path}\n```\n{content}\n```")
 
@@ -1003,9 +1002,7 @@ def build_plan_prompt(ticket_content: str) -> str:
     gets around to asking for it.
     """
     instructions = load_prompt_body(PLAN_PROMPT_FILE)
-    repo_context_block = repo_context.render_repo_context_block(
-        repo_context.gather_repo_context()
-    )
+    repo_context_block = repo_context.render_repo_context_block(repo_context.gather_repo_context())
     return (
         f"{instructions}\n\n---\n\n"
         f"{AUTO_PREAMBLE}"
@@ -1045,9 +1042,7 @@ def run_plan_step(ticket_content: str, model: str, ticket_id: str | None = None)
             lambda: run_with_tools(
                 build_plan_prompt(ticket_content),
                 tools.READ_ONLY_TOOLS,
-                tools.make_executor(
-                    allow_write=False, preloaded_paths={str(TICKET_FILE)}
-                ),
+                tools.make_executor(allow_write=False, preloaded_paths={str(TICKET_FILE)}),
                 "plan",
                 model=model,
                 summarize_call=tools.summarize_tool_call,
@@ -1171,9 +1166,7 @@ def gather_plan_file_context(plan_content: str) -> tuple[str, set[str]]:
 # ---------------------------------------------------------------------------
 
 
-def build_narrow_prompt(
-    ticket_content: str, plan_content: str, plan_file_context: str
-) -> str:
+def build_narrow_prompt(ticket_content: str, plan_content: str, plan_file_context: str) -> str:
     instructions = load_prompt_body(NARROW_PROMPT_FILE)
     return (
         f"{instructions}\n\n---\n\n"
@@ -1246,9 +1239,7 @@ def run_narrow_step(
 
 def build_plan_narrow_prompt(ticket_content: str) -> str:
     instructions = load_prompt_body(PLAN_NARROW_PROMPT_FILE)
-    repo_context_block = repo_context.render_repo_context_block(
-        repo_context.gather_repo_context()
-    )
+    repo_context_block = repo_context.render_repo_context_block(repo_context.gather_repo_context())
     ticket_evidence_seed_block = repo_context.render_ticket_evidence_seed_block(
         repo_context.gather_ticket_evidence_seed(ticket_content)
     )
@@ -1280,9 +1271,7 @@ def build_plan_narrow_prompt(ticket_content: str) -> str:
     )
 
 
-def run_plan_narrow_step(
-    ticket_content: str, model: str, ticket_id: str | None = None
-) -> str:
+def run_plan_narrow_step(ticket_content: str, model: str, ticket_id: str | None = None) -> str:
     """
     Merged plan+narrow: one model session, one artifact (the gap plan).
     See module-level comment above for why this doesn't also produce
@@ -1293,9 +1282,7 @@ def run_plan_narrow_step(
             lambda: run_with_tools(
                 build_plan_narrow_prompt(ticket_content),
                 tools.READ_ONLY_TOOLS,
-                tools.make_executor(
-                    allow_write=False, preloaded_paths={str(TICKET_FILE)}
-                ),
+                tools.make_executor(allow_write=False, preloaded_paths={str(TICKET_FILE)}),
                 "plan-narrow",
                 model=model,
                 summarize_call=tools.summarize_tool_call,
@@ -1363,9 +1350,7 @@ def extract_acceptance_criteria(plan_content: str) -> list[str]:
     return entries
 
 
-VERIFICATION_TAG_RE = re.compile(
-    r"verify:\s*(test(?:-refactor)?|refactor|manual)\b", re.IGNORECASE
-)
+VERIFICATION_TAG_RE = re.compile(r"verify:\s*(test(?:-refactor)?|refactor|manual)\b", re.IGNORECASE)
 STRATEGY_TAG_RE = re.compile(r"strategy:\s*(\w+)\b", re.IGNORECASE)
 KNOWN_STRATEGIES = frozenset({"tdd", "direct", "manual", "refactor"})
 
@@ -1604,7 +1589,10 @@ class CriterionFrame:
     # criterion is popped and committed; stays
     # None for criteria that popped with an
     # empty diff (nothing to stage).
-    test_commit_sha: str | None = None  # git-workflow only. The SHA of
+    criterion_start_worktree_files: list[str] | None = None  # Files already
+    # uncommitted when this criterion began. Used to scope the POP formatter
+    # to files introduced by this criterion.
+    test_commit_sha: str | None = None  # git-workflow only. The SHA of the
     # the commit created after WRITE_TEST and
     # before implementation, so fresh-start
     # retries can reset back to the test-only
@@ -1658,9 +1646,7 @@ def load_stack() -> list[CriterionFrame]:
             entry.setdefault("test_names", [old_name] if old_name is not None else None)
         if "existing_test_ref" in entry:
             old_ref = entry.pop("existing_test_ref")
-            entry.setdefault(
-                "existing_test_refs", [old_ref] if old_ref is not None else []
-            )
+            entry.setdefault("existing_test_refs", [old_ref] if old_ref is not None else [])
     try:
         frames = [CriterionFrame(**entry) for entry in raw]
     except TypeError as e:
@@ -1742,9 +1728,7 @@ VALIDATING_ORIGIN = "ticket-validate"
 VALIDATING_CRITERION_TEXT = "(ticket validation pending)"
 
 
-def ensure_validating_sentinel(
-    ticket_id: str, ticket_snapshot: str | None = None
-) -> None:
+def ensure_validating_sentinel(ticket_id: str, ticket_snapshot: str | None = None) -> None:
     """
     Makes "this ticket still needs TICKET_VALIDATE" a durable stack
     frame instead of a fact that only exists for the duration of one
@@ -1856,9 +1840,7 @@ def is_declined(ticket: str, criterion: str) -> bool:
     return any(d.ticket == ticket and d.criterion == criterion for d in load_declined())
 
 
-def record_declined(
-    ticket: str, criterion: str, origin: str, reasons: list[str]
-) -> None:
+def record_declined(ticket: str, criterion: str, origin: str, reasons: list[str]) -> None:
     """
     Appends one entry and saves. Never overwrites or dedupes existing
     entries - the ledger is a record of what's been flagged and when, not
@@ -2029,9 +2011,7 @@ def verify_existing_test_refs_resolve(existing_test_refs: list[str]) -> list[str
     return unresolved
 
 
-def verify_criterion_grounding(
-    criterion: str, existing_test_refs: list[str]
-) -> list[str]:
+def verify_criterion_grounding(criterion: str, existing_test_refs: list[str]) -> list[str]:
     """
     Combines both mechanical grounding checks (see module comment above)
     into the reasons a criterion fails grounding. Empty list means
@@ -2040,10 +2020,7 @@ def verify_criterion_grounding(
     reasons = list(verify_existing_test_refs_resolve(existing_test_refs))
     candidates = extract_grounding_candidates(criterion)
     ungrounded = check_symbol_grounding(candidates)
-    reasons += [
-        f"claims `{token}` but no tracked file contains that token"
-        for token in ungrounded
-    ]
+    reasons += [f"claims `{token}` but no tracked file contains that token" for token in ungrounded]
     return reasons
 
 
@@ -2133,9 +2110,7 @@ def extract_plan_context_for_criterion(criterion: str, gap_plan_text: str) -> st
     if current is not None:
         impl_lines.append(current.strip())
 
-    referenced_paths = {
-        Path(path).as_posix() for path in extract_referenced_paths(criterion)
-    }
+    referenced_paths = {Path(path).as_posix() for path in extract_referenced_paths(criterion)}
     if referenced_paths:
         matching_lines = []
         for line in impl_lines:
@@ -2152,9 +2127,7 @@ def extract_plan_context_for_criterion(criterion: str, gap_plan_text: str) -> st
     if not nouns:
         return "\n".join(impl_lines) if impl_lines else impl_section
 
-    matching_lines = [
-        line for line in impl_lines if any(noun in line for noun in nouns)
-    ]
+    matching_lines = [line for line in impl_lines if any(noun in line for noun in nouns)]
     return "\n".join(matching_lines) if matching_lines else "\n".join(impl_lines)
 
 
@@ -2279,9 +2252,7 @@ def _parse_test_refactor_assertions(
     return positives, negatives
 
 
-def check_test_refactor_satisfied(
-    criterion: str, existing_test_refs: list[str]
-) -> bool:
+def check_test_refactor_satisfied(criterion: str, existing_test_refs: list[str]) -> bool:
     """
     Mechanical (no-AI) check: is this test-refactor criterion already
     satisfied by the current codebase? Returns True only when every
@@ -2350,9 +2321,7 @@ def check_test_refactor_satisfied(
     return True
 
 
-FINDINGS_SECTION_RE = re.compile(
-    r"^## Findings\s*\n(.*?)(?:\n## |\Z)", re.DOTALL | re.MULTILINE
-)
+FINDINGS_SECTION_RE = re.compile(r"^## Findings\s*\n(.*?)(?:\n## |\Z)", re.DOTALL | re.MULTILINE)
 FINDING_BULLET_TEXT_RE = re.compile(r"^[-*]\s*(?:\[[ xX]?\]\s*)?(.+)$")
 FALLBACK_FINDING_RE = re.compile(r"^-\s*\*\*(.+?)\*\*:\s*(.+)$", re.MULTILINE)
 
@@ -2461,46 +2430,6 @@ def run_scoped_tests(
     ]
 
 
-def run_lint_gate(commands: dict) -> None:
-    """
-    Runs lint/style checks once, after every criterion is implemented
-    and passing - not as acceptance-criteria evidence (see
-    the toolchain's evidence_subcommands, which deliberately excludes these; lint
-    is a code-quality signal, not a behavioral one).
-
-    Attempts the mechanical fix first: clippy --fix for whatever it can
-    auto-apply, then fmt to normalize formatting (including whatever
-    clippy --fix just rewrote). This isn't a retry - it's deterministic
-    tooling with no judgment call involved, not a second attempt at
-    anything an LLM step already tried, so it doesn't conflict with this
-    pipeline's single-shot philosophy. Runs over the whole project, test
-    files included: cargo fmt/clippy --fix are mechanical tools, not
-    agentic writes, so there's no risk of them weakening a test's
-    assertions the way an LLM implementer might - the write-protection
-    that guards implement steps doesn't apply here.
-
-    Whatever the auto-fix can't resolve (most semantic clippy warnings)
-    hits the hard gate below, with no further attempt: dies on failure.
-    """
-    run_command(commands["clippy_fix_cmd"], "clippy auto-fix")
-    run_command(commands["fmt_fix_cmd"], "fmt auto-fix")
-
-    result = run_command(commands["fmt_check_cmd"], "fmt check")
-    if result.returncode != 0:
-        die_with_log(
-            "lint",
-            f"cargo fmt --check failed (exit {result.returncode}) even after an "
-            f"auto-fix attempt. See output above.",
-        )
-    result = run_command(commands["clippy_cmd"], "clippy")
-    if result.returncode != 0:
-        die_with_log(
-            "lint",
-            f"cargo clippy failed (exit {result.returncode}) even after an "
-            f"auto-fix attempt. See output above.",
-        )
-
-
 # ---------------------------------------------------------------------------
 # next_step.py's TICKET_VALIDATE phase support - implementation here is
 # manual (a human, not tool calls), so there's no automated agent
@@ -2580,6 +2509,47 @@ def git_changed_files(
                 ticket_id,
             )
 
+    tracked = subprocess.run(
+        ["git", "diff", "--name-only", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    untracked = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    files.extend(tracked.stdout.splitlines())
+    files.extend(untracked.stdout.splitlines())
+
+    seen: set[str] = set()
+    deduped = []
+    for f in files:
+        f = f.strip()
+        if (
+            f
+            and f not in seen
+            and f != ".scaffold"
+            and not f.startswith(".scaffold/")
+            and f not in _SCAFFOLDING_PATHS
+        ):
+            seen.add(f)
+            deduped.append(f)
+    return deduped
+
+
+def git_worktree_changed_files() -> list[str]:
+    """
+    Return only the worktree changed files (tracked diffs against HEAD
+    plus untracked files), excluding pipeline scaffolding. Unlike
+    ``git_changed_files``, this does **not** include committed changes
+    from the ticket's base commit - it reports only what is currently
+    uncommitted in the working tree, which is the right query for the
+    POP-time format step (the criterion commit hasn't been created yet).
+    """
+    files: list[str] = []
     tracked = subprocess.run(
         ["git", "diff", "--name-only", "HEAD"],
         capture_output=True,
@@ -2804,9 +2774,7 @@ class GitError(Exception):
 
 
 def _git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=False, cwd=cwd
-    )
+    return subprocess.run(["git", *args], capture_output=True, text=True, check=False, cwd=cwd)
 
 
 def git_is_repo() -> bool:
@@ -2825,9 +2793,7 @@ def git_current_branch() -> str:
 def git_current_head() -> str:
     r = _git("rev-parse", "HEAD")
     if r.returncode != 0:
-        raise GitError(
-            f"git rev-parse HEAD failed: {r.stderr.strip() or r.stdout.strip()}"
-        )
+        raise GitError(f"git rev-parse HEAD failed: {r.stderr.strip() or r.stdout.strip()}")
     return r.stdout.strip()
 
 
@@ -2953,9 +2919,7 @@ def git_branch_delete(name: str) -> None:
     if r.returncode != 0:
         # -d refuses an unmerged branch; -D would force. A failed delete
         # is non-fatal - the branch just sticks around.
-        log.warning(
-            "-- git branch -d %s failed (non-fatal): %s", name, r.stderr.strip()
-        )
+        log.warning("-- git branch -d %s failed (non-fatal): %s", name, r.stderr.strip())
 
 
 def git_push(remote: str, branch: str, force: bool = False) -> None:
@@ -3067,22 +3031,16 @@ def post_validate_git(
         return
     branch = ticket_branch_name(cfg, ticket_id)
     if not git_branch_exists(branch):
-        log.info(
-            "-- git_workflow: ticket branch %s not found - nothing to hand off.", branch
-        )
+        log.info("-- git_workflow: ticket branch %s not found - nothing to hand off.", branch)
         return
     if not (cfg.pr_on_validate and cfg.forge == "github"):
         return
-    base_branch = (
-        lookup_git_base_branch(ticket_id) or cfg.base_branch or git_current_branch()
-    )
+    base_branch = lookup_git_base_branch(ticket_id) or cfg.base_branch or git_current_branch()
     base_commit = lookup_git_base_commit(ticket_id)
     squash_base = base_commit or base_branch
 
     try:
-        git_squash_branch(
-            branch, squash_base, title or f"{cfg.branch_prefix}{ticket_id}"
-        )
+        git_squash_branch(branch, squash_base, title or f"{cfg.branch_prefix}{ticket_id}")
         create_github_pr(cfg, ticket_id, branch, base_branch, title, body, force=True)
     except GitError as e:
         log.warning("-- git_workflow: PR creation failed (non-fatal): %s", e)
@@ -3229,9 +3187,7 @@ def run_smoke_gate(smoke_cmd: str | None) -> None:
         return
     result = run_command(smoke_cmd, "smoke test")
     if result.returncode != 0:
-        die_with_log(
-            "smoke", f"Smoke test failed (exit {result.returncode}). See output above."
-        )
+        die_with_log("smoke", f"Smoke test failed (exit {result.returncode}). See output above.")
 
 
 # ---------------------------------------------------------------------------
@@ -3359,13 +3315,9 @@ def run_explore_for_frames(frames: "list[CriterionFrame]", model: str) -> None:
             + ("..." if len(frame.criterion) > 80 else "")
         )
         try:
-            extra = run_explore_for_criterion(
-                frame.criterion, frame.plan_context, model
-            )
+            extra = run_explore_for_criterion(frame.criterion, frame.plan_context, model)
         except (ai_client.AIError, tools.PipelineAbort) as e:
-            render.print_line(
-                f"-- explore-criterion: skipping criterion after error: {e}"
-            )
+            render.print_line(f"-- explore-criterion: skipping criterion after error: {e}")
             continue
         if extra:
             frame.plan_context = frame.plan_context.rstrip() + "\n\n" + extra
@@ -3454,7 +3406,9 @@ def build_test_criterion_prompt(
             if existing_test_refs
             else ""
         )
-        write_instruction = "Write a failing test for exactly this one acceptance criterion, and only this one:"
+        write_instruction = (
+            "Write a failing test for exactly this one acceptance criterion, and only this one:"
+        )
     return (
         f"{instructions}\n\n---\n\n"
         f"Here is the relevant Implementation Plan context for this "
@@ -3474,9 +3428,7 @@ def build_test_feedback_prompt(
     verification: str = "test",
 ) -> str:
     instructions = load_prompt_body(TEST_REFINE_PROMPT_FILE)
-    changed_block = (
-        "\n".join(f"- {p}" for p in previous_changed_files) or "- (none recorded)"
-    )
+    changed_block = "\n".join(f"- {p}" for p in previous_changed_files) or "- (none recorded)"
     existing_tests_block = (
         "\n".join(f"- {ref}" for ref in (existing_test_refs or [])) or "- (none named)"
     )
@@ -3714,9 +3666,7 @@ def run_test_for_criterion_with_compile_retry(
                 attempt_step, "test-criterion", criterion=criterion, ticket=ticket_id
             )
         except (AIError, tools.PipelineAbort) as e:
-            die_with_log(
-                "test-criterion", str(e), criterion=criterion, ticket=ticket_id
-            )
+            die_with_log("test-criterion", str(e), criterion=criterion, ticket=ticket_id)
         render_step_output(result.text)
         if not test_files:
             die_with_log(
@@ -3736,9 +3686,7 @@ def run_test_for_criterion_with_compile_retry(
         file_paths, test_names = [w[0] for w in witnesses], [w[1] for w in witnesses]
 
         test_target = derive_test_target(file_paths)
-        compile_command = commands["test_compile_cmd"].replace(
-            "{test_target}", test_target
-        )
+        compile_command = commands["test_compile_cmd"].replace("{test_target}", test_target)
         compile_result = run_command(
             compile_command,
             f"test compile gate (attempt {attempt}/{max_attempts})",
@@ -4006,9 +3954,7 @@ def run_test_for_criterion_with_full_retry(
 
         # -- Gate 1: compile ---------------------------------------------
         test_target = derive_test_target(file_paths)
-        compile_command = commands["test_compile_cmd"].replace(
-            "{test_target}", test_target
-        )
+        compile_command = commands["test_compile_cmd"].replace("{test_target}", test_target)
         compile_result = run_command(
             compile_command,
             f"test compile gate (attempt {attempt}, {limit_desc})",
@@ -4130,9 +4076,7 @@ def build_test_quality_review_prompt(
         if test_red_green is not None and idx < len(test_red_green):
             is_red = test_red_green[idx]
             if is_red:
-                result_note = (
-                    "\n  Actual result: RED (failed when run against current code)"
-                )
+                result_note = "\n  Actual result: RED (failed when run against current code)"
             elif verification == "test-refactor":
                 result_note = (
                     "\n  Actual result: GREEN (passed when run against current "
@@ -4146,9 +4090,7 @@ def build_test_quality_review_prompt(
                     "\n  Actual result: GREEN (passed when run against current code "
                     "- this test is not detecting any gap in the current implementation)"
                 )
-        sections.append(
-            f"- {test_file} :: {test_name}\n  {modification_note}{result_note}"
-        )
+        sections.append(f"- {test_file} :: {test_name}\n  {modification_note}{result_note}")
     tests_block = "\n".join(sections)
     return (
         f"{instructions}\n\n---\n\n"
@@ -4217,9 +4159,7 @@ def run_test_quality_review(
             ticket=ticket_id,
         )
     except (AIError, tools.PipelineAbort) as e:
-        log.warning(
-            "-- Test-quality review failed to run (advisory, continuing): %s", e
-        )
+        log.warning("-- Test-quality review failed to run (advisory, continuing): %s", e)
         return None
     render_step_output(result.text)
     verdict = find_verdict(result.text, ["FLAGGED", "NO CONCERNS"])

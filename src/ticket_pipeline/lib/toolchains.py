@@ -33,12 +33,10 @@ class Toolchain:
     # Any one of these present at the project root is enough to detect
     # this toolchain.
     marker_files: tuple[str, ...]
-    # Same shape/keys as pipeline_lib.DEFAULT_COMMANDS - build_cmd,
-    # test_compile_cmd, test_cmd, test_filter_cmd, fmt_fix_cmd,
-    # clippy_fix_cmd, fmt_check_cmd, clippy_cmd. Names are inherited from
-    # the original Rust-only defaults (fmt/clippy) but are generic format-
-    # fix/lint-fix/format-check/lint-check slots regardless of language -
-    # not worth a breaking rename for what's just a label.
+    # Same shape/keys as pipeline_lib.DEFAULT_COMMANDS, including the
+    # whole-project format/lint commands and their per-file variants.
+    # Names are inherited from the original Rust-only defaults (fmt/clippy)
+    # but are generic slots regardless of language.
     commands: dict[str, str]
     # The single binary name extract_plan_commands trusts in ticket-
     # derived text (e.g. "cargo", "bazel", "ctest", "npm"). Never widen
@@ -70,6 +68,9 @@ RUST = Toolchain(
         "clippy_fix_cmd": "cargo clippy --fix --allow-dirty --allow-staged --allow-no-vcs",
         "fmt_check_cmd": "cargo fmt -- --check",
         "clippy_cmd": "cargo clippy -- -D warnings",
+        "fmt_fix_files_cmd": "cargo fmt",
+        "clippy_fix_files_cmd": "cargo clippy --fix --allow-dirty --allow-staged --allow-no-vcs",
+        "clippy_check_files_cmd": "cargo clippy -- -D warnings",
     },
     evidence_binary="cargo",
     evidence_subcommands=frozenset({"test"}),
@@ -92,6 +93,9 @@ BAZEL = Toolchain(
         "clippy_fix_cmd": "true",
         "fmt_check_cmd": "buildifier -r --lint=warn -mode=check .",
         "clippy_cmd": "true",
+        "fmt_fix_files_cmd": "buildifier -r .",
+        "clippy_fix_files_cmd": "true",
+        "clippy_check_files_cmd": "true",
     },
     evidence_binary="bazel",
     evidence_subcommands=frozenset({"test"}),
@@ -110,6 +114,9 @@ CMAKE = Toolchain(
         "clippy_fix_cmd": "clang-tidy --fix",
         "fmt_check_cmd": "clang-format --dry-run --Werror",
         "clippy_cmd": "clang-tidy",
+        "fmt_fix_files_cmd": "clang-format -i {files}",
+        "clippy_fix_files_cmd": "clang-tidy --fix {files}",
+        "clippy_check_files_cmd": "clang-tidy {files}",
     },
     evidence_binary="ctest",
     # ctest has no subcommand to gate on - the whole binary only ever
@@ -143,6 +150,9 @@ PYTHON = Toolchain(
         "clippy_fix_cmd": "ruff check --fix .",
         "fmt_check_cmd": "ruff format --check .",
         "clippy_cmd": "ruff check .",
+        "fmt_fix_files_cmd": "ruff format {files}",
+        "clippy_fix_files_cmd": "ruff check --fix {files}",
+        "clippy_check_files_cmd": "ruff check {files}",
     },
     evidence_binary="pytest",
     # pytest only ever runs tests - like ctest, no subcommand gate needed.
@@ -165,6 +175,9 @@ SVELTEKIT = Toolchain(
         "clippy_fix_cmd": "npx eslint . --fix",
         "fmt_check_cmd": "npx prettier --check .",
         "clippy_cmd": "npx eslint .",
+        "fmt_fix_files_cmd": "npx prettier --write {files}",
+        "clippy_fix_files_cmd": "npx eslint {files} --fix",
+        "clippy_check_files_cmd": "npx eslint {files}",
     },
     evidence_binary="npm",
     evidence_subcommands=frozenset({"test"}),
@@ -185,6 +198,9 @@ TYPESCRIPT = Toolchain(
         "clippy_fix_cmd": "npx eslint . --fix",
         "fmt_check_cmd": "npx prettier --check .",
         "clippy_cmd": "npx eslint .",
+        "fmt_fix_files_cmd": "npx prettier --write {files}",
+        "clippy_fix_files_cmd": "npx eslint {files} --fix",
+        "clippy_check_files_cmd": "npx eslint {files}",
     },
     evidence_binary="npm",
     evidence_subcommands=frozenset({"test"}),
