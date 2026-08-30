@@ -31,3 +31,5 @@ desktop.ini
 
 # Test side-effect artifacts
 src/generated.py
+
+scratch/
