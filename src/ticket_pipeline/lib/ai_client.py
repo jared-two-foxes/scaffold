@@ -61,6 +61,14 @@ class AIError(RuntimeError):
     """Raised for any invocation failure. Let it propagate to die()."""
 
 
+class AIHTTPError(AIError):
+    """Raised for an HTTP error so the caller can inspect the status code."""
+
+    def __init__(self, code: int, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 class StepBudgetExceeded(AIError):
     """
     Raised by run_with_tools when a turn-count or cumulative-cost ceiling
@@ -91,8 +99,17 @@ class ModelUsage:
         return self.prompt_tokens + self.completion_tokens
 
     def add(self, usage: dict) -> None:
-        self.prompt_tokens += usage.get("prompt_tokens", 0) or 0
-        self.completion_tokens += usage.get("completion_tokens", 0) or 0
+        # Chat-completions shape.
+        prompt = usage.get("prompt_tokens", 0) or 0
+        completion = usage.get("completion_tokens", 0) or 0
+        # Responses API shape: map input_tokens/output_tokens to the same
+        # fields so per-model cost reporting works unchanged.
+        if not prompt and "input_tokens" in usage:
+            prompt = usage.get("input_tokens", 0) or 0
+        if not completion and "output_tokens" in usage:
+            completion = usage.get("output_tokens", 0) or 0
+        self.prompt_tokens += prompt
+        self.completion_tokens += completion
 
 
 @dataclass
@@ -227,6 +244,12 @@ MAX_COMPLETION_TOKENS = 16384
 # while looking like it does. Unset means no cost ceiling (today's
 # behavior).
 MAX_COST_USD_ENV = "PIPELINE_MAX_COST_USD"
+
+# Per-process cache of model ids that have been observed to require the
+# opencode zen Responses protocol (their chat-completions request 500'd
+# and the Responses request succeeded). Keyed by the original (prefixed)
+# model id that callers pass, matching the key used for usage tracking.
+_RESPONSES_PROTOCOL_CACHE: dict[str, bool] = {}
 
 
 def _load_max_cost_usd() -> float | None:
@@ -449,10 +472,14 @@ def resolve_provider(model: str) -> tuple[Provider, str]:
     return DEFAULT_PROVIDER, model
 
 
-def _post_chat_completion(payload: dict, label: str) -> dict:
-    original_model = payload["model"]
-    provider, bare_model = resolve_provider(original_model)
-    payload = {**payload, "model": bare_model}
+def _post(path: str, payload: dict, label: str, provider: Provider) -> dict:
+    """
+    Shared HTTP transport: POST `payload` to `provider.base_url/{path}`
+    with the provider's auth headers, a browser-like User-Agent, and the
+    same retry/backoff ladder that _post_chat_completion used to have.
+    Returns the parsed JSON body on success. Raises AIHTTPError for HTTP
+    errors and AIError for network-level failures.
+    """
     body = json.dumps(payload).encode()
     log.trace("%s request: %s", label, payload)
 
@@ -464,7 +491,7 @@ def _post_chat_completion(payload: dict, label: str) -> dict:
             **provider.request_headers(),
         }
         req = urllib.request.Request(
-            f"{provider.base_url}/chat/completions",
+            f"{provider.base_url}/{path}",
             data=body,
             headers=headers,
         )
@@ -472,11 +499,13 @@ def _post_chat_completion(payload: dict, label: str) -> dict:
             with urllib.request.urlopen(req) as resp:
                 parsed = json.loads(resp.read())
             log.trace("%s response: %s", label, parsed)
-            break
+            return parsed
         except urllib.error.HTTPError as e:
             error_body = e.read().decode()
             if e.code not in RETRYABLE_HTTP_STATUSES or attempt >= MAX_RETRIES:
-                raise AIError(f"{label} request failed: HTTP {e.code}: {error_body}") from e
+                raise AIHTTPError(
+                    e.code, f"{label} request failed: HTTP {e.code}: {error_body}"
+                ) from e
         except urllib.error.URLError as e:
             if attempt >= MAX_RETRIES:
                 hint = (
@@ -497,15 +526,219 @@ def _post_chat_completion(payload: dict, label: str) -> dict:
         )
         time.sleep(backoff_s)
 
-    response_usage = parsed.get("usage")
-    if response_usage:
-        # Tracked under the original (prefixed) model id, not the bare
-        # one sent over the wire - so usage/cost reporting and
-        # model-pricing.toml lookups stay keyed the same way callers
-        # passed the model in, and an "ollama:llama3.1" run reports as
-        # unpriced rather than colliding with an opencode model that
-        # happens to share the same bare name.
-        usage.add(original_model, response_usage)
+
+def _flatten_tool_schema(tool: dict) -> dict:
+    """
+    Convert an OpenAI chat-completions tool schema
+    {"type":"function","function":{"name","description","parameters"}}
+    into the Responses API flat shape
+    {"type":"function","name","description","parameters"}.
+    Unknown shapes are returned unchanged so the parser tolerates future
+    additions.
+    """
+    if not isinstance(tool, dict):
+        return tool
+    if tool.get("type") == "function" and "function" in tool:
+        fn = tool["function"]
+        flat = {
+            "type": "function",
+            "name": fn.get("name", ""),
+            "description": fn.get("description", ""),
+            "parameters": fn.get("parameters", {}),
+        }
+        if "strict" in fn:
+            flat["strict"] = fn["strict"]
+        return flat
+    return tool
+
+
+def _messages_to_responses_input(messages: list[dict]) -> list[dict]:
+    """
+    Convert a chat-completions message list into the Responses API `input`
+    item list. User messages become `input_text` items; assistant
+    tool-call turns become `function_call` items; tool results become
+    `function_call_output` items. Unknown roles/message shapes are
+    dropped so the parser tolerates future additions.
+    """
+    input_items: list[dict] = []
+    for msg in messages:
+        role = msg.get("role")
+        if role == "user":
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                input_items.append(
+                    {
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": content}],
+                    }
+                )
+            elif isinstance(content, list):
+                input_items.append({"role": "user", "content": content})
+        elif role == "assistant":
+            tool_calls = msg.get("tool_calls")
+            if tool_calls:
+                for call in tool_calls:
+                    fn = call.get("function", {}) if isinstance(call, dict) else {}
+                    input_items.append(
+                        {
+                            "type": "function_call",
+                            "call_id": call.get("id", "") if isinstance(call, dict) else "",
+                            "name": fn.get("name", ""),
+                            "arguments": fn.get("arguments", "{}"),
+                        }
+                    )
+            elif msg.get("content"):
+                content = msg["content"]
+                if isinstance(content, str):
+                    input_items.append(
+                        {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": content}],
+                        }
+                    )
+                elif isinstance(content, list):
+                    input_items.append(
+                        {"type": "message", "role": "assistant", "content": content}
+                    )
+        elif role == "tool":
+            input_items.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": msg.get("tool_call_id", ""),
+                    "output": msg.get("content", ""),
+                }
+            )
+    return input_items
+
+
+def _chat_payload_to_responses(payload: dict) -> dict:
+    """
+    Translate a chat-completions request payload into the Responses API
+    shape used by opencode zen's `/zen/v1/responses` endpoint.
+    """
+    responses_payload: dict = {
+        "model": payload["model"],
+        "input": _messages_to_responses_input(payload.get("messages", [])),
+        "store": False,
+        "previous_response_id": None,
+    }
+    if "tools" in payload:
+        responses_payload["tools"] = [_flatten_tool_schema(t) for t in payload["tools"]]
+    if "max_tokens" in payload:
+        responses_payload["max_output_tokens"] = payload["max_tokens"]
+    return responses_payload
+
+
+def _responses_to_chat(raw: dict, label: str) -> dict:
+    """
+    Parse an opencode zen Responses API response and return it in the
+    chat-completions shape that run_with_tools / run_prompt already
+    understand. Tool calls are normalized back into the nested
+    `tool_calls`/`function` form, and token usage is mapped to
+    `prompt_tokens`/`completion_tokens` so `usage.add()` works unchanged.
+    """
+    if raw.get("status") == "incomplete":
+        reason = (raw.get("incomplete_details") or {}).get("reason")
+        if reason == "max_output_tokens":
+            raise AIError(
+                f"{label}: response truncated by length limit "
+                "(status=incomplete, reason=max_output_tokens)"
+            )
+
+    output_items = raw.get("output", []) or []
+    message: dict = {"role": "assistant", "content": ""}
+    tool_calls: list[dict] = []
+    text_parts: list[str] = []
+
+    for item in output_items:
+        if not isinstance(item, dict):
+            continue
+        item_type = item.get("type")
+        if item_type == "message":
+            for content in item.get("content", []) or []:
+                if isinstance(content, dict) and content.get("type") == "output_text":
+                    text_parts.append(content.get("text", ""))
+        elif item_type == "function_call":
+            tool_calls.append(
+                {
+                    "id": item.get("call_id", ""),
+                    "type": "function",
+                    "function": {
+                        "name": item.get("name", ""),
+                        "arguments": item.get("arguments", "{}"),
+                    },
+                }
+            )
+
+    if text_parts:
+        message["content"] = "\n".join(text_parts)
+    if tool_calls:
+        message["tool_calls"] = tool_calls
+        finish_reason = "tool_calls"
+    else:
+        finish_reason = "stop"
+
+    usage = raw.get("usage", {}) or {}
+    chat_usage: dict = {}
+    if "input_tokens" in usage:
+        chat_usage["prompt_tokens"] = usage["input_tokens"]
+    if "output_tokens" in usage:
+        chat_usage["completion_tokens"] = usage["output_tokens"]
+
+    return {
+        "choices": [{"message": message, "finish_reason": finish_reason}],
+        "usage": chat_usage,
+    }
+
+
+def _post_responses(chat_payload: dict, label: str, provider: Provider) -> dict:
+    """
+    Post a chat-completions-shaped payload to the opencode zen Responses
+    endpoint and return a chat-completions-shaped response so existing
+    callers can consume it without knowing which wire protocol ran.
+    """
+    responses_payload = _chat_payload_to_responses(chat_payload)
+    raw = _post("responses", responses_payload, label, provider)
+    return _responses_to_chat(raw, label)
+
+
+def _post_chat_completion(payload: dict, label: str) -> dict:
+    """
+    Probe opencode zen's chat-completions endpoint; if the model has
+    been cached as Responses-only (or chat returns HTTP 500), replay the
+    equivalent request through the Responses endpoint. Other providers
+    (ollama, copilot) always use chat-completions and never fall back to
+    the opencode `/responses` endpoint.
+
+    Returns a chat-completions-shaped dict regardless of which protocol
+    actually served the request, so run_with_tools and run_prompt stay
+    unchanged.
+    """
+    original_model = payload["model"]
+    provider, bare_model = resolve_provider(original_model)
+    payload = {**payload, "model": bare_model}
+
+    if provider is not OPENCODE_ZEN:
+        parsed = _post("chat/completions", payload, label, provider)
+    elif _RESPONSES_PROTOCOL_CACHE.get(original_model):
+        parsed = _post_responses(payload, label, provider)
+    else:
+        try:
+            parsed = _post("chat/completions", payload, label, provider)
+        except AIHTTPError as e:
+            if e.code == 500:
+                log.warning(
+                    "   %s: chat/completions returned HTTP 500, trying responses protocol ...",
+                    label,
+                )
+                parsed = _post_responses(payload, label, provider)
+                _RESPONSES_PROTOCOL_CACHE[original_model] = True
+            else:
+                raise
+
+    if "usage" in parsed:
+        usage.add(original_model, parsed["usage"])
     return parsed
 
 
