@@ -1,6 +1,0 @@
-{
-  "base_ref": "1737072afce89e118a3b4aee5c3a8419718ee8b1",
-  "repo": "VirtualAssistant",
-  "pinned_on": "2026-06-25",
-  "note": "Commit the ticket.md/plan-*.md/gapplan-good.md/test-debug-redaction.* fixtures here were authored and validated against - accounting_webhooks.rs's exact shape (existing XeroWebhookConfig/QuickbooksWebhookConfig structs, no Debug redaction yet) is what plan-good.md and the no-file-split grader assume. Re-pin (update this file's base_ref to a new commit) only after re-validating the fixtures still match reality at that commit - see BENCHMARKS.md's fixture-pinning section."
-}
