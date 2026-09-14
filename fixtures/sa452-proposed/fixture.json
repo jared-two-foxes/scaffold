@@ -1,6 +1,0 @@
-{
-  "base_ref": "1737072afce89e118a3b4aee5c3a8419718ee8b1",
-  "repo": "VirtualAssistant",
-  "pinned_on": "2026-06-26",
-  "note": "Derived from fixtures/sa452/ticket.md via review-ticket.py + propose-ticket-edit.py, resolving the two concerns review-ticket flagged: the stale split-file references (xero_webhook_config.rs/quickbooks_webhook_config.rs/email_config.rs that don't exist) and the missing Debug-redaction requirement. Used to test whether a cleanly-anchored ticket - no file-fragmentation trap - changes plan-step pass rates for low-tier models that struggled on the original sa452 (deepseek-v4-flash, kimi-k2.6, glm-5, glm-5.1, grok-build-0.1). Same pinned commit as fixtures/sa452/ since the codebase claims are unchanged, just the ticket wording."
-}

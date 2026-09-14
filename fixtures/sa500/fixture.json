@@ -1,6 +1,0 @@
-{
-  "base_ref": "1737072afce89e118a3b4aee5c3a8419718ee8b1",
-  "repo": "VirtualAssistant",
-  "pinned_on": "2026-06-25",
-  "note": "Commit the ticket.md/plan-good.md/gapplan-good.md/test-webhook-retry-rate-limit.* fixtures here were authored and validated against - rate_limit_config.rs's exact shape (RateLimitConfig with no webhook_retry_rate_limit field/accessor yet, other RateLimitConfig literal construction sites in rate_limiter.rs and the tests/ dir) is what the grader and the implement-criterion fixture assume. Re-pin (update this file's base_ref to a new commit) only after re-validating the fixtures still match reality at that commit - see BENCHMARKS.md's fixture-pinning section."
-}

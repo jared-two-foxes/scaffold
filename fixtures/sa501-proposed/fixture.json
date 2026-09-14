@@ -1,6 +1,0 @@
-{
-  "base_ref": "1737072afce89e118a3b4aee5c3a8419718ee8b1",
-  "repo": "VirtualAssistant",
-  "pinned_on": "2026-06-26",
-  "note": "Derived from fixtures/sa501/ticket.md via review-ticket.py + propose-ticket-edit.py. review-ticket flagged two concerns: the ticket's premise was stale (verification already exists via postmark_webhook_token) and the missing Debug-redaction requirement. propose-ticket-edit's fix for the second concern re-adds an explicit 'redacted or omitted, with test coverage' criterion - i.e. it re-leaks the exact answer that fixtures/sa501/ticket.md was hand-edited to remove (see BENCHMARKS.md). Kept as a fixture anyway to document that finding, not because it's expected to discriminate."
-}
