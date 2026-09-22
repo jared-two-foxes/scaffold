@@ -1,7 +1,4 @@
 import sys
-import types
+from pathlib import Path
 
-render_stub = types.ModuleType("ticket_pipeline.lib.render")
-render_stub.render_markdown = lambda _text: None
-render_stub.print_line = lambda *args, **kwargs: None
-sys.modules.setdefault("ticket_pipeline.lib.render", render_stub)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
