@@ -17,8 +17,19 @@ package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["ticket_pipeline", "ticket_pipeline.*", "scaffold_cli", "scaffold_cli.*"]
+include = [
+  "ticket_pipeline",
+  "ticket_pipeline.*",
+  "scaffold_cli",
+  "scaffold_cli.*",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """
 Fetch a Linear ticket by identifier and print the rendered markdown to
-stdout, e.g. ./fetch_ticket.py SA-456
+stdout, e.g. python -m ticket_pipeline.lib.fetch_ticket SA-456
 
-fetch_ticket() and render() are plain functions with no file I/O -
-check-ticket.py and tdd-pipeline.py import this module directly and
-call them rather than subprocessing this file, so the ticket content
-never touches disk except via tools.write_file_block in those scripts.
+fetch_ticket() and render() are plain functions with no file I/O.
 This file's __main__ block is just a thin CLI wrapper around the same
 two functions, for manual/standalone use.
 """
@@ -63,55 +60,6 @@ def fetch_ticket(identifier: str) -> dict:
     return _graphql(query, {"identifier": identifier})
 
 
-def update_ticket(issue_id: str, title: str | None = None, description: str | None = None) -> dict:
-    """
-    Mutates the title/description of an existing Linear issue. issue_id
-    is the issue's internal UUID (the "id" field fetch_ticket() returns,
-    not its human-readable identifier like "SA-42" - Linear's
-    issueUpdate mutation takes the former). Only used by update-ticket.py
-    - this is the one write path against Linear in this whole set of
-    scripts, deliberately not called from anywhere else.
-    """
-    mutation = """
-    mutation IssueUpdate($id: String!, $input: IssueUpdateInput!) {
-      issueUpdate(id: $id, input: $input) {
-        success
-        issue { id identifier title updatedAt }
-      }
-    }
-    """
-    input_fields = {}
-    if title is not None:
-        input_fields["title"] = title
-    if description is not None:
-        input_fields["description"] = description
-    return _graphql(mutation, {"id": issue_id, "input": input_fields})
-
-
-def create_ticket(team_id: str, title: str, description: str, parent_id: str | None = None) -> dict:
-    """
-    Creates a new Linear issue via the issueCreate mutation. team_id is
-    the internal UUID of the team the new issue belongs to (fetch_ticket()'s
-    "team.id" field on the parent, for a sub-issue). parent_id, if given,
-    is the parent issue's internal UUID (not its human-readable identifier)
-    - links the new issue as a Linear sub-issue rather than a standalone one.
-    Only used by create_child_tickets.py - the other write path against
-    Linear in this set of scripts, alongside update_ticket() above.
-    """
-    mutation = """
-    mutation IssueCreate($input: IssueCreateInput!) {
-      issueCreate(input: $input) {
-        success
-        issue { id identifier title url }
-      }
-    }
-    """
-    input_fields = {"teamId": team_id, "title": title, "description": description}
-    if parent_id is not None:
-        input_fields["parentId"] = parent_id
-    return _graphql(mutation, {"input": input_fields})
-
-
 PRIORITY_LABELS = {0: "No priority", 1: "Urgent", 2: "High", 3: "Medium", 4: "Low"}
 
 
@@ -149,6 +97,10 @@ def render(data: dict) -> str:
 
 
 def main() -> None:
+    args = sys.argv[1:]
+    if not args or args[0] in ("-h", "--help"):
+        print(f"Usage: {sys.argv[0]} <ticket-id>  (e.g. SA-456)", file=sys.stderr)
+        sys.exit(0)
     if len(sys.argv) != 2:
         print(f"Usage: {sys.argv[0]} <ticket-id>  (e.g. SA-456)", file=sys.stderr)
         sys.exit(1)
