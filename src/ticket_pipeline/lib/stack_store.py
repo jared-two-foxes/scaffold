@@ -108,21 +108,26 @@ def load_stack() -> list[CriterionFrame]:
 
 
 def _save_stack_unlocked(frames: list[CriterionFrame]) -> None:
-    SCAFFOLD_DIR.mkdir(parents=True, exist_ok=True)
-    tmp_path = STACK_FILE.with_suffix(STACK_FILE.suffix + ".tmp")
-    payload = json.dumps([asdict(frame) for frame in frames], indent=2) + "\n"
+    atomic_write_json(STACK_FILE, [asdict(frame) for frame in frames])
+
+
+def atomic_write_json(path: Path, value: object) -> None:
+    """Write under the caller's lock; replace only after flushing complete JSON."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    payload = json.dumps(value, indent=2) + "\n"
     with tmp_path.open("w", encoding="utf-8") as handle:
         handle.write(payload)
         handle.flush()
         os.fsync(handle.fileno())
-    os.replace(tmp_path, STACK_FILE)
+    os.replace(tmp_path, path)
 
     if os.name != "nt":  # pragma: no cover - platform-specific durability
         flags = os.O_RDONLY
         if hasattr(os, "O_DIRECTORY"):
             flags |= os.O_DIRECTORY
         try:
-            dir_fd = os.open(str(SCAFFOLD_DIR), flags)
+            dir_fd = os.open(str(path.parent), flags)
         except OSError:
             return
         try:

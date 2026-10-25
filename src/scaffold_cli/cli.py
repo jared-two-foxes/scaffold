@@ -14,13 +14,14 @@ class _Command:
 _COMMANDS: dict[str, _Command] = {
     "fetch-ticket": _Command("lib.fetch_ticket", "Fetch and print a Linear ticket"),
     "status": _Command("status", "Show ticket and criteria stack status"),
+    "tasks": _Command("tasks", "Manage persistent feature tasks (JSON)"),
     "stack": _Command("stack", "Manage criteria stack operations"),
 }
 
 
 def _print_top_level_help() -> None:
     print("usage: scaffold <command> [args...]\n")
-    print("Ticket access and criteria-stack management only.\n")
+    print("Ticket access, criteria stacks and persistent feature tasks.\n")
     for name, cmd in _COMMANDS.items():
         print(f"  {name:<14} {cmd.help}")
     print("\nRun 'scaffold <command> --help' for command options.")
