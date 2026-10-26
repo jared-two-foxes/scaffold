@@ -6,7 +6,7 @@ import copy
 import json
 from datetime import UTC, datetime
 
-from ticket_pipeline.lib import stack_store
+from ticket_pipeline.lib import feature_validation, stack_store
 
 VERSION = 1
 
@@ -139,7 +139,7 @@ def operate(
     action: str, feature_id: str, payload: object = None, task_id: str | None = None
 ) -> dict:
     """One locked read/validate/mutate/write transaction; reads never select or claim work."""
-    if action not in {
+    if action not in feature_validation.ACTIONS | {
         "init",
         "add",
         "list",
@@ -193,6 +193,10 @@ def operate(
             raise ValueError(f"Unknown feature: {feature_id}")
         feature = features[feature_id]
         tasks = feature["tasks"]
+        if action in feature_validation.ACTIONS:
+            feature_validation.transition(feature, action, payload)
+            stack_store.atomic_write_json(path, state)
+            return {"schema_version": VERSION, "feature": feature_validation.view(feature)}
         if action in {"add", "decompose"}:
             if not isinstance(payload, list) or not payload:
                 raise ValueError("Input must be a nonempty array of tasks")
@@ -256,6 +260,9 @@ def operate(
                     raise ValueError("Invalid transition or missing reason")
                 _event(task, "blocked" if action == "block" else "failed", reason=payload)
         if action in {"init", "add", "decompose", "start", "complete", "block", "fail", "retry"}:
+            feature["task_revision"] = feature.get("task_revision", 0) + 1
+            if "validation" in feature:
+                feature["validation"].update(current=None)
             stack_store.atomic_write_json(path, state)
         if action in {"start", "complete", "block", "fail", "retry"}:
             return {"schema_version": VERSION, "task": copy.deepcopy(tasks[task_id])}
@@ -270,7 +277,7 @@ def operate(
             )
             return {
                 "schema_version": VERSION,
-                "feature": copy.deepcopy(feature),
+                "feature": feature_validation.view(feature),
                 "task": copy.deepcopy(task),
             }
-        return {"schema_version": VERSION, "feature": copy.deepcopy(feature)}
+        return {"schema_version": VERSION, "feature": feature_validation.view(feature)}
