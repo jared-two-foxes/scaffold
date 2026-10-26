@@ -260,3 +260,51 @@ Executor or Review changes are part of this increment.
 pip install -e . pytest
 python -m pytest
 ```
+
+### Final feature validation lifecycle (Phase 5)
+
+Task completion is distinct from feature verification. `tasks list` returns an
+additive `task_revision` and `validation` view; schema version 1 files migrate
+lazily without discarding task definitions or history. A completed nonempty task
+graph is `awaiting_validation`, never automatically `verified`. Recursive parents
+must have their own successful task completion evidence.
+
+The native Pi feature gate uses three explicit JSON CLI transitions:
+
+```sh
+scaffold tasks validation-start --feature F1 --input intent.json
+scaffold tasks validation-record --feature F1 --input retained-result.json
+scaffold tasks validation-invalidate --feature F1 --input reason.json
+```
+
+An intent contains `attempt_id` and `binding`: `feature_id`, `design_ref`, original
+`baseline`, final `head`, Git `tree`, `branch`, current `task_revision`, and SHA-256
+`plan_digest`. Commit/tree fields require full lowercase SHAs. The first intent
+pins `original_baseline`; subsequent attempts cannot replace it. Intents require
+all tasks completed with task-bound Conductor evidence. Starting another attempt
+preserves the interrupted attempt and makes it inapplicable.
+
+A final record uses `schema: "pi.feature-validation/v1"`, matching `attempt_id`
+and `binding`, `status` (`PASSED`, `NEEDS_DESIGN`, `BLOCKED`), durable
+`reference` (`pi-feature-evidence:sha256:<64 hex>`), `checks`, `review`, and `message`.
+PASSED requires meaningful successful full build/test checks and a completed
+independent APPROVED review bound to the original baseline and final HEAD.
+Only the matching active intent can finish. Identical recorded completions are
+idempotent; conflicting results are rejected. History retains every started and
+finished attempt, failure, blockage and explicit invalidation.
+
+States are `implementing`, `awaiting_validation`, `validating`, `verified`,
+`failed`, and `blocked`. Task mutations invalidate the current association and
+advance `task_revision`; adding approved corrective tasks preserves the original
+design, completed tasks, baseline and validation history. Invalidation payloads
+contain a nonempty `reason`.
+
+Scaffold validates associations and transitions, **not execution authenticity**.
+CLI success-shaped JSON alone cannot establish that checks or review ran. Pi must
+authenticate retained native evidence and checkpoint provenance before invoking
+these transitions; they are deliberately absent from the generic `scaffold_tasks`
+model-facing operation list. `validation.reference` is historical evidence, not
+proof of applicability to the current checkout. On every resume, inspect Git HEAD,
+tree, branch, task state and native evidence. Out-of-band repository changes make
+the old result stale even when its historical status remains `verified`.
+Never infer success from a `validating` intent or from `tasks next` returning null.
