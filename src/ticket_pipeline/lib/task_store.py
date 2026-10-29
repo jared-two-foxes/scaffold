@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 
 from ticket_pipeline.lib import feature_validation, issue_workflow, stack_store
 
-VERSION = 1
+VERSION = 2
 
 
 def _text(value: object) -> bool:
@@ -170,7 +170,7 @@ def operate(
         if (
             not isinstance(state, dict)
             or type(state.get("schema_version")) is not int
-            or state["schema_version"] not in {1, 2}
+            or state["schema_version"] != VERSION
             or not isinstance(state.get("features"), dict)
         ):
             raise ValueError("Unsupported task state schema_version")
@@ -183,7 +183,6 @@ def operate(
                     "title",
                     "objective",
                     "design_ref",
-                    "workflow",
                     "baseline",
                     "branch",
                     "acceptance_criteria",
@@ -204,9 +203,14 @@ def operate(
             raise ValueError(f"Unknown feature: {feature_id}")
         feature = features[feature_id]
         tasks = feature["tasks"]
-        if action == "init" and "workflow" in feature:
+        if action == "init":
+            feature["workflow"] = issue_workflow.KIND
             issue_workflow.initialize(feature, _task)
-            state["schema_version"] = 2
+        if (
+            not isinstance(feature.get("workflow"), dict)
+            or feature["workflow"].get("kind") != issue_workflow.KIND
+        ):
+            raise ValueError("Unsupported feature state: recursive issue graph required")
         if action in issue_workflow.ACTIONS:
             previous_feature = copy.deepcopy(feature)
             selected = issue_workflow.transition(feature, action, payload, task_id, _event)
@@ -253,8 +257,7 @@ def operate(
                 tasks[task["id"]] = task
             _validate_graph(tasks)
             if parent is not None:
-                if isinstance(feature.get("workflow"), dict):
-                    issue_workflow.invalidate(parent, tasks)
+                issue_workflow.invalidate(parent, tasks)
                 _event(parent, "decomposed", children=[t["id"] for t in payload])
         elif action in {"start", "complete", "block", "fail", "retry"}:
             if task_id not in tasks:
@@ -271,16 +274,12 @@ def operate(
                     raise ValueError("Completion requires in_progress and completed prerequisites")
                 _event(task, "completed", evidence=payload)
             elif action == "start":
-                if isinstance(feature.get("workflow"), dict):
-                    if any(t["status"] == "in_progress" for t in tasks.values()):
-                        raise ValueError("Another issue is already active")
-                    if any(
-                        t["status"] == "completed" and not t.get("checkpoint")
-                        for t in tasks.values()
-                    ):
-                        raise ValueError(
-                            "Record verified checkpoints before starting another issue"
-                        )
+                if any(t["status"] == "in_progress" for t in tasks.values()):
+                    raise ValueError("Another issue is already active")
+                if any(
+                    t["status"] == "completed" and not t.get("checkpoint") for t in tasks.values()
+                ):
+                    raise ValueError("Record verified checkpoints before starting another issue")
                 if status not in {"pending", "decomposed"} or not _ready(task, tasks):
                     raise ValueError("Task is not ready to start")
                 _event(task, "in_progress")
@@ -315,14 +314,11 @@ def operate(
                 "task": copy.deepcopy(tasks[task_id]),
             }
         if action == "next":
-            workflow = feature.get("workflow")
-            if isinstance(workflow, dict) and (
-                workflow["phase"] != "implement"
-                or any(
-                    t["status"] == "in_progress"
-                    or (t["status"] == "completed" and not t.get("checkpoint"))
-                    for t in tasks.values()
-                )
+            workflow = feature["workflow"]
+            if workflow["phase"] != "implement" or any(
+                t["status"] == "in_progress"
+                or (t["status"] == "completed" and not t.get("checkpoint"))
+                for t in tasks.values()
             ):
                 return {
                     "schema_version": state["schema_version"],
@@ -332,20 +328,11 @@ def operate(
             task = next(
                 (
                     t
-                    for t in (
-                        sorted(tasks.values(), key=lambda t: -issue_workflow.depth(t, tasks))
-                        if isinstance(workflow, dict)
-                        else tasks.values()
-                    )
+                    for t in sorted(tasks.values(), key=lambda t: -issue_workflow.depth(t, tasks))
                     if t["status"] in {"pending", "decomposed"}
                     and _ready(t, tasks)
-                    and (
-                        not isinstance(workflow, dict)
-                        or (
-                            issue_workflow.design(t)
-                            and (not t.get("suspension") or t["suspension"].get("handoff"))
-                        )
-                    )
+                    and issue_workflow.design(t)
+                    and (not t.get("suspension") or t["suspension"].get("handoff"))
                 ),
                 None,
             )

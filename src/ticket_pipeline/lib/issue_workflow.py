@@ -93,9 +93,7 @@ def design_ready(task, tasks):
 
 
 def guard(feature, action, task_id=None):
-    workflow = feature.get("workflow")
-    if not isinstance(workflow, dict):
-        return
+    workflow = feature["workflow"]
     if action in {"add", "decompose"}:
         require(workflow["phase"] == "design", "Return to design before adding issues")
     if action in {"start", "complete", "decompose"}:

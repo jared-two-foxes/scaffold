@@ -72,7 +72,7 @@ def main() -> None:
             payload = json.loads(text)
         result = operate(args.action, args.feature, payload, getattr(args, "task", None))
     except (ValueError, OSError) as exc:
-        print(json.dumps({"schema_version": 1, "error": str(exc)}), file=sys.stderr)
+        print(json.dumps({"schema_version": 2, "error": str(exc)}), file=sys.stderr)
         raise SystemExit(1) from exc
     print(json.dumps(result, indent=2))
 

@@ -28,13 +28,13 @@ def result(value, status="PASSED", attempt="attempt"):
             "message": "Complete approved criteria reviewed"}
 
 
-def test_legacy_state_eligibility_parents_and_completion(state):
+def test_issue_state_eligibility_parents_and_completion(state):
     operate("add", "F1", [task("p")])
     operate("decompose", "F1", [task("child")], "p")
-    with pytest.raises(ValueError, match="completed"):
+    with pytest.raises(ValueError, match="design|completed|checkpoint"):
         start()
     finish("child")
-    with pytest.raises(ValueError, match="completed"):
+    with pytest.raises(ValueError, match="design|completed|checkpoint"):
         start()
     finish("p")
     feature = operate("list", "F1")["feature"]
@@ -57,6 +57,7 @@ def test_failure_correction_history_and_original_baseline(state):
     value = start()
     operate("validation-record", "F1", result(value, "NEEDS_DESIGN"))
     assert operate("list", "F1")["feature"]["validation"]["status"] == "failed"
+    operate("design-reopen", "F1", {"reason": "Final review correction"})
     operate("add", "F1", [task("fix", ["a"])])
     assert operate("list", "F1")["feature"]["validation"]["status"] == "implementing"
     with pytest.raises(ValueError):
@@ -122,6 +123,7 @@ def test_changed_graph_rejects_old_success_and_duplicate_tasks_do_not_invalidate
     before = state.read_bytes()
     operate("complete", "F1", evidence("a"), "a")
     assert state.read_bytes() == before
+    operate("design-reopen", "F1", {"reason": "Additional work"})
     operate("add", "F1", [task("b")])
     with pytest.raises(ValueError):
         operate("validation-record", "F1", result(value))

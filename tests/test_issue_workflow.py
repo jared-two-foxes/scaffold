@@ -16,7 +16,6 @@ def state(tmp_path, monkeypatch):
         "F1",
         {
             **FEATURE,
-            "workflow": "recursive-issues/v1",
             "baseline": "a" * 40,
             "branch": "feature/test",
         },
@@ -189,7 +188,6 @@ def test_issue_cli_persists_design_and_phase_across_processes(tmp_path):
 
     feature = {
         **FEATURE,
-        "workflow": "recursive-issues/v1",
         "baseline": "a" * 40,
         "branch": "feature/issues",
     }
