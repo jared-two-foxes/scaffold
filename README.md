@@ -72,3 +72,19 @@ applicability; historical results remain retained.
 
 Run `pip install -e . pytest` and `python -m pytest`. Scaffold owns deterministic
 state transitions; Pi authenticates external Conductor receipts and Git checkpoints.
+
+### Scoped queries for small model contexts
+
+`tasks summary --feature F` returns identity, phase, status counts, revision and a
+SHA-256 state digest. `tasks issue --feature F --task ID` returns the issue's current
+contract/design, ancestors, direct and inherited prerequisites, immediate children
+and completion references. It excludes full histories, sibling bodies and previous
+design transcripts. `tasks select` and `tasks design-select` use exactly the same
+selection rules as next/design-next, but return that scoped context or null plus
+summary. All four are read-only and preserve state bytes; null never means verified
+completion. Scope size follows the relevant contracts, not an arbitrary text cutoff.
+Full list is retained for explicit diagnostics and native integrity checks.
+
+Pi persists its issue handoffs in local Git metadata, binding these query results
+to current graph/Git/receipt state. Scaffold neither authenticates those receipts nor
+stores a second mutable execution state. Stale handoffs must be refreshed by Pi.
