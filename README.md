@@ -55,7 +55,10 @@ mandatory. Scaffold does not execute source, run Git, invoke review or retry wor
 Discoveries return the affected scope to design. Native Pi `suspend_issue` first
 parks active source/staging/untracked files and authenticates its latest attempt;
 it then calls `design-reopen` with `{reason, reference: "<suspension receipt>"}`.
-Without unfinished implementation a caller can reopen with just `{reason}` and
+An approved issue can also be reopened by ID during Design; its previous design
+and affected unfinished designs are archived immediately. Failed, blocked or
+retried issues with execution history still need suspension evidence before
+reopening or decomposition. Without unfinished implementation a caller can reopen with just `{reason}` and
 optional `--task`. Reopening preserves old designs and invalidates unfinished
 descendant designs. Add and approve new issues, finish design, then implement new
 leaves. Native Pi `resume_issue` authenticates prerequisite checkpoints and restores

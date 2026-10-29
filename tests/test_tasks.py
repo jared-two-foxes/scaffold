@@ -197,3 +197,25 @@ def test_missing_baseline_branch_and_old_selector_cannot_create_an_alternate_flo
     ):
         cli(tmp_path, "init", "--feature", "F1", "--input", "-", payload=payload, ok=False)
         assert not (tmp_path / ".scaffold/tasks.json").exists()
+
+
+@pytest.mark.parametrize("kind", [[], {}, None, 42, True, ["design"]])
+def test_malformed_origin_returns_json_error_and_preserves_state(tmp_path, kind):
+    cli(tmp_path, "init", "--feature", "F1", "--input", "-", payload=FEATURE)
+    path = tmp_path / ".scaffold/tasks.json"
+    before = path.read_bytes()
+    result = cli(
+        tmp_path,
+        "decompose",
+        "--feature",
+        "F1",
+        "--task",
+        "F1",
+        "--input",
+        "-",
+        payload=[{**task("bad"), "origin": {"kind": kind, "reference": "receipt"}}],
+        ok=False,
+    )
+    assert result["schema_version"] == 2
+    assert "origin" in result["error"].lower()
+    assert path.read_bytes() == before

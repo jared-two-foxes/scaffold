@@ -58,8 +58,10 @@ def _task(value: dict, feature_id: str, parent: str | None) -> dict:
     if "origin" in value:
         origin = value["origin"]
         _fields(origin, {"kind", "reference"})
-        if origin.get("kind") not in {"ticket", "design", "review", "discovery"} or not _text(
-            origin.get("reference")
+        if (
+            not isinstance(origin.get("kind"), str)
+            or origin.get("kind") not in {"ticket", "design", "review", "discovery"}
+            or not _text(origin.get("reference"))
         ):
             raise ValueError("Issue origin requires kind and reference")
     dependencies = value.get("dependencies", [])

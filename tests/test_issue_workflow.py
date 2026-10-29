@@ -215,3 +215,46 @@ def test_issue_cli_persists_design_and_phase_across_processes(tmp_path):
     resumed = cli(tmp_path, "list", "--feature", "F1")["feature"]
     assert resumed["workflow"]["phase"] == "implement"
     assert resumed["tasks"]["F1"]["designs"][0]["approval"] == "User approved"
+
+
+@pytest.mark.parametrize("stopped", ["fail", "block", "retry", "fail-retry", "block-retry"])
+def test_unfinished_execution_cannot_escape_suspension_through_lifecycle(state, stopped):
+    approve("F1")
+    call("design-finish")
+    call("start", "F1")
+    for action in stopped.split("-"):
+        call(action, "F1", "Execution stopped")
+    before = state.read_bytes()
+    with pytest.raises(ValueError, match="Suspend"):
+        call("design-reopen", payload={"reason": "New prerequisite"})
+    assert state.read_bytes() == before
+    with pytest.raises(ValueError, match="suspension"):
+        call("design-reopen", "F1", {"reason": "New prerequisite"})
+    assert state.read_bytes() == before
+    reference = "pi-evidence:sha256:" + "c" * 64
+    call("design-reopen", "F1", {"reason": "New prerequisite", "reference": reference})
+    call("decompose", "F1", [task("fix")])
+    approve("F1", True)
+    approve("fix")
+    call("design-finish")
+    finish("fix")
+    with pytest.raises(ValueError, match="handoff"):
+        call("start", "F1")
+
+
+def test_approved_parent_can_reopen_while_descendant_design_is_incomplete(state):
+    call("decompose", "F1", [task("child"), task("pending")])
+    approve("F1", True)
+    approve("child")
+    original = call("list")["feature"]["tasks"]
+    call("design-reopen", "F1", {"reason": "Correct parent contract"})
+    current = call("list")["feature"]
+    assert current["workflow"]["phase"] == "design"
+    assert current["tasks"]["F1"]["design_history"] == original["F1"]["designs"]
+    assert current["tasks"]["child"]["design_history"] == original["child"]["designs"]
+    assert "designs" not in current["tasks"]["child"]
+    assert call("design-next")["task"]["id"] == "F1"
+    approve("F1", True)
+    approve("child")
+    approve("pending")
+    call("design-finish")

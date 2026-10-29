@@ -92,6 +92,15 @@ def design_ready(task, tasks):
     )
 
 
+def needs_suspension(task):
+    """Lifecycle retry/failure never proves that an execution's source was parked."""
+    return (
+        task["status"] != "completed"
+        and any(h.get("to") == "in_progress" for h in task["history"])
+        and (not task.get("suspension") or task["suspension"].get("handoff"))
+    )
+
+
 def guard(feature, action, task_id=None):
     workflow = feature["workflow"]
     if action in {"add", "decompose"}:
@@ -100,7 +109,7 @@ def guard(feature, action, task_id=None):
         require(task_id in feature["tasks"], "Unknown issue")
     if action == "decompose":
         require(
-            feature["tasks"][task_id]["status"] != "in_progress",
+            not needs_suspension(feature["tasks"][task_id]),
             "Suspend active implementation with retained evidence before decomposition",
         )
     if action in {"start", "complete"}:
@@ -149,8 +158,13 @@ def transition(feature, action, payload, task_id, make_event):
             and payload["reason"].strip(),
             "Reason required",
         )
-        require(workflow["phase"] == "implement", "Already in design; inspect existing transition")
-        active = [t for t in tasks.values() if t["status"] == "in_progress"]
+        require(workflow["phase"] in {"design", "implement"}, "Invalid workflow phase")
+        if workflow["phase"] == "design":
+            require(
+                task_id in tasks and design(tasks[task_id]),
+                "During design, target an approved issue to reopen",
+            )
+        active = [t for t in tasks.values() if needs_suspension(t)]
         require(task_id is None or task_id in tasks, "Unknown issue")
         task = tasks.get(task_id) if task_id else None
         require(
@@ -161,7 +175,7 @@ def transition(feature, action, payload, task_id, make_event):
                 task["status"] != "completed",
                 "Completed issues retain history; add a dependent corrective issue",
             )
-            if task["status"] in {"in_progress", "blocked", "failed"}:
+            if needs_suspension(task):
                 require(
                     isinstance(payload.get("reference"), str)
                     and payload["reference"].startswith("pi-evidence:sha256:"),
