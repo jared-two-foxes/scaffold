@@ -22,15 +22,45 @@ def main() -> None:
         "fail",
         "decompose",
         "retry",
+        "design-next",
+        "design-record",
+        "design-finish",
+        "design-reopen",
+        "checkpoint-record",
+        "issue-resume",
         "validation-start",
         "validation-record",
         "validation-invalidate",
     ):
         command = commands.add_parser(action)
         command.add_argument("--feature", required=True)
-        if action in {"start", "complete", "block", "fail", "decompose", "retry"}:
+        if action in {
+            "start",
+            "complete",
+            "block",
+            "fail",
+            "decompose",
+            "retry",
+            "design-record",
+            "checkpoint-record",
+            "issue-resume",
+        }:
             command.add_argument("--task", required=True)
-        if action in {"init", "add", "complete", "decompose", "validation-start", "validation-record", "validation-invalidate"}:
+        if action == "design-reopen":
+            command.add_argument("--task")
+        if action in {
+            "init",
+            "add",
+            "complete",
+            "decompose",
+            "validation-start",
+            "validation-record",
+            "validation-invalidate",
+            "design-record",
+            "design-reopen",
+            "checkpoint-record",
+            "issue-resume",
+        }:
             command.add_argument("--input", required=True, help="JSON file, or - for stdin")
         if action in {"block", "fail", "retry"}:
             command.add_argument("--reason", required=True)

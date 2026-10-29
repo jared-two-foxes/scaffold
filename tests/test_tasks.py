@@ -243,7 +243,7 @@ def test_versions_and_feature_isolation(state):
     with pytest.raises(ValueError):
         operate("init", "F1", FEATURE)
     data = json.loads(state.read_text())
-    data["schema_version"] = 2
+    data["schema_version"] = 3
     state.write_text(json.dumps(data))
     with pytest.raises(ValueError, match="schema_version"):
         operate("list", "F1")
