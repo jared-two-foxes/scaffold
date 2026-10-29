@@ -16,6 +16,8 @@ def require(ok, message):
 
 
 def eligible(feature):
+    require(feature["workflow"]["phase"] == "implement", "Finish issue graph design first")
+    require(all(t.get("checkpoint") for t in feature["tasks"].values()), "Every issue needs a checkpoint")
     tasks = feature["tasks"]
     require(bool(tasks), "Feature has no required tasks")
     for task in tasks.values():
