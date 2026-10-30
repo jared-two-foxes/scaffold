@@ -6,7 +6,7 @@ import copy
 import json
 from datetime import UTC, datetime
 
-from ticket_pipeline.lib import feature_validation, issue_workflow, stack_store
+from ticket_pipeline.lib import feature_validation, issue_workflow, scoped_queries, stack_store
 
 VERSION = 2
 
@@ -149,18 +149,24 @@ def operate(
     action: str, feature_id: str, payload: object = None, task_id: str | None = None
 ) -> dict:
     """One locked read/validate/mutate/write transaction; reads never select or claim work."""
-    if action not in feature_validation.ACTIONS | issue_workflow.ACTIONS | {
-        "init",
-        "add",
-        "list",
-        "next",
-        "start",
-        "complete",
-        "block",
-        "fail",
-        "decompose",
-        "retry",
-    }:
+    if (
+        action
+        not in feature_validation.ACTIONS
+        | issue_workflow.ACTIONS
+        | scoped_queries.ACTIONS
+        | {
+            "init",
+            "add",
+            "list",
+            "next",
+            "start",
+            "complete",
+            "block",
+            "fail",
+            "decompose",
+            "retry",
+        }
+    ):
         raise ValueError(f"Unknown action: {action}")
     path = stack_store.SCAFFOLD_DIR / "tasks.json"
     with stack_store._stack_lock():
@@ -213,6 +219,22 @@ def operate(
             or feature["workflow"].get("kind") != issue_workflow.KIND
         ):
             raise ValueError("Unsupported feature state: recursive issue graph required")
+        if action in scoped_queries.ACTIONS:
+            if action == "summary":
+                return {"schema_version": VERSION, "summary": scoped_queries.summary(feature)}
+            if action == "design-select":
+                selected = issue_workflow.transition(feature, "design-next", None, None, _event)
+            elif action == "select":
+                selected = _select(feature)
+            else:
+                selected = tasks.get(task_id)
+                if selected is None:
+                    raise ValueError("Unknown issue")
+            return {
+                "schema_version": VERSION,
+                "summary": scoped_queries.summary(feature),
+                "context": scoped_queries.issue(feature, selected["id"]) if selected else None,
+            }
         if action in issue_workflow.ACTIONS:
             previous_feature = copy.deepcopy(feature)
             selected = issue_workflow.transition(feature, action, payload, task_id, _event)
@@ -316,28 +338,7 @@ def operate(
                 "task": copy.deepcopy(tasks[task_id]),
             }
         if action == "next":
-            workflow = feature["workflow"]
-            if workflow["phase"] != "implement" or any(
-                t["status"] == "in_progress"
-                or (t["status"] == "completed" and not t.get("checkpoint"))
-                for t in tasks.values()
-            ):
-                return {
-                    "schema_version": state["schema_version"],
-                    "feature": feature_validation.view(feature),
-                    "task": None,
-                }
-            task = next(
-                (
-                    t
-                    for t in sorted(tasks.values(), key=lambda t: -issue_workflow.depth(t, tasks))
-                    if t["status"] in {"pending", "decomposed"}
-                    and _ready(t, tasks)
-                    and issue_workflow.design(t)
-                    and (not t.get("suspension") or t["suspension"].get("handoff"))
-                ),
-                None,
-            )
+            task = _select(feature)
             return {
                 "schema_version": state["schema_version"],
                 "feature": feature_validation.view(feature),
@@ -347,3 +348,23 @@ def operate(
             "schema_version": state["schema_version"],
             "feature": feature_validation.view(feature),
         }
+
+
+def _select(feature):
+    tasks = feature["tasks"]
+    if feature["workflow"]["phase"] != "implement" or any(
+        t["status"] == "in_progress" or (t["status"] == "completed" and not t.get("checkpoint"))
+        for t in tasks.values()
+    ):
+        return None
+    return next(
+        (
+            t
+            for t in sorted(tasks.values(), key=lambda t: -issue_workflow.depth(t, tasks))
+            if t["status"] in {"pending", "decomposed"}
+            and _ready(t, tasks)
+            and issue_workflow.design(t)
+            and (not t.get("suspension") or t["suspension"].get("handoff"))
+        ),
+        None,
+    )

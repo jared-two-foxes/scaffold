@@ -12,6 +12,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="action", required=True)
     for action in (
+        "summary",
+        "issue",
+        "select",
+        "design-select",
         "init",
         "add",
         "list",
@@ -35,6 +39,7 @@ def main() -> None:
         command = commands.add_parser(action)
         command.add_argument("--feature", required=True)
         if action in {
+            "issue",
             "start",
             "complete",
             "block",
