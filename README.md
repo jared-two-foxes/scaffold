@@ -88,3 +88,25 @@ Full list is retained for explicit diagnostics and native integrity checks.
 Pi persists its issue handoffs in local Git metadata, binding these query results
 to current graph/Git/receipt state. Scaffold neither authenticates those receipts nor
 stores a second mutable execution state. Stale handoffs must be refreshed by Pi.
+
+### Versioned delivery journal
+
+The Pi boundary uses `tasks delivery-record --feature F --task T --input -` for
+internal compare-and-swap bookkeeping. Supply `expected_revision` and one event:
+initialized, context, begun, finished, handoff or paused. Records retain the immutable
+original feature contract, versioned context, every invocation sequence, current
+receipt head and in-flight reservation. Context updates are additive; originals and
+obligations cannot disappear. Material amendments retain the explicit approval
+reference and replacement obligation. Bookkeeping never completes an issue or proves
+an independent review. Native Pi code authenticates receipts and its Git audit anchor.
+
+Existing task schema version 2 files remain readable. Journal initialization can
+import a legacy receipt head and consumed sequence, including five or more attempts;
+initialization never replaces an existing journal. Stale revisions, duplicate in-flight
+reservations and mismatched terminal associations fail under the existing file lock.
+No finite issue-attempt allowance is imposed by this storage protocol.
+
+On the first-ever `start`, Scaffold marks an issue as using the versioned delivery
+policy. A legacy pending issue can acquire this marker only if its history has never
+entered implementation. Retrying a previously started legacy issue does not mark it
+pristine; Pi requires its retained latest receipt rather than assuming zero attempts.
