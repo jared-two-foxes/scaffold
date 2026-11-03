@@ -6,7 +6,13 @@ import copy
 import json
 from datetime import UTC, datetime
 
-from ticket_pipeline.lib import feature_validation, issue_workflow, scoped_queries, stack_store
+from ticket_pipeline.lib import (
+    delivery,
+    feature_validation,
+    issue_workflow,
+    scoped_queries,
+    stack_store,
+)
 
 VERSION = 2
 
@@ -152,6 +158,7 @@ def operate(
     if (
         action
         not in feature_validation.ACTIONS
+        | delivery.ACTIONS
         | issue_workflow.ACTIONS
         | scoped_queries.ACTIONS
         | {
@@ -235,6 +242,10 @@ def operate(
                 "summary": scoped_queries.summary(feature),
                 "context": scoped_queries.issue(feature, selected["id"]) if selected else None,
             }
+        if action in delivery.ACTIONS:
+            delivery.record(feature, task_id, payload)
+            stack_store.atomic_write_json(path, state)
+            return {"schema_version": VERSION, "feature": feature_validation.view(feature)}
         if action in issue_workflow.ACTIONS:
             previous_feature = copy.deepcopy(feature)
             selected = issue_workflow.transition(feature, action, payload, task_id, _event)

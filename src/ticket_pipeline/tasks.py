@@ -32,6 +32,7 @@ def main() -> None:
         "design-reopen",
         "checkpoint-record",
         "issue-resume",
+        "delivery-record",
         "validation-start",
         "validation-record",
         "validation-invalidate",
@@ -49,6 +50,7 @@ def main() -> None:
             "design-record",
             "checkpoint-record",
             "issue-resume",
+            "delivery-record",
         }:
             command.add_argument("--task", required=True)
         if action == "design-reopen":
@@ -65,6 +67,7 @@ def main() -> None:
             "design-reopen",
             "checkpoint-record",
             "issue-resume",
+            "delivery-record",
         }:
             command.add_argument("--input", required=True, help="JSON file, or - for stdin")
         if action in {"block", "fail", "retry"}:
