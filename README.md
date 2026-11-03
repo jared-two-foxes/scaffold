@@ -105,3 +105,8 @@ import a legacy receipt head and consumed sequence, including five or more attem
 initialization never replaces an existing journal. Stale revisions, duplicate in-flight
 reservations and mismatched terminal associations fail under the existing file lock.
 No finite issue-attempt allowance is imposed by this storage protocol.
+
+On the first-ever `start`, Scaffold marks an issue as using the versioned delivery
+policy. A legacy pending issue can acquire this marker only if its history has never
+entered implementation. Retrying a previously started legacy issue does not mark it
+pristine; Pi requires its retained latest receipt rather than assuming zero attempts.

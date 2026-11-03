@@ -317,6 +317,8 @@ def operate(
                     raise ValueError("Record verified checkpoints before starting another issue")
                 if status not in {"pending", "decomposed"} or not _ready(task, tasks):
                     raise ValueError("Task is not ready to start")
+                if not any(h.get("to") == "in_progress" for h in task["history"]):
+                    task["delivery_policy"] = "versioned-context/v1"
                 _event(task, "in_progress")
             elif action == "retry":
                 if status not in {"in_progress", "blocked", "failed"}:
