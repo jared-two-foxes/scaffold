@@ -11,7 +11,7 @@ from ticket_pipeline.lib import (
     feature_validation,
     issue_workflow,
     scoped_queries,
-    stack_store,
+    state_store,
 )
 
 VERSION = 2
@@ -175,8 +175,8 @@ def operate(
         }
     ):
         raise ValueError(f"Unknown action: {action}")
-    path = stack_store.SCAFFOLD_DIR / "tasks.json"
-    with stack_store._stack_lock():
+    path = state_store.SCAFFOLD_DIR / "tasks.json"
+    with state_store.state_lock():
         state = (
             json.loads(path.read_text(encoding="utf-8"))
             if path.exists()
@@ -244,7 +244,7 @@ def operate(
             }
         if action in delivery.ACTIONS:
             delivery.record(feature, task_id, payload)
-            stack_store.atomic_write_json(path, state)
+            state_store.atomic_write_json(path, state)
             return {"schema_version": VERSION, "feature": feature_validation.view(feature)}
         if action in issue_workflow.ACTIONS:
             previous_feature = copy.deepcopy(feature)
@@ -253,7 +253,7 @@ def operate(
                 feature["task_revision"] = feature.get("task_revision", 0) + 1
                 if "validation" in feature:
                     feature["validation"].update(current=None)
-                stack_store.atomic_write_json(path, state)
+                state_store.atomic_write_json(path, state)
             result = {
                 "schema_version": state["schema_version"],
                 "feature": feature_validation.view(feature),
@@ -264,7 +264,7 @@ def operate(
         issue_workflow.guard(feature, action, task_id)
         if action in feature_validation.ACTIONS:
             feature_validation.transition(feature, action, payload)
-            stack_store.atomic_write_json(path, state)
+            state_store.atomic_write_json(path, state)
             return {
                 "schema_version": state["schema_version"],
                 "feature": feature_validation.view(feature),
@@ -344,7 +344,7 @@ def operate(
             feature["task_revision"] = feature.get("task_revision", 0) + 1
             if "validation" in feature:
                 feature["validation"].update(current=None)
-            stack_store.atomic_write_json(path, state)
+            state_store.atomic_write_json(path, state)
         if action in {"start", "complete", "block", "fail", "retry"}:
             return {
                 "schema_version": state["schema_version"],
