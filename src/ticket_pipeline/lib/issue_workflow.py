@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 from datetime import UTC, datetime
+from uuid import uuid4
 
 KIND = "recursive-issues/v1"
 ACTIONS = {
@@ -50,7 +51,13 @@ def initialize(feature, make_task):
     )
     root["origin"] = {"kind": "ticket", "reference": feature["design_ref"]}
     feature["tasks"][root["id"]] = root
-    feature["workflow"] = {"kind": KIND, "phase": "design", "root_id": root["id"], "history": []}
+    # Distinguish an explicitly recreated feature from prior runs that used the
+    # same ticket ID, approved design and Git baseline. Older schema-v2 features
+    # without instance_id remain readable, without an implicit state migration.
+    feature["workflow"] = {
+        "kind": KIND, "phase": "design", "root_id": root["id"],
+        "instance_id": uuid4().hex, "history": [],
+    }
     event(feature["workflow"], "initialized")
 
 
