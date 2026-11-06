@@ -13,6 +13,7 @@ def test_top_level_help_lists_only_supported_commands(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "fetch-ticket" in out
     assert "tasks" in out
+    assert "clean" in out
     assert "status" not in out
     assert "stack" not in out
 
@@ -28,7 +29,7 @@ def test_retired_commands_are_rejected(monkeypatch, capsys, command):
 
 @pytest.mark.parametrize(
     ("command", "module"),
-    [("fetch-ticket", "ticket_pipeline.lib.fetch_ticket"), ("tasks", "ticket_pipeline.tasks")],
+    [("fetch-ticket", "ticket_pipeline.lib.fetch_ticket"), ("tasks", "ticket_pipeline.tasks"), ("clean", "ticket_pipeline.clean")],
 )
 def test_cli_dispatches_to_supported_subcommands(monkeypatch, capsys, command, module):
     called = {}

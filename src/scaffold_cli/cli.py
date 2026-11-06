@@ -13,6 +13,7 @@ class _Command:
 
 _COMMANDS: dict[str, _Command] = {
     "fetch-ticket": _Command("lib.fetch_ticket", "Fetch and print a Linear ticket"),
+    "clean": _Command("clean", "Reset persisted feature/task state (requires confirmation)"),
     "tasks": _Command("tasks", "Manage persistent feature tasks (JSON)"),
 }
 

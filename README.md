@@ -30,6 +30,30 @@ are not supported. Historic `.scaffold/.criteria-stack.json` and
 deleted; current task operations use `.scaffold/tasks.json` and
 `.scaffold/.tasks.lock`.
 
+## Administrative feature reset
+
+`scaffold clean` resets persisted feature/task associations in the current
+repository. It does **not** undo implementation, Git commits/branches/worktrees,
+or external evidence. The legacy criteria-stack artifacts and active
+`.scaffold/.tasks.lock` are preserved.
+
+```sh
+scaffold clean --feature SA-123 --dry-run  # preview selected feature and task counts
+scaffold clean --feature SA-123            # interactive: type "yes" to confirm
+scaffold clean --feature SA-123 --yes      # explicit unattended authorization
+scaffold clean --all --dry-run             # preview every feature
+scaffold clean --all                       # interactive full reset
+scaffold clean --all --yes                 # explicit unattended full reset
+```
+
+Exactly one target (`--feature ID` or `--all`) is required. Dry-run never
+changes `tasks.json`. A destructive reset without `--yes` requires a terminal
+and the exact response `yes` (piped responses are rejected). Missing features
+and empty stores are safe no-ops. If task state changes after the preview,
+the command aborts and requires a new preview/confirmation rather than deleting
+unanticipated state. Reset does not authorize continuing an existing Pi workflow;
+reinitialize and obtain fresh feature direction approval before execution.
+
 ## Recursive issue design and implementation
 
 `tasks init` always creates the root issue using the feature ID from the agreed
