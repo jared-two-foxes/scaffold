@@ -1,7 +1,6 @@
-"""File persistence shared by Scaffold tasks and the legacy criteria CLI.
+"""Atomic JSON persistence and locking for the Scaffold task graph.
 
-The historical .criteria-stack.lock remains the common lock until the old CLI
-is retired; changing its path here would allow concurrent unsynchronized writes.
+Historical criteria-stack files are not read, migrated or removed.
 """
 
 from __future__ import annotations
@@ -12,7 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 SCAFFOLD_DIR = Path.cwd() / ".scaffold"
-STATE_LOCK_FILE = SCAFFOLD_DIR / ".criteria-stack.lock"
+STATE_LOCK_FILE = SCAFFOLD_DIR / ".tasks.lock"
 
 try:
     import fcntl  # type: ignore[attr-defined]
@@ -23,6 +22,8 @@ except ImportError:  # pragma: no cover - Windows
 
 @contextmanager
 def state_lock(exclusive: bool = True) -> object:
+    if SCAFFOLD_DIR.is_symlink() or STATE_LOCK_FILE.is_symlink():
+        raise ValueError("Refusing symbolic link in Scaffold task-state paths")
     SCAFFOLD_DIR.mkdir(parents=True, exist_ok=True)
     lock_handle = STATE_LOCK_FILE.open("a+b")
     if lock_handle.tell() == 0:

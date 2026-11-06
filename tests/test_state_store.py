@@ -1,14 +1,14 @@
-"""Regression coverage for task-neutral state persistence and the shared legacy lock."""
+"""Regression coverage for task-state persistence after retiring the criteria stack."""
 
 from __future__ import annotations
 
 import json
+import os
 from contextlib import contextmanager
 
 import pytest
 
-from ticket_pipeline.lib import stack_store, state_store
-from ticket_pipeline.lib.stack_store import CriterionFrame
+from ticket_pipeline.lib import state_store
 from ticket_pipeline.lib.task_store import operate
 
 
@@ -16,9 +16,20 @@ from ticket_pipeline.lib.task_store import operate
 def state_dir(tmp_path, monkeypatch):
     directory = tmp_path / ".scaffold"
     monkeypatch.setattr(state_store, "SCAFFOLD_DIR", directory)
-    monkeypatch.setattr(state_store, "STATE_LOCK_FILE", directory / ".criteria-stack.lock")
-    monkeypatch.setattr(stack_store, "STACK_FILE", directory / ".criteria-stack.json")
+    monkeypatch.setattr(state_store, "STATE_LOCK_FILE", directory / ".tasks.lock")
     return directory
+
+
+def feature():
+    return {
+        "id": "F1",
+        "title": "Feature",
+        "objective": "Check task-state persistence",
+        "acceptance_criteria": ["Tasks initialize and remain durable"],
+        "design_ref": "approved-context",
+        "baseline": "a" * 40,
+        "branch": "feature/task-store",
+    }
 
 
 def test_atomic_json_write_creates_directory_and_round_trips(state_dir):
@@ -29,7 +40,8 @@ def test_atomic_json_write_creates_directory_and_round_trips(state_dir):
         state_store.atomic_write_json(target, expected)
 
     assert json.loads(target.read_text(encoding="utf-8")) == expected
-    assert (state_dir / ".criteria-stack.lock").is_file()
+    assert (state_dir / ".tasks.lock").is_file()
+    assert not (state_dir / ".criteria-stack.lock").exists()
     assert not target.with_suffix(".json.tmp").exists()
 
 
@@ -41,6 +53,7 @@ def test_interrupted_atomic_replace_preserves_prior_state(state_dir, monkeypatch
     before = target.read_bytes()
 
     with monkeypatch.context() as patch:
+
         def fail_replace(_source, _target):
             raise OSError("Simulated interrupted replace")
 
@@ -55,50 +68,70 @@ def test_interrupted_atomic_replace_preserves_prior_state(state_dir, monkeypatch
     assert json.loads(target.read_text(encoding="utf-8"))["features"] == {}
 
 
-def test_legacy_stack_and_tasks_use_one_shared_lock(state_dir, monkeypatch):
-    entered = []
+def test_read_and_write_tasks_use_one_lock(state_dir, monkeypatch):
+    entries = []
     underlying_lock = state_store.state_lock
 
     @contextmanager
     def observe_lock(exclusive=True):
-        entered.append(exclusive)
+        entries.append(exclusive)
         with underlying_lock(exclusive=exclusive) as handle:
             yield handle
 
     monkeypatch.setattr(state_store, "state_lock", observe_lock)
-    stack_store.push_frame(CriterionFrame(ticket="SA-598", criterion="Keep the lock"))
-    feature = {
-        "id": "F1",
-        "title": "Feature",
-        "objective": "Check shared persistence",
-        "acceptance_criteria": ["State is durable"],
-        "design_ref": "approved-context",
-        "baseline": "a" * 40,
-        "branch": "feature/task-store",
-    }
-    operate("init", "F1", feature)
 
-    assert entered == [True, True]
-    assert (state_dir / ".criteria-stack.lock").is_file()
-    assert (state_dir / ".criteria-stack.json").exists()
+    operate("init", "F1", feature())
+    listed = operate("list", "F1")
+
+    assert listed["feature"]["id"] == "F1"
+    assert entries == [True, True]
+    assert (state_dir / ".tasks.lock").is_file()
     assert (state_dir / "tasks.json").exists()
+    assert not (state_dir / ".criteria-stack.lock").exists()
 
 
-def test_tasks_do_not_read_legacy_criteria_json(state_dir):
+def test_existing_schema_v2_tasks_are_readable_without_migration(state_dir):
+    original = operate("init", "F1", feature())["feature"]
+    path = state_dir / "tasks.json"
+    before = path.read_bytes()
+    (state_dir / ".tasks.lock").unlink()
+
+    result = operate("list", "F1")["feature"]
+
+    assert result == original
+    assert path.read_bytes() == before
+    assert (state_dir / ".tasks.lock").exists()
+
+
+def test_historical_criteria_files_are_ignored_and_preserved(state_dir):
     state_dir.mkdir(parents=True, exist_ok=True)
-    (state_dir / ".criteria-stack.json").write_text("malformed legacy data", encoding="utf-8")
-    feature = {
-        "id": "F1",
-        "title": "Feature",
-        "objective": "Independent of the criteria stack",
-        "acceptance_criteria": ["Tasks initialize"],
-        "design_ref": "approved-context",
-        "baseline": "a" * 40,
-        "branch": "feature/task-store",
-    }
+    old_json = state_dir / ".criteria-stack.json"
+    old_lock = state_dir / ".criteria-stack.lock"
+    old_json.write_bytes(b"malformed historic criteria JSON")
+    old_lock.write_bytes(b"historic lock contents")
+    original_json = old_json.read_bytes()
+    original_lock = old_lock.read_bytes()
 
-    result = operate("init", "F1", feature)
+    result = operate("init", "F1", feature())
     assert result["feature"]["id"] == "F1"
-    assert (state_dir / ".criteria-stack.json").read_text(encoding="utf-8") == (
-        "malformed legacy data"
-    )
+    assert operate("summary", "F1")["summary"]["id"] == "F1"
+    assert old_json.read_bytes() == original_json
+    assert old_lock.read_bytes() == original_lock
+    assert (state_dir / ".tasks.lock").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows symlink creation requires privileges")
+@pytest.mark.parametrize("target", ["directory", "lock"])
+def test_task_state_refuses_symlinked_lock_paths(state_dir, monkeypatch, target):
+    if target == "directory":
+        real_dir = state_dir.parent / "real"
+        real_dir.mkdir()
+        state_dir.symlink_to(real_dir, target_is_directory=True)
+    else:
+        state_dir.mkdir()
+        real_lock = state_dir / "real.lock"
+        real_lock.write_bytes(b"x")
+        (state_dir / ".tasks.lock").symlink_to(real_lock)
+    with pytest.raises(ValueError, match="symbolic link"):
+        operate("init", "F1", feature())
+    assert not (state_dir / "tasks.json").exists()
