@@ -1,7 +1,7 @@
 [project]
 name = "ticket-pipeline"
 version = "0.1.0"
-description = "Ticket access and criteria-stack management CLI"
+description = "Ticket access and recursive feature task management CLI"
 requires-python = ">=3.11"
 dependencies = []
 
