@@ -81,7 +81,7 @@ def finish(identifier):
 @pytest.fixture
 def state(tmp_path, monkeypatch):
     monkeypatch.setattr(state_store, "SCAFFOLD_DIR", tmp_path / ".scaffold")
-    monkeypatch.setattr(state_store, "STATE_LOCK_FILE", tmp_path / ".scaffold/tasks.lock")
+    monkeypatch.setattr(state_store, "STATE_LOCK_FILE", tmp_path / ".scaffold/.tasks.lock")
     operate("init", "F1", FEATURE)
     # A previously verified root lets these unit tests add independent corrective issues.
     finish("F1")
