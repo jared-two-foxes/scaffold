@@ -38,7 +38,7 @@ class ResetPlan:
 
 
 def _validate_scope(feature_id: str | None, all_features: bool) -> None:
-    if type(all_features) is not bool or (feature_id is None) == all_features:
+    if type(all_features) is not bool or (feature_id is None) != all_features:
         raise ValueError("Specify exactly one of feature_id or all_features=True")
     if feature_id is not None and (
         not isinstance(feature_id, str) or not feature_id.strip()
