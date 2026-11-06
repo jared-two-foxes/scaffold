@@ -5,18 +5,32 @@ import pytest
 from scaffold_cli import cli
 
 
-def test_top_level_help(monkeypatch, capsys):
+def test_top_level_help_lists_only_supported_commands(monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["scaffold"])
     with pytest.raises(SystemExit) as exc:
         cli.main()
     assert exc.value.code == 0
     out = capsys.readouterr().out
     assert "fetch-ticket" in out
-    assert "status" in out
-    assert "stack" in out
+    assert "tasks" in out
+    assert "status" not in out
+    assert "stack" not in out
 
 
-def test_cli_dispatches_to_subcommand(monkeypatch, capsys):
+@pytest.mark.parametrize("command", ["status", "stack"])
+def test_retired_commands_are_rejected(monkeypatch, capsys, command):
+    monkeypatch.setattr(sys, "argv", ["scaffold", command])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 2
+    assert f"unknown command '{command}'" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("command", "module"),
+    [("fetch-ticket", "ticket_pipeline.lib.fetch_ticket"), ("tasks", "ticket_pipeline.tasks")],
+)
+def test_cli_dispatches_to_supported_subcommands(monkeypatch, capsys, command, module):
     called = {}
 
     class DummyModule:
@@ -29,9 +43,9 @@ def test_cli_dispatches_to_subcommand(monkeypatch, capsys):
         return DummyModule
 
     monkeypatch.setattr(cli.importlib, "import_module", fake_import_module)
-    monkeypatch.setattr(sys, "argv", ["scaffold", "status"])
+    monkeypatch.setattr(sys, "argv", ["scaffold", command])
 
     cli.main()
 
-    assert called["module"] == "ticket_pipeline.status"
+    assert called["module"] == module
     assert capsys.readouterr().out.strip() == "dispatched"
