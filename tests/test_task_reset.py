@@ -293,3 +293,33 @@ def test_reset_refuses_directory_instead_of_task_json(workspace):
     with pytest.raises(ValueError, match="regular file"):
         plan_reset(all_features=True)
     assert (workspace / "tasks.json").is_dir()
+
+
+def test_clean_reinitialize_same_id_gets_fresh_workflow_identity(workspace):
+    init("F1")
+    before = operate("list", "F1")["feature"]
+    first = before["workflow"]["instance_id"]
+    assert len(first) == 32
+    assert all(c in "0123456789abcdef" for c in first)
+
+    apply_reset(plan_reset(feature_id="F1"))
+    assert data(workspace)["features"] == {}
+
+    init("F1")
+    recreated = operate("list", "F1")["feature"]
+    assert recreated["workflow"]["instance_id"] != first
+    assert recreated["design_ref"] == before["design_ref"]
+    assert recreated["original_baseline"] == before["original_baseline"]
+    assert recreated["branch"] == before["branch"]
+
+
+def test_existing_schema_v2_feature_without_instance_id_remains_readable(workspace):
+    init("F1")
+    state_file = workspace / "tasks.json"
+    persisted = data(workspace)
+    del persisted["features"]["F1"]["workflow"]["instance_id"]
+    state_file.write_text(json.dumps(persisted), encoding="utf-8")
+
+    original = state_file.read_bytes()
+    assert operate("list", "F1")["feature"]["workflow"].get("instance_id") is None
+    assert state_file.read_bytes() == original
