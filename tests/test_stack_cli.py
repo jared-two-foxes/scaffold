@@ -2,18 +2,18 @@ import json
 import sys
 
 from scaffold_cli import cli
-from ticket_pipeline.lib import stack_store
+from ticket_pipeline.lib import stack_store, state_store
 from ticket_pipeline.lib.stack_store import CriterionFrame
 
 
 def _set_paths(tmp_path, monkeypatch):
     scaffold_dir = tmp_path / ".scaffold"
-    monkeypatch.setattr(stack_store, "SCAFFOLD_DIR", scaffold_dir)
+    monkeypatch.setattr(state_store, "SCAFFOLD_DIR", scaffold_dir)
     monkeypatch.setattr(
         stack_store, "STACK_FILE", scaffold_dir / ".criteria-stack.json"
     )
     monkeypatch.setattr(
-        stack_store, "STACK_LOCK_FILE", scaffold_dir / ".criteria-stack.lock"
+        state_store, "STATE_LOCK_FILE", scaffold_dir / ".criteria-stack.lock"
     )
 
 

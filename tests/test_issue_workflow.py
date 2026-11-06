@@ -3,14 +3,14 @@
 import pytest
 from test_tasks import FEATURE, evidence, task
 
-from ticket_pipeline.lib import stack_store
+from ticket_pipeline.lib import state_store
 from ticket_pipeline.lib.task_store import operate
 
 
 @pytest.fixture
 def state(tmp_path, monkeypatch):
-    monkeypatch.setattr(stack_store, "SCAFFOLD_DIR", tmp_path / ".scaffold")
-    monkeypatch.setattr(stack_store, "STACK_LOCK_FILE", tmp_path / ".scaffold/tasks.lock")
+    monkeypatch.setattr(state_store, "SCAFFOLD_DIR", tmp_path / ".scaffold")
+    monkeypatch.setattr(state_store, "STATE_LOCK_FILE", tmp_path / ".scaffold/tasks.lock")
     operate(
         "init",
         "F1",
