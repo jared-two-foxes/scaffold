@@ -3,9 +3,7 @@
 Scaffold is a deterministic ticket and task-management CLI for:
 
 - Accessing Linear tickets
-- Maintaining the criteria stack
-- Performing stack operations (push, pop, list, clear)
-- Persisting dependent feature tasks and supplied verification records
+- Persisting recursive, dependency-aware feature tasks and supplied verification records
 
 ## Installation
 
@@ -18,12 +16,19 @@ pip install -e .
 ```bash
 scaffold --help
 scaffold fetch-ticket SA-123
-scaffold status
-scaffold stack list
-scaffold stack push --ticket SA-123 --criterion "- [ ] Add API field"
-scaffold stack pop
-scaffold stack clear
+scaffold tasks summary --feature SA-123
+scaffold tasks issue --feature SA-123 --task SA-123
+scaffold tasks design-select --feature SA-123
+scaffold tasks select --feature SA-123
 ```
+
+The task commands above inspect an already-initialized feature. Initialize a new
+feature using `scaffold tasks init --feature SA-123 --input -` with the complete
+JSON contract described below. The retired `stack` and `status` CLI commands
+are not supported. Historic `.scaffold/.criteria-stack.json` and
+`.scaffold/.criteria-stack.lock` files are left untouched, not imported or
+deleted; current task operations use `.scaffold/tasks.json` and
+`.scaffold/.tasks.lock`.
 
 ## Recursive issue design and implementation
 
