@@ -22,6 +22,8 @@ except ImportError:  # pragma: no cover - Windows
 
 @contextmanager
 def state_lock(exclusive: bool = True) -> object:
+    if SCAFFOLD_DIR.is_symlink() or STATE_LOCK_FILE.is_symlink():
+        raise ValueError("Refusing symbolic link in Scaffold task-state paths")
     SCAFFOLD_DIR.mkdir(parents=True, exist_ok=True)
     lock_handle = STATE_LOCK_FILE.open("a+b")
     if lock_handle.tell() == 0:
