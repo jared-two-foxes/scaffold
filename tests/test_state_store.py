@@ -114,7 +114,7 @@ def test_historical_criteria_files_are_ignored_and_preserved(state_dir):
 
     result = operate("init", "F1", feature())
     assert result["feature"]["id"] == "F1"
-    assert operate("summary", "F1")["summary"]["feature_id"] == "F1"
+    assert operate("summary", "F1")["summary"]["id"] == "F1"
     assert old_json.read_bytes() == original_json
     assert old_lock.read_bytes() == original_lock
     assert (state_dir / ".tasks.lock").exists()
