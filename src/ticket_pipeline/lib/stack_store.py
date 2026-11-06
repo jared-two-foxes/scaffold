@@ -71,7 +71,7 @@ def _load_stack_unlocked() -> list[CriterionFrame]:
 
 
 def load_stack() -> list[CriterionFrame]:
-    use_exclusive = fcntl is None
+    use_exclusive = state_store.fcntl is None
     with state_store.state_lock(exclusive=use_exclusive):
         return _load_stack_unlocked()
 
