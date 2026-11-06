@@ -51,8 +51,21 @@ changes `tasks.json`. A destructive reset without `--yes` requires a terminal
 and the exact response `yes` (piped responses are rejected). Missing features
 and empty stores are safe no-ops. If task state changes after the preview,
 the command aborts and requires a new preview/confirmation rather than deleting
-unanticipated state. Reset does not authorize continuing an existing Pi workflow;
-reinitialize and obtain fresh feature direction approval before execution.
+unanticipated state. Reset does not authorize continuing an existing Pi workflow.
+Only `.scaffold/tasks.json` is rewritten when records are removed:
+`--feature` removes the selected feature entry, and `--all` writes an
+empty schema-v2 feature store. The `.scaffold/.tasks.lock` inode is retained;
+older `.criteria-stack.*` files, Git commits, branches, worktrees, source
+files and external Pi/Conductor receipts are not touched.
+
+Each new `tasks init` records a unique `workflow.instance_id`. Cleaning and
+reinitializing the **same** ticket with an otherwise identical design, branch
+and baseline creates a new identity: old Pi authorization and retained execution
+receipts cannot authorize the new feature. Re-run feature preparation and obtain
+a fresh, explicit feature-direction approval, then start new task attempts.
+Do **not** use clean to discard failed attempts in an active feature or as an
+automatic recovery tool. Existing schema-v2 records created before this field
+was introduced remain readable; no implicit backfill or migration is performed.
 
 ## Recursive issue design and implementation
 
