@@ -2,7 +2,7 @@
 
 This module removes *persisted feature associations*, not Git changes, external
 evidence, or agent authority. Callers must explicitly authorize an apply after
-showing its plan. It is intentionally not a `scaffold tasks` operation.
+showing its plan. It is intentionally not part of the task lifecycle operations.
 """
 
 from __future__ import annotations
