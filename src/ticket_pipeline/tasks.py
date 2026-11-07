@@ -8,10 +8,7 @@ from pathlib import Path
 from ticket_pipeline.lib.task_store import operate
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    commands = parser.add_subparsers(dest="action", required=True)
-    for action in (
+TASK_ACTIONS = (
         "summary",
         "issue",
         "select",
@@ -36,7 +33,12 @@ def main() -> None:
         "validation-start",
         "validation-record",
         "validation-invalidate",
-    ):
+)
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="action", required=True)
+    for action in TASK_ACTIONS:
         command = commands.add_parser(action)
         command.add_argument("--feature", required=True)
         if action in {
