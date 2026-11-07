@@ -1,8 +1,7 @@
 # Scaffold
 
-Scaffold is a deterministic ticket and task-management CLI for:
+Scaffold is a deterministic task-management CLI for:
 
-- Accessing Linear tickets
 - Persisting recursive, dependency-aware feature tasks and supplied verification records
 
 ## Installation
@@ -15,15 +14,14 @@ pip install -e .
 
 ```bash
 scaffold --help
-scaffold fetch-ticket SA-123
-scaffold tasks summary --feature SA-123
-scaffold tasks issue --feature SA-123 --task SA-123
-scaffold tasks design-select --feature SA-123
-scaffold tasks select --feature SA-123
+scaffold summary --feature SA-123
+scaffold issue --feature SA-123 --task SA-123
+scaffold design-select --feature SA-123
+scaffold select --feature SA-123
 ```
 
 The task commands above inspect an already-initialized feature. Initialize a new
-feature using `scaffold tasks init --feature SA-123 --input -` with the complete
+feature using `scaffold init --feature SA-123 --input -` with the complete
 JSON contract described below. The retired `stack` and `status` CLI commands
 are not supported. Historic `.scaffold/.criteria-stack.json` and
 `.scaffold/.criteria-stack.lock` files are left untouched, not imported or
@@ -58,7 +56,7 @@ empty schema-v2 feature store. The `.scaffold/.tasks.lock` inode is retained;
 older `.criteria-stack.*` files, Git commits, branches, worktrees, source
 files and external Pi/Conductor receipts are not touched.
 
-Each new `tasks init` records a unique `workflow.instance_id`. Cleaning and
+Each new `scaffold init` records a unique `workflow.instance_id`. Cleaning and
 reinitializing the **same** ticket with an otherwise identical design, branch
 and baseline creates a new identity: old Pi authorization and retained execution
 receipts cannot authorize the new feature. Re-run feature preparation and obtain
@@ -69,7 +67,7 @@ was introduced remain readable; no implicit backfill or migration is performed.
 
 ## Recursive issue design and implementation
 
-`tasks init` always creates the root issue using the feature ID from the agreed
+`scaffold init` always creates the root issue using the feature ID from the agreed
 ticket. Supply `baseline` (full original Git SHA) and `branch` (feature branch),
 alongside the objective, original acceptance criteria and immutable design reference.
 There is no workflow selector or alternate task lifecycle. All task state and
@@ -77,7 +75,7 @@ responses use schema version 2; older files are rejected without modification.
 Definitions may include `origin: {kind: "ticket"|"design"|"review"|"discovery",
 reference: "<issue or retained evidence>"}`.
 
-Design proceeds downward. `tasks design-next --feature F` selects an undesigned
+Design proceeds downward. `scaffold design-next --feature F` selects an undesigned
 issue below an approved parent/prerequisite contract. Use `decompose` for immediate
 children, then `design-record --feature F --task ID --input -` with
 `{summary, verification, approval, disposition: "leaf"|"decomposed"}`. The record
@@ -117,11 +115,11 @@ state transitions; Pi authenticates external Conductor receipts and Git checkpoi
 
 ### Scoped queries for small model contexts
 
-`tasks summary --feature F` returns identity, phase, status counts, revision and a
-SHA-256 state digest. `tasks issue --feature F --task ID` returns the issue's current
+`scaffold summary --feature F` returns identity, phase, status counts, revision and a
+SHA-256 state digest. `scaffold issue --feature F --task ID` returns the issue's current
 contract/design, ancestors, direct and inherited prerequisites, immediate children
 and completion references. It excludes full histories, sibling bodies and previous
-design transcripts. `tasks select` and `tasks design-select` use exactly the same
+design transcripts. `scaffold select` and `scaffold design-select` use exactly the same
 selection rules as next/design-next, but return that scoped context or null plus
 summary. All four are read-only and preserve state bytes; null never means verified
 completion. Scope size follows the relevant contracts, not an arbitrary text cutoff.
@@ -133,7 +131,7 @@ stores a second mutable execution state. Stale handoffs must be refreshed by Pi.
 
 ### Versioned delivery journal
 
-The Pi boundary uses `tasks delivery-record --feature F --task T --input -` for
+The Pi boundary uses `scaffold delivery-record --feature F --task T --input -` for
 internal compare-and-swap bookkeeping. Supply `expected_revision` and one event:
 initialized, context, begun, finished, handoff or paused. Records retain the immutable
 original feature contract, versioned context, every invocation sequence, current
