@@ -1,6 +1,6 @@
 """Explicit administrative reset of Scaffold's persisted feature/task state.
 
-This is a human-operated CLI, not a `scaffold tasks` lifecycle operation.
+This is a human-operated CLI, not a task lifecycle operation.
 It never changes Git, application files, evidence stores or historic stack files.
 """
 

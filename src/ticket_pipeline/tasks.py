@@ -8,35 +8,38 @@ from pathlib import Path
 from ticket_pipeline.lib.task_store import operate
 
 
+TASK_ACTIONS = (
+    "summary",
+    "issue",
+    "select",
+    "design-select",
+    "init",
+    "add",
+    "list",
+    "next",
+    "start",
+    "complete",
+    "block",
+    "fail",
+    "decompose",
+    "retry",
+    "design-next",
+    "design-record",
+    "design-finish",
+    "design-reopen",
+    "checkpoint-record",
+    "issue-resume",
+    "delivery-record",
+    "validation-start",
+    "validation-record",
+    "validation-invalidate",
+)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="action", required=True)
-    for action in (
-        "summary",
-        "issue",
-        "select",
-        "design-select",
-        "init",
-        "add",
-        "list",
-        "next",
-        "start",
-        "complete",
-        "block",
-        "fail",
-        "decompose",
-        "retry",
-        "design-next",
-        "design-record",
-        "design-finish",
-        "design-reopen",
-        "checkpoint-record",
-        "issue-resume",
-        "delivery-record",
-        "validation-start",
-        "validation-record",
-        "validation-invalidate",
-    ):
+    for action in TASK_ACTIONS:
         command = commands.add_parser(action)
         command.add_argument("--feature", required=True)
         if action in {

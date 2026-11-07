@@ -92,7 +92,7 @@ def state(tmp_path, monkeypatch):
 def cli(root, *args, payload=None, ok=True):
     env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")}
     result = subprocess.run(
-        [sys.executable, "-m", "scaffold_cli.cli", "tasks", *args],
+        [sys.executable, "-m", "scaffold_cli.cli", *args],
         cwd=root,
         env=env,
         input=json.dumps(payload),

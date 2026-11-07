@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
+"""Scaffold CLI: lifecycle operations at the top level, plus administrative clean."""
 
 import importlib
 import sys
 from dataclasses import dataclass
+
+from ticket_pipeline.tasks import TASK_ACTIONS
 
 
 @dataclass(frozen=True)
@@ -12,17 +15,16 @@ class _Command:
 
 
 _COMMANDS: dict[str, _Command] = {
-    "fetch-ticket": _Command("lib.fetch_ticket", "Fetch and print a Linear ticket"),
+    **{action: _Command("tasks", "Feature task lifecycle operation") for action in TASK_ACTIONS},
     "clean": _Command("clean", "Reset persisted feature/task state (requires confirmation)"),
-    "tasks": _Command("tasks", "Manage persistent feature tasks (JSON)"),
 }
 
 
 def _print_top_level_help() -> None:
-    print("usage: scaffold <command> [args...]\n")
-    print("Ticket access and persistent feature tasks.\n")
+    print("usage: scaffold <command> [options]\n")
+    print("Persistent feature task lifecycle and administrative reset.\n")
     for name, cmd in _COMMANDS.items():
-        print(f"  {name:<14} {cmd.help}")
+        print(f"  {name:<22} {cmd.help}")
     print("\nRun 'scaffold <command> --help' for command options.")
 
 
@@ -40,7 +42,9 @@ def main() -> None:
         sys.exit(2)
 
     module = importlib.import_module(f"ticket_pipeline.{cmd.module}")
-    sys.argv = [f"scaffold {name}"] + rest
+    # task lifecycle parser still owns the operation-specific --feature,
+    # --task and JSON input schema; no second parser or compatibility route.
+    sys.argv = ["scaffold", name, *rest] if cmd.module == "tasks" else ["scaffold clean", *rest]
     module.main()
 
 
