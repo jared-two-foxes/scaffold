@@ -426,7 +426,13 @@ def operate(
 
 
 def list_features() -> dict:
-    """Summaries of every open feature instance, for callers that do not know feature ids."""
+    """Summaries of every open feature instance, for callers that do not know feature ids.
+
+    Read-only: a repository that has never used Scaffold is left untouched (no directory or
+    lock file is created), so listing cannot dirty an unprotected working tree.
+    """
+    if not state_store.SCAFFOLD_DIR.exists():
+        return {"schema_version": VERSION, "features": []}
     with state_store.state_lock():
         summaries = []
         for led in ledger.all_open():
