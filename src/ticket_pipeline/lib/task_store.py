@@ -284,7 +284,10 @@ def operate(
             }
         if action in ARTIFACT_ACTIONS:
             if action == "artifact-put":
-                reference = "sha256:" + led.put_artifact(ledger.canonical(payload))
+                # Keep the writer's key order: clients that re-serialize a retained object to
+                # recompute a digest must get the same bytes back.
+                blob = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+                reference = "sha256:" + led.put_artifact(blob)
                 return {"schema_version": VERSION, "reference": reference}
             refs.require(
                 isinstance(payload, dict) and set(payload) == {"reference"}, "reference required"

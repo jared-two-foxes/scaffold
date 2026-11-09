@@ -233,14 +233,14 @@ def test_attempts_may_not_cite_a_missing_artifact(fresh):
 # --- artifacts --------------------------------------------------------------------
 
 
-def test_artifacts_round_trip_and_are_content_addressed(fresh):
+def test_artifacts_round_trip_exactly_and_are_content_addressed(fresh):
     first = operate("artifact-put", "F1", {"b": 2, "a": [1, {"c": None}]})
-    again = operate("artifact-put", "F1", {"a": [1, {"c": None}], "b": 2})
+    again = operate("artifact-put", "F1", {"b": 2, "a": [1, {"c": None}]})
     assert first == again and first["reference"].startswith("sha256:")
-    assert operate("artifact-get", "F1", {"reference": first["reference"]})["artifact"] == {
-        "a": [1, {"c": None}],
-        "b": 2,
-    }
+    stored = operate("artifact-get", "F1", {"reference": first["reference"]})["artifact"]
+    assert stored == {"a": [1, {"c": None}], "b": 2}
+    # The writer's key order survives, so a client that re-serializes it recomputes the same bytes.
+    assert list(stored) == ["b", "a"]
     before = snapshot(fresh)
     assert snapshot(fresh) == before  # storing an artifact appends no entry
 
