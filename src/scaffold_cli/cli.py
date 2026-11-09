@@ -16,7 +16,8 @@ class _Command:
 
 _COMMANDS: dict[str, _Command] = {
     **{action: _Command("tasks", "Feature task lifecycle operation") for action in TASK_ACTIONS},
-    "clean": _Command("clean", "Reset persisted feature/task state (requires confirmation)"),
+    "features": _Command("tasks", "List open feature instances"),
+    "clean": _Command("clean", "Close features; ledgers are kept (requires confirmation)"),
 }
 
 

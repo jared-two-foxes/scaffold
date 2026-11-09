@@ -78,6 +78,8 @@ Rules Scaffold enforces on the ledger:
   ledger accounts for every commit.
 
 Scaffold cannot see Git. Pi confirms every commit, tree and ancestry before appending.
+`scaffold features` lists open feature instances (`id`, `instance_id`, `phase`, `validation_status`,
+`tasks`) for callers that do not know feature ids.
 
 ## Closing a feature
 

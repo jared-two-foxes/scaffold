@@ -425,6 +425,24 @@ def operate(
         }
 
 
+def list_features() -> dict:
+    """Summaries of every open feature instance, for callers that do not know feature ids."""
+    with state_store.state_lock():
+        summaries = []
+        for led in ledger.all_open():
+            view = feature_validation.view(led.state)
+            summaries.append(
+                {
+                    "id": view["id"],
+                    "instance_id": view["workflow"]["instance_id"],
+                    "phase": view["workflow"]["phase"],
+                    "validation_status": view["validation"]["status"],
+                    "tasks": len(view["tasks"]),
+                }
+            )
+        return {"schema_version": VERSION, "features": summaries}
+
+
 def _select(feature):
     tasks = feature["tasks"]
     if feature["workflow"]["phase"] != "implement" or any(
