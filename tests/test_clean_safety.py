@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from ticket_pipeline.lib import state_store
+from ticket_pipeline.lib import ledger, state_store
 from ticket_pipeline.lib.task_reset import apply_reset, plan_reset
 from ticket_pipeline.lib.task_store import operate
 
@@ -39,8 +39,9 @@ def feature(identifier):
     }
 
 
-def state_path(repo):
-    return repo / ".scaffold" / "tasks.json"
+def ledger_path(repo, identifier="F1"):
+    (path,) = (repo / ".scaffold" / "features").glob(f"{identifier}.*/ledger.jsonl")
+    return path
 
 
 def init(identifier):
@@ -77,14 +78,15 @@ def test_cross_process_clean_waits_for_tasks_lock_and_keeps_lock_inode(repo):
             # The child cannot perform deletion while another process has the lock.
             # Reading stdout here would block, so check state before releasing.
             assert process.poll() is None
-            assert "F1" in json.loads(state_path(repo).read_text())["features"]
+            assert [led.state["id"] for led in ledger.all_open()] == ["F1"]
         finally:
             # The context manager releases the lock even if a process starts late.
             pass
     out, err = process.communicate(timeout=25)
     assert process.returncode == 0, (out, err)
-    assert "Removed 1 feature(s)" in out
-    assert json.loads(state_path(repo).read_text())["features"] == {}
+    assert "Closed 1 feature(s)" in out
+    assert ledger.all_open() == []
+    assert ledger.Ledger(ledger_path(repo).parent).entries[-1]["type"] == "feature-close"
     assert lock_path.is_file()
     assert lock_path.stat().st_ino == inode
 
@@ -92,7 +94,6 @@ def test_cross_process_clean_waits_for_tasks_lock_and_keeps_lock_inode(repo):
 def test_external_task_writer_invalidates_preview_instead_of_being_lost(repo):
     init("F1")
     preview = plan_reset(all_features=True)
-    task_file = state_path(repo)
     lock_path = repo / ".scaffold" / ".tasks.lock"
     lock_inode = lock_path.stat().st_ino
     script = (
@@ -106,75 +107,70 @@ def test_external_task_writer_invalidates_preview_instead_of_being_lost(repo):
         process = child(repo, "-c", script, json.dumps(feature("F2")))
         assert process.stdout.readline().strip() == "READY"
         assert process.poll() is None
-        assert set(json.loads(task_file.read_text())["features"]) == {"F1"}
+        assert [led.state["id"] for led in ledger.all_open()] == ["F1"]
     output, error = process.communicate(timeout=25)
     assert process.returncode == 0, (output, error)
     assert "DONE" in output
-    before = task_file.read_bytes()
+    before = ledger_path(repo).read_bytes()
     with pytest.raises(ValueError, match="changed since preview"):
         apply_reset(preview)
-    assert task_file.read_bytes() == before
-    assert set(json.loads(before)["features"]) == {"F1", "F2"}
+    assert ledger_path(repo).read_bytes() == before
+    assert [led.state["id"] for led in ledger.all_open()] == ["F1", "F2"]
     assert lock_path.stat().st_ino == lock_inode
 
 
-def test_untrusted_predictable_temp_symlink_is_never_followed(repo):
+def test_a_symlinked_ledger_file_is_never_followed(repo):
     if os.name == "nt":
         pytest.skip("Windows symlinks may require privileges")
     init("F1")
-    task_file = state_path(repo)
-    before = task_file.read_bytes()
+    path = ledger_path(repo)
     outside = repo / "unrelated.txt"
     outside.write_bytes(b"OUTSIDE sentinel")
-    # Earlier atomic_write_json used to open tasks.json.tmp for writing.
-    trap = repo / ".scaffold" / "tasks.json.tmp"
-    trap.symlink_to(outside)
-    plan = plan_reset(feature_id="F1")
-
-    apply_reset(plan)
-
-    assert json.loads(task_file.read_text())["features"] == {}
-    assert task_file.read_bytes() != before
-    assert trap.is_symlink()
+    kept = path.read_bytes()
+    path.unlink()
+    path.symlink_to(outside)
+    with pytest.raises(ValueError, match="symbolic link"):
+        plan_reset(feature_id="F1")
+    with pytest.raises(ValueError, match="symbolic link"):
+        operate("add", "F1", [
+            {"id": "x", "title": "x", "objective": "x", "acceptance_criteria": ["x"]}
+        ])
     assert outside.read_bytes() == b"OUTSIDE sentinel"
-    assert not list(trap.parent.glob("tasks.json.*.tmp"))
+    assert kept  # the original bytes are only recoverable from the instance we removed
 
 
-def test_failed_atomic_replace_leaves_no_temp_and_keeps_prior_state(repo, monkeypatch):
+def test_failed_append_keeps_prior_state_lock_and_legacy_files(repo, monkeypatch):
     init("F1")
-    task_file = state_path(repo)
-    previous = task_file.read_bytes()
+    previous = ledger_path(repo).read_bytes()
     lock_path = repo / ".scaffold" / ".tasks.lock"
     lock_inode = lock_path.stat().st_ino
     legacy = repo / ".scaffold" / ".criteria-stack.json"
     legacy.write_bytes(b"invalid, but must be preserved")
 
-    def fail_replace(_source, _destination):
-        raise OSError("injected replace failure")
+    def fail(*_args):
+        raise OSError("injected append failure")
 
     with monkeypatch.context() as patch:
-        patch.setattr(state_store.os, "replace", fail_replace)
-        with pytest.raises(OSError, match="injected replace failure"):
+        patch.setattr(ledger.os, "write", fail)
+        with pytest.raises(OSError, match="injected append failure"):
             apply_reset(plan_reset(feature_id="F1"))
 
-    assert task_file.read_bytes() == previous
-    assert not list(task_file.parent.glob("tasks.json.*.tmp"))
+    assert ledger_path(repo).read_bytes() == previous
     assert lock_path.is_file() and lock_path.stat().st_ino == lock_inode
     assert legacy.read_bytes() == b"invalid, but must be preserved"
 
 
 def test_atomic_serialization_failure_never_creates_temp_files(repo):
     init("F1")
-    state = state_path(repo)
-    before = state.read_bytes()
+    scratch = repo / ".scaffold" / "scratch.json"
     with pytest.raises(TypeError):
         with state_store.state_lock():
-            state_store.atomic_write_json(state, {"unserializable": object()})
-    assert state.read_bytes() == before
-    assert not list(state.parent.glob("tasks.json.*.tmp"))
+            state_store.atomic_write_json(scratch, {"unserializable": object()})
+    assert not scratch.exists()
+    assert not list(scratch.parent.glob("scratch.json.*.tmp"))
 
 
-@pytest.mark.parametrize("entry_type", ["state-directory-file", "lock-directory", "state-json-directory"])
+@pytest.mark.parametrize("entry_type", ["state-directory-file", "lock-directory", "features-file"])
 def test_unexpected_path_types_fail_before_cleaning(repo, entry_type):
     directory = repo / ".scaffold"
     if entry_type == "state-directory-file":
@@ -182,8 +178,11 @@ def test_unexpected_path_types_fail_before_cleaning(repo, entry_type):
         target = directory
     else:
         directory.mkdir()
-        target = directory / (".tasks.lock" if entry_type == "lock-directory" else "tasks.json")
-        target.mkdir()
+        target = directory / (".tasks.lock" if entry_type == "lock-directory" else "features")
+        if entry_type == "lock-directory":
+            target.mkdir()
+        else:
+            target.write_bytes(b"do not replace me")
     result = subprocess.run(
         [sys.executable, "-m", "scaffold_cli.cli", "clean", "--all", "--yes"],
         cwd=repo,
@@ -194,11 +193,11 @@ def test_unexpected_path_types_fail_before_cleaning(repo, entry_type):
     )
     assert result.returncode != 0
     assert target.exists()
-    assert (target.is_dir() if entry_type != "state-directory-file" else target.is_file())
+    assert (target.is_dir() if entry_type == "lock-directory" else target.is_file())
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Windows symlinks may require privileges")
-@pytest.mark.parametrize("entry", ["state-directory", "lock", "tasks-json"])
+@pytest.mark.parametrize("entry", ["state-directory", "lock", "features"])
 def test_symlinked_scaffold_paths_are_rejected(repo, entry):
     directory = repo / ".scaffold"
     outside = repo / "external"
@@ -212,7 +211,7 @@ def test_symlinked_scaffold_paths_are_rejected(repo, entry):
         if entry == "lock":
             (directory / ".tasks.lock").symlink_to(outside / "keep.txt")
         else:
-            (directory / "tasks.json").symlink_to(outside / "keep.txt")
+            (directory / "features").symlink_to(outside, target_is_directory=True)
 
     result = subprocess.run(
         [sys.executable, "-m", "scaffold_cli.cli", "clean", "--all", "--yes"],
@@ -224,7 +223,7 @@ def test_symlinked_scaffold_paths_are_rejected(repo, entry):
     )
     assert result.returncode != 0
     assert marker.read_bytes() == b"keep"
-    assert not (outside / "tasks.json").exists()
+    assert sorted(p.name for p in outside.iterdir()) == ["keep.txt"]
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX fifo paths are not portable")

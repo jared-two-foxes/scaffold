@@ -5,6 +5,8 @@ import pytest
 from test_issue_workflow import approve, call, finish, state  # noqa: F401, F811
 from test_tasks import task
 
+from ticket_pipeline.lib import ledger
+
 
 def test_issue_scope_contains_contracts_and_inherited_dependencies_without_histories(state):
     call("decompose", "F1", [task("pre"), task("parent", ["pre"]), task("unrelated")])
@@ -36,15 +38,23 @@ def test_scoped_selection_matches_full_selection_and_keeps_null_gates(state):
     assert call("select")["context"] is None
 
 
+def inflate(mutate):
+    """Append a chain-valid entry that grows task history, like a long-running feature."""
+    import copy
+
+    led = ledger.open_current("F1")
+    grown = copy.deepcopy(led.state)
+    mutate(grown)
+    led.append("test-inflate", {}, grown)
+
+
 def test_summary_size_is_independent_of_history_and_scope_stamp_detects_state_changes(state):
     approve("F1")
     first = call("summary")["summary"]
     before = state.read_bytes()
     call("summary")
     assert state.read_bytes() == before
-    raw = json.loads(before)
-    raw["features"]["F1"]["tasks"]["F1"]["history"].append({"diagnostic": "x" * 200000})
-    state.write_text(json.dumps(raw))
+    inflate(lambda feature: feature["tasks"]["F1"]["history"].append({"diagnostic": "x" * 200000}))
     second = call("summary")["summary"]
     assert first["state_digest"] != second["state_digest"]
     assert len(json.dumps(first)) == len(json.dumps(second))
@@ -55,7 +65,7 @@ def test_scoped_cli_issue_and_selection_are_json_and_read_only(tmp_path):
     from test_tasks import FEATURE, cli
 
     cli(tmp_path, "init", "--feature", "F1", "--input", "-", payload=FEATURE)
-    state_path = tmp_path / ".scaffold/tasks.json"
+    (state_path,) = (tmp_path / ".scaffold/features").glob("F1.*/ledger.jsonl")
     before = state_path.read_bytes()
     summary = cli(tmp_path, "summary", "--feature", "F1")["summary"]
     assert summary["phase"] == "design"
@@ -70,9 +80,7 @@ def test_unrelated_history_does_not_expand_issue_context(state):
     call("decompose", "F1", [task("leaf"), task("sibling")])
     approve("F1", True)
     before = call("issue", "leaf")["context"]
-    raw = json.loads(state.read_bytes())
-    raw["features"]["F1"]["tasks"]["sibling"]["history"].append({"output": "z" * 500000})
-    state.write_text(json.dumps(raw))
+    inflate(lambda feature: feature["tasks"]["sibling"]["history"].append({"output": "z" * 500000}))
     after = call("issue", "leaf")["context"]
     assert len(json.dumps(before)) == len(json.dumps(after))
     assert len(json.dumps(after)) < len(state.read_bytes()) / 50

@@ -7,14 +7,35 @@ import json
 from datetime import UTC, datetime
 
 from ticket_pipeline.lib import (
+    attempts,
     delivery,
+    direction,
     feature_validation,
+    history,
     issue_workflow,
+    ledger,
+    refs,
     scoped_queries,
     state_store,
 )
 
-VERSION = 2
+VERSION = 3
+ARTIFACT_ACTIONS = {"artifact-put", "artifact-get"}
+
+
+def _artifact_references(action: str, payload: object) -> list[object]:
+    """References an action cites that must name blobs already stored in this ledger."""
+    if not isinstance(payload, dict):
+        return []
+    fields = {
+        "attempt-record": ("receipt",),
+        "history-foreign": ("approval",),
+        "history-rewrite": ("verification",),
+        "design-reopen": ("reference",),
+        "issue-resume": ("reference", "handoff"),
+        "validation-record": ("reference",),
+    }.get(action, ())
+    return [payload[f] for f in fields if f in payload]
 
 
 def _text(value: object) -> bool:
@@ -159,6 +180,10 @@ def operate(
         action
         not in feature_validation.ACTIONS
         | delivery.ACTIONS
+        | direction.ACTIONS
+        | attempts.ACTIONS
+        | history.ACTIONS
+        | ARTIFACT_ACTIONS
         | issue_workflow.ACTIONS
         | scoped_queries.ACTIONS
         | {
@@ -175,21 +200,27 @@ def operate(
         }
     ):
         raise ValueError(f"Unknown action: {action}")
-    path = state_store.SCAFFOLD_DIR / "tasks.json"
+    ledger.require_feature_id(feature_id)
+    if action != "init" and not state_store.SCAFFOLD_DIR.exists():
+        # Nothing has ever been initialized here. Report that without creating state files.
+        raise ValueError(f"Unknown feature: {feature_id}")
     with state_store.state_lock():
-        state = (
-            json.loads(path.read_text(encoding="utf-8"))
-            if path.exists()
-            else {"schema_version": VERSION, "features": {}}
-        )
-        if (
-            not isinstance(state, dict)
-            or type(state.get("schema_version")) is not int
-            or state["schema_version"] != VERSION
-            or not isinstance(state.get("features"), dict)
-        ):
-            raise ValueError("Unsupported task state schema_version")
-        features = state["features"]
+        led = ledger.open_current(feature_id)
+        features = {feature_id: copy.deepcopy(led.state)} if led else {}
+        state = {"schema_version": VERSION, "features": features}
+        before = copy.deepcopy(features.get(feature_id))
+
+        def commit() -> None:
+            """Append what this action changed to the feature's ledger (nothing if unchanged)."""
+            nonlocal led, before
+            feature = features[feature_id]
+            if led is not None and ledger.canonical(before) == ledger.canonical(feature):
+                return
+            if led is None:
+                led = ledger.create(feature_id, feature["workflow"]["instance_id"])
+            led.append(action, {"task": task_id, "payload": payload}, feature)
+            before = copy.deepcopy(feature)
+
         if action == "init":
             _fields(
                 payload,
@@ -215,7 +246,16 @@ def operate(
                 "tasks": {},
             }
         elif feature_id not in features:
-            raise ValueError(f"Unknown feature: {feature_id}")
+            legacy = (state_store.SCAFFOLD_DIR / "tasks.json").exists()
+            raise ValueError(
+                f"Unknown feature: {feature_id}"
+                + (
+                    " (a legacy .scaffold/tasks.json exists but is no longer read; "
+                    "re-initialize the feature)"
+                    if legacy
+                    else ""
+                )
+            )
         feature = features[feature_id]
         tasks = feature["tasks"]
         if action == "init":
@@ -242,9 +282,37 @@ def operate(
                 "summary": scoped_queries.summary(feature),
                 "context": scoped_queries.issue(feature, selected["id"]) if selected else None,
             }
+        if action in ARTIFACT_ACTIONS:
+            if action == "artifact-put":
+                # Keep the writer's key order: clients that re-serialize a retained object to
+                # recompute a digest must get the same bytes back.
+                blob = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+                reference = "sha256:" + led.put_artifact(blob)
+                return {"schema_version": VERSION, "reference": reference}
+            refs.require(
+                isinstance(payload, dict) and set(payload) == {"reference"}, "reference required"
+            )
+            blob = led.get_artifact(refs.artifact_name(payload["reference"]))
+            return {"schema_version": VERSION, "artifact": json.loads(blob)}
+        for reference in _artifact_references(action, payload):
+            if refs.is_reference(reference):
+                led.get_artifact(refs.artifact_name(reference))
+        if action in direction.ACTIONS | attempts.ACTIONS | history.ACTIONS:
+            if action in direction.ACTIONS:
+                direction.approve(feature, payload)
+            elif action in attempts.ACTIONS:
+                attempts.record(feature, task_id, payload)
+            else:
+                bound = (feature["head"], feature["base"])
+                history.transition(feature, action, payload)
+                if (feature["head"], feature["base"]) != bound and "validation" in feature:
+                    # Validation is bound to the old head/base; an identical replay changes nothing.
+                    feature["validation"].update(current=None, status="awaiting_validation")
+            commit()
+            return {"schema_version": VERSION, "feature": feature_validation.view(feature)}
         if action in delivery.ACTIONS:
             delivery.record(feature, task_id, payload)
-            state_store.atomic_write_json(path, state)
+            commit()
             return {"schema_version": VERSION, "feature": feature_validation.view(feature)}
         if action in issue_workflow.ACTIONS:
             previous_feature = copy.deepcopy(feature)
@@ -253,7 +321,7 @@ def operate(
                 feature["task_revision"] = feature.get("task_revision", 0) + 1
                 if "validation" in feature:
                     feature["validation"].update(current=None)
-                state_store.atomic_write_json(path, state)
+                commit()
             result = {
                 "schema_version": state["schema_version"],
                 "feature": feature_validation.view(feature),
@@ -264,7 +332,7 @@ def operate(
         issue_workflow.guard(feature, action, task_id)
         if action in feature_validation.ACTIONS:
             feature_validation.transition(feature, action, payload)
-            state_store.atomic_write_json(path, state)
+            commit()
             return {
                 "schema_version": state["schema_version"],
                 "feature": feature_validation.view(feature),
@@ -305,6 +373,10 @@ def operate(
                     if task["history"][-1]["evidence"] != payload:
                         raise ValueError("Task already completed with different evidence")
                     return {"schema_version": state["schema_version"], "task": copy.deepcopy(task)}
+                if not attempts.passed(task, payload["reference"]):
+                    raise ValueError(
+                        "Completion must cite the receipt of a recorded PASSED attempt of this task"
+                    )
                 if status != "in_progress" or not _ready(task, tasks):
                     raise ValueError("Completion requires in_progress and completed prerequisites")
                 _event(task, "completed", evidence=payload)
@@ -344,7 +416,7 @@ def operate(
             feature["task_revision"] = feature.get("task_revision", 0) + 1
             if "validation" in feature:
                 feature["validation"].update(current=None)
-            state_store.atomic_write_json(path, state)
+            commit()
         if action in {"start", "complete", "block", "fail", "retry"}:
             return {
                 "schema_version": state["schema_version"],
@@ -361,6 +433,30 @@ def operate(
             "schema_version": state["schema_version"],
             "feature": feature_validation.view(feature),
         }
+
+
+def list_features() -> dict:
+    """Summaries of every open feature instance, for callers that do not know feature ids.
+
+    Read-only: a repository that has never used Scaffold is left untouched (no directory or
+    lock file is created), so listing cannot dirty an unprotected working tree.
+    """
+    if not state_store.SCAFFOLD_DIR.exists():
+        return {"schema_version": VERSION, "features": []}
+    with state_store.state_lock():
+        summaries = []
+        for led in ledger.all_open():
+            view = feature_validation.view(led.state)
+            summaries.append(
+                {
+                    "id": view["id"],
+                    "instance_id": view["workflow"]["instance_id"],
+                    "phase": view["workflow"]["phase"],
+                    "validation_status": view["validation"]["status"],
+                    "tasks": len(view["tasks"]),
+                }
+            )
+        return {"schema_version": VERSION, "features": summaries}
 
 
 def _select(feature):

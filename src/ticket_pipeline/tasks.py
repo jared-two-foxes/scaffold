@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from ticket_pipeline.lib.task_store import operate
+from ticket_pipeline.lib.task_store import list_features, operate
 
 
 TASK_ACTIONS = (
@@ -33,6 +33,12 @@ TASK_ACTIONS = (
     "validation-start",
     "validation-record",
     "validation-invalidate",
+    "direction-approve",
+    "attempt-record",
+    "history-foreign",
+    "history-rewrite",
+    "artifact-put",
+    "artifact-get",
 )
 
 
@@ -54,6 +60,7 @@ def main() -> None:
             "checkpoint-record",
             "issue-resume",
             "delivery-record",
+            "attempt-record",
         }:
             command.add_argument("--task", required=True)
         if action == "design-reopen":
@@ -71,11 +78,25 @@ def main() -> None:
             "checkpoint-record",
             "issue-resume",
             "delivery-record",
+            "direction-approve",
+            "attempt-record",
+            "history-foreign",
+            "history-rewrite",
+            "artifact-put",
+            "artifact-get",
         }:
             command.add_argument("--input", required=True, help="JSON file, or - for stdin")
         if action in {"block", "fail", "retry"}:
             command.add_argument("--reason", required=True)
+    commands.add_parser("features", help="List open feature instances (id, phase, validation)")
     args = parser.parse_args()
+    if args.action == "features":
+        try:
+            print(json.dumps(list_features(), indent=2))
+        except (ValueError, OSError) as exc:
+            print(json.dumps({"schema_version": 3, "error": str(exc)}), file=sys.stderr)
+            raise SystemExit(1) from exc
+        return
     try:
         payload = getattr(args, "reason", None)
         if hasattr(args, "input"):
@@ -83,7 +104,7 @@ def main() -> None:
             payload = json.loads(text)
         result = operate(args.action, args.feature, payload, getattr(args, "task", None))
     except (ValueError, OSError) as exc:
-        print(json.dumps({"schema_version": 2, "error": str(exc)}), file=sys.stderr)
+        print(json.dumps({"schema_version": 3, "error": str(exc)}), file=sys.stderr)
         raise SystemExit(1) from exc
     print(json.dumps(result, indent=2))
 

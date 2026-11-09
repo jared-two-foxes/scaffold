@@ -1,25 +1,25 @@
-"""Administrative, task-only state reset service.
+"""Administrative, task-only feature close.
 
-This module removes *persisted feature associations*, not Git changes, external
-evidence, or agent authority. Callers must explicitly authorize an apply after
-showing its plan. It is intentionally not part of the task lifecycle operations.
+``scaffold clean`` no longer deletes anything. It appends a ``feature-close`` entry to the
+ledger of each selected open feature instance. A closed instance accepts no further work,
+a new ``init`` of the same feature id starts a fresh instance, and the closed ledger stays
+on disk for audit. This is *not* Git recovery, and it does not authorize continuing any
+existing workflow. It is intentionally not part of the task lifecycle operations.
 """
 
 from __future__ import annotations
 
 import hashlib
-import json
 from dataclasses import dataclass
-from pathlib import Path
 
-from ticket_pipeline.lib import state_store
+from ticket_pipeline.lib import ledger, state_store
 
-SCHEMA_VERSION = 2
+CLOSE_ACTION = "feature-close"
 
 
 @dataclass(frozen=True)
 class AffectedFeature:
-    """A feature and the number of task/issue records that will be removed."""
+    """A feature and the number of task/issue records in the instance being closed."""
 
     id: str
     task_count: int
@@ -27,7 +27,7 @@ class AffectedFeature:
 
 @dataclass(frozen=True)
 class ResetPlan:
-    """Read-only preview, bound to the exact bytes of the current task store."""
+    """Read-only preview, bound to the exact ledger heads of the affected instances."""
 
     scope: str
     feature_id: str | None
@@ -40,91 +40,51 @@ class ResetPlan:
 def _validate_scope(feature_id: str | None, all_features: bool) -> None:
     if type(all_features) is not bool or (feature_id is None) != all_features:
         raise ValueError("Specify exactly one of feature_id or all_features=True")
-    if feature_id is not None and (
-        not isinstance(feature_id, str) or not feature_id.strip()
-    ):
-        raise ValueError("feature_id must be a nonempty string")
+    if feature_id is not None:
+        ledger.require_feature_id(feature_id)
 
 
-def _read_state(path: Path) -> tuple[dict, str]:
-    """Read and validate the task store while the caller owns its lock.
-
-    Fingerprint the on-disk *bytes*, including whether the file is absent:
-    preview/confirmation cannot silently apply to a newer revision.
-    """
-    if path.is_symlink():
-        raise ValueError("Refusing symbolic link for Scaffold tasks.json")
-    if path.exists():
-        if not path.is_file():
-            raise ValueError("Scaffold tasks.json must be a regular file")
-        raw = path.read_bytes()
-        digest = hashlib.sha256(b"present\x00" + raw).hexdigest()
-        try:
-            state = json.loads(raw)
-        except (ValueError, UnicodeDecodeError) as exc:
-            raise ValueError("Invalid Scaffold task state JSON") from exc
-    else:
-        state = {"schema_version": SCHEMA_VERSION, "features": {}}
-        digest = hashlib.sha256(b"absent\x00").hexdigest()
-
-    if (
-        not isinstance(state, dict)
-        or type(state.get("schema_version")) is not int
-        or state["schema_version"] != SCHEMA_VERSION
-        or not isinstance(state.get("features"), dict)
-    ):
-        raise ValueError("Unsupported task state schema_version")
-
-    for identifier, feature in state["features"].items():
-        if (
-            not isinstance(identifier, str)
-            or not isinstance(feature, dict)
-            or not isinstance(feature.get("tasks"), dict)
-        ):
-            raise ValueError("Malformed feature in Scaffold task state")
-
-    return state, digest
+def _selected(feature_id: str | None, all_features: bool) -> list[ledger.Ledger]:
+    if all_features:
+        return ledger.all_open()
+    current = ledger.open_current(feature_id)
+    return [current] if current is not None else []
 
 
 def _build_plan(
-    state: dict, digest: str, feature_id: str | None, all_features: bool
+    selected: list[ledger.Ledger], feature_id: str | None, all_features: bool
 ) -> ResetPlan:
-    features = state["features"]
-    selected = sorted(features) if all_features else (
-        [feature_id] if feature_id in features else []
-    )
     affected = tuple(
-        AffectedFeature(id=identifier, task_count=len(features[identifier]["tasks"]))
-        for identifier in selected
+        AffectedFeature(id=led.state["id"], task_count=len(led.state["tasks"])) for led in selected
     )
+    # Bind the preview to each instance's chain head: any later write invalidates it.
+    heads = [[led.state["id"], led.state["workflow"]["instance_id"], led.head] for led in selected]
     return ResetPlan(
         scope="all" if all_features else "feature",
         feature_id=feature_id,
         affected_features=affected,
         total_tasks=sum(item.task_count for item in affected),
         will_change=bool(affected),
-        state_digest=digest,
+        state_digest=hashlib.sha256(ledger.canonical(heads)).hexdigest(),
     )
 
 
 def plan_reset(*, feature_id: str | None = None, all_features: bool = False) -> ResetPlan:
-    """Preview a feature-scoped or whole-store reset, without writing tasks.json.
+    """Preview closing a feature or every open feature, without writing anything.
 
     The shared state lock may create the existing lock/directory if necessary.
-    It is never unlinked, even for a whole-store reset.
     """
     _validate_scope(feature_id, all_features)
     with state_store.state_lock():
-        path = state_store.SCAFFOLD_DIR / "tasks.json"
-        state, digest = _read_state(path)
-        return _build_plan(state, digest, feature_id, all_features)
+        return _build_plan(_selected(feature_id, all_features), feature_id, all_features)
 
 
 def apply_reset(plan: ResetPlan) -> ResetPlan:
-    """Apply exactly a previously previewed reset, or reject stale/forged plans.
+    """Close exactly the previewed instances, or reject stale/forged plans.
 
-    The comparison and atomic replacement happen within one exclusive lock.
-    No-op plans are idempotent and never rewrite an existing task store.
+    The comparison and the appends happen within one exclusive lock. Each close is a
+    separate append, so an interruption during ``--all`` leaves some instances closed and
+    the rest open; running the command again closes the remainder. No-op plans are idempotent.
     """
     if not isinstance(plan, ResetPlan) or plan.scope not in {"feature", "all"}:
         raise ValueError("A valid reset plan is required")
@@ -132,21 +92,11 @@ def apply_reset(plan: ResetPlan) -> ResetPlan:
     _validate_scope(plan.feature_id, all_features)
 
     with state_store.state_lock():
-        path = state_store.SCAFFOLD_DIR / "tasks.json"
-        state, digest = _read_state(path)
-        current = _build_plan(state, digest, plan.feature_id, all_features)
+        selected = _selected(plan.feature_id, all_features)
+        current = _build_plan(selected, plan.feature_id, all_features)
         if current != plan:
-            raise ValueError("Scaffold task state changed since preview; re-plan and confirm")
-        if not current.will_change:
-            return current
-
-        if all_features:
-            updated = {"schema_version": SCHEMA_VERSION, "features": {}}
-        else:
-            # Preserve other features, their receipt histories and any
-            # non-feature top-level state without re-serializing their shape.
-            updated = {**state, "features": dict(state["features"])}
-            del updated["features"][plan.feature_id]
-
-        state_store.atomic_write_json(path, updated)
+            raise ValueError("Scaffold feature state changed since preview; re-plan and confirm")
+        for led in selected:
+            closed = {**led.state, "closed": {"reason": "clean"}}
+            led.append(CLOSE_ACTION, {"reason": "clean"}, closed)
         return current

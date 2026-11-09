@@ -1,20 +1,15 @@
-"""Reset-service tests; no destructive administrative CLI is exposed yet."""
+"""Close-service tests: ``scaffold clean`` closes features and never deletes ledgers."""
 
 from __future__ import annotations
 
-import json
 import os
 from contextlib import contextmanager
 from dataclasses import replace
 
 import pytest
 
-from ticket_pipeline.lib import state_store
-from ticket_pipeline.lib.task_reset import (
-    AffectedFeature,
-    apply_reset,
-    plan_reset,
-)
+from ticket_pipeline.lib import ledger, state_store
+from ticket_pipeline.lib.task_reset import AffectedFeature, apply_reset, plan_reset
 from ticket_pipeline.lib.task_store import operate
 
 
@@ -43,8 +38,9 @@ def init(*identifiers):
         operate("init", identifier, feature(identifier))
 
 
-def data(workspace):
-    return json.loads((workspace / "tasks.json").read_text("utf-8"))
+def ledger_file(workspace, identifier):
+    (path,) = (workspace / "features").glob(f"{identifier}.*/ledger.jsonl")
+    return path
 
 
 def test_preview_is_read_only_and_counts_recursive_issues(workspace):
@@ -52,15 +48,17 @@ def test_preview_is_read_only_and_counts_recursive_issues(workspace):
     operate(
         "decompose",
         "F1",
-        [{
-            "id": "child",
-            "title": "Child issue",
-            "objective": "Implement child",
-            "acceptance_criteria": ["Child works"],
-        }],
+        [
+            {
+                "id": "child",
+                "title": "Child issue",
+                "objective": "Implement child",
+                "acceptance_criteria": ["Child works"],
+            }
+        ],
         "F1",
     )
-    before = (workspace / "tasks.json").read_bytes()
+    before = ledger_file(workspace, "F1").read_bytes()
 
     plan = plan_reset(feature_id="F1")
     assert plan.scope == "feature"
@@ -69,257 +67,197 @@ def test_preview_is_read_only_and_counts_recursive_issues(workspace):
     assert plan.total_tasks == 2
     assert plan.will_change is True
     assert len(plan.state_digest) == 64
-    assert (workspace / "tasks.json").read_bytes() == before
+    assert ledger_file(workspace, "F1").read_bytes() == before
 
-    original_other = data(workspace)["features"]["F2"]
+    other = operate("list", "F2")["feature"]
     applied = apply_reset(plan)
     assert applied == plan
-    assert data(workspace)["features"] == {"F2": original_other}
-    assert (workspace / ".tasks.lock").is_file()
+    # Nothing is deleted: the closed ledger is retained, verifiable and still shows its history.
+    kept = ledger.Ledger(ledger_file(workspace, "F1").parent)
+    assert kept.entries[-1]["type"] == "feature-close"
+    assert kept.state["closed"] == {"reason": "clean"} and len(kept.state["tasks"]) == 2
+    assert ledger_file(workspace, "F1").read_bytes().startswith(before)
+    assert operate("list", "F2")["feature"] == other
+    with pytest.raises(ValueError, match="Unknown feature"):
+        operate("list", "F1")
 
 
-def test_all_feature_reset_writes_empty_schema_v2_only(workspace):
+def test_all_closes_every_open_feature_and_keeps_the_lock_file(workspace):
     init("F1", "F2")
-    outside = workspace / "unrelated.txt"
-    outside.write_bytes(b"do not touch")
-    old_stack = workspace / ".criteria-stack.json"
-    old_stack.write_bytes(b"invalid old stack")
-    old_lock = workspace / ".criteria-stack.lock"
-    old_lock.write_bytes(b"previous lock")
-    lock_path = workspace / ".tasks.lock"
-    lock_before = lock_path.read_bytes()
+    lock_inode = (workspace / ".tasks.lock").stat().st_ino
+    applied = apply_reset(plan_reset(all_features=True))
+    assert [item.id for item in applied.affected_features] == ["F1", "F2"]
+    assert ledger.all_open() == []
+    assert len(list((workspace / "features").glob("*/ledger.jsonl"))) == 2
+    assert (workspace / ".tasks.lock").stat().st_ino == lock_inode
 
-    plan = plan_reset(all_features=True)
-    assert plan.scope == "all"
-    assert plan.feature_id is None
-    assert plan.affected_features == (
-        AffectedFeature(id="F1", task_count=1),
-        AffectedFeature(id="F2", task_count=1),
-    )
-    assert plan.total_tasks == 2
+
+def test_noop_feature_reset_never_creates_or_rewrites_anything(workspace):
+    plan = plan_reset(feature_id="MISSING")
+    assert plan.will_change is False and plan.affected_features == ()
     assert apply_reset(plan) == plan
-    assert data(workspace) == {"schema_version": 2, "features": {}}
-    assert outside.read_bytes() == b"do not touch"
-    assert old_stack.read_bytes() == b"invalid old stack"
-    assert old_lock.read_bytes() == b"previous lock"
-    assert lock_path.read_bytes() == lock_before
-
-    again = plan_reset(all_features=True)
-    assert not again.will_change
-    previous = (workspace / "tasks.json").read_bytes()
-    apply_reset(again)
-    assert (workspace / "tasks.json").read_bytes() == previous
-
-
-def test_noop_feature_reset_never_creates_or_rewrites_task_state(workspace):
-    preview = plan_reset(feature_id="missing")
-    assert preview.affected_features == ()
-    assert preview.total_tasks == 0
-    assert not preview.will_change
-    assert (workspace / ".tasks.lock").is_file()
-    assert not (workspace / "tasks.json").exists()
-    assert apply_reset(preview) == preview
-    assert not (workspace / "tasks.json").exists()
-
+    assert not (workspace / "features").exists()
     init("F1")
-    before = (workspace / "tasks.json").read_bytes()
-    missing = plan_reset(feature_id="unknown")
-    assert not missing.will_change
-    apply_reset(missing)
-    assert (workspace / "tasks.json").read_bytes() == before
+    before = ledger_file(workspace, "F1").read_bytes()
+    apply_reset(plan_reset(feature_id="MISSING"))
+    assert ledger_file(workspace, "F1").read_bytes() == before
 
 
 def test_all_reset_does_not_create_absent_store(workspace):
     plan = plan_reset(all_features=True)
-    assert not plan.will_change
+    assert plan.will_change is False
     apply_reset(plan)
-    assert not (workspace / "tasks.json").exists()
+    assert not (workspace / "features").exists()
 
 
 @pytest.mark.parametrize(
     "kwargs",
     [
         {},
-        {"feature_id": None, "all_features": False},
         {"feature_id": "F1", "all_features": True},
+        {"all_features": False},
         {"feature_id": ""},
-        {"feature_id": " "},
-        {"feature_id": 12},
+        {"feature_id": "  "},
+        {"feature_id": "../escape"},
+        {"feature_id": 7},
         {"all_features": 1},
     ],
 )
 def test_reset_requires_exactly_one_valid_scope(workspace, kwargs):
     with pytest.raises(ValueError):
         plan_reset(**kwargs)
-    assert not (workspace / "tasks.json").exists()
+    assert not workspace.exists()
 
 
-def test_intervening_feature_change_aborts_without_deleting_anything(workspace):
+def test_intervening_feature_change_aborts_without_closing_anything(workspace):
     init("F1")
     plan = plan_reset(feature_id="F1")
-    init("F2")  # A normal task transaction commits after the preview.
-    current = (workspace / "tasks.json").read_bytes()
-
+    late = {"id": "late", "title": "Late", "objective": "Late", "acceptance_criteria": ["Done"]}
+    operate("add", "F1", [late])
+    before = ledger_file(workspace, "F1").read_bytes()
     with pytest.raises(ValueError, match="changed since preview"):
         apply_reset(plan)
-
-    assert (workspace / "tasks.json").read_bytes() == current
-    assert set(data(workspace)["features"]) == {"F1", "F2"}
-    assert apply_reset(plan_reset(feature_id="F1")).will_change
-    assert set(data(workspace)["features"]) == {"F2"}
+    assert ledger_file(workspace, "F1").read_bytes() == before
+    assert ledger.open_current("F1") is not None
 
 
-def test_noop_preview_cannot_erase_newly_created_feature(workspace):
+def test_noop_preview_cannot_close_a_newly_created_feature(workspace):
     plan = plan_reset(feature_id="F1")
-    assert not plan.will_change
     init("F1")
-    before = (workspace / "tasks.json").read_bytes()
-
     with pytest.raises(ValueError, match="changed since preview"):
         apply_reset(plan)
-    assert (workspace / "tasks.json").read_bytes() == before
+    assert ledger.open_current("F1") is not None
 
 
-def test_stale_plan_after_completed_reset_is_rejected(workspace):
+def test_stale_plan_after_completed_close_is_rejected(workspace):
     init("F1")
     plan = plan_reset(feature_id="F1")
     apply_reset(plan)
-    previous = (workspace / "tasks.json").read_bytes()
-
     with pytest.raises(ValueError, match="changed since preview"):
         apply_reset(plan)
-    assert (workspace / "tasks.json").read_bytes() == previous
 
 
 def test_forged_or_modified_preview_is_rejected(workspace):
-    init("F1")
+    init("F1", "F2")
     plan = plan_reset(feature_id="F1")
-    original = (workspace / "tasks.json").read_bytes()
-    for changed in (
-        replace(plan, total_tasks=5),
+    for forged in (
+        replace(plan, total_tasks=99),
         replace(plan, state_digest="0" * 64),
-        replace(plan, affected_features=()),
-        replace(plan, will_change=False),
+        replace(plan, scope="all", feature_id=None),
+        replace(plan, feature_id="F2"),
     ):
-        with pytest.raises(ValueError, match="changed since preview"):
-            apply_reset(changed)
+        with pytest.raises(ValueError):
+            apply_reset(forged)
     with pytest.raises(ValueError, match="valid reset plan"):
-        apply_reset({"scope": "all"})
-    assert (workspace / "tasks.json").read_bytes() == original
+        apply_reset(object())
+    assert {led.state["id"] for led in ledger.all_open()} == {"F1", "F2"}
 
 
-@pytest.mark.parametrize(
-    "bad",
-    [
-        b"not json",
-        b"",
-        b'{"schema_version": 1, "features": {}}',
-        b'{"schema_version": true, "features": {}}',
-        b'{"schema_version": 2, "features": []}',
-        b'{"schema_version": 2, "features": {"F1": []}}',
-        b'{"schema_version": 2, "features": {"F1": {}}}',
-        b'{"schema_version": 2, "features": {"F1": {"tasks": []}}}',
-    ],
-)
-def test_corrupt_or_unsupported_persisted_state_is_never_rewritten(workspace, bad):
-    workspace.mkdir()
-    path = workspace / "tasks.json"
-    path.write_bytes(bad)
-
-    with pytest.raises(ValueError):
-        plan_reset(all_features=True)
+@pytest.mark.parametrize("mutation", [b'"objective"', b'"seq":0'])
+def test_corrupt_ledger_is_reported_and_never_rewritten(workspace, mutation):
+    init("F1")
+    path = ledger_file(workspace, "F1")
+    path.write_bytes(path.read_bytes().replace(mutation, mutation[:-2] + b"x" + mutation[-1:], 1))
+    before = path.read_bytes()
     with pytest.raises(ValueError):
         plan_reset(feature_id="F1")
-    assert path.read_bytes() == bad
+    with pytest.raises(ValueError):
+        plan_reset(all_features=True)
+    assert path.read_bytes() == before
 
 
-def test_atomic_write_failure_preserves_old_task_graph(workspace, monkeypatch):
-    init("F1", "F2")
-    plan = plan_reset(all_features=True)
-    before = (workspace / "tasks.json").read_bytes()
-    lock_before = (workspace / ".tasks.lock").read_bytes()
+def test_failed_append_leaves_the_ledger_unchanged(workspace, monkeypatch):
+    init("F1")
+    path = ledger_file(workspace, "F1")
+    before = path.read_bytes()
+    plan = plan_reset(feature_id="F1")
+
+    def fail(*_args):
+        raise OSError("injected append failure")
+
     with monkeypatch.context() as patch:
-
-        def fail_replace(_source, _destination):
-            raise OSError("injected replace failure")
-
-        patch.setattr(state_store.os, "replace", fail_replace)
-        with pytest.raises(OSError, match="injected replace failure"):
+        patch.setattr(ledger.os, "fsync", fail)
+        with pytest.raises(OSError, match="injected append failure"):
             apply_reset(plan)
-
-    assert (workspace / "tasks.json").read_bytes() == before
-    assert (workspace / ".tasks.lock").read_bytes() == lock_before
-    assert set(data(workspace)["features"]) == {"F1", "F2"}
-    apply_reset(plan)
-    assert data(workspace) == {"schema_version": 2, "features": {}}
+    assert path.read_bytes() == before
+    assert ledger.open_current("F1") is not None
+    apply_reset(plan_reset(feature_id="F1"))  # retry succeeds
+    assert ledger.open_current("F1") is None
 
 
 def test_preview_and_apply_both_acquire_exclusive_shared_lock(workspace, monkeypatch):
     init("F1")
     entries = []
-    existing = state_store.state_lock
+    underlying = state_store.state_lock
 
     @contextmanager
-    def record_lock(exclusive=True):
+    def observe(exclusive=True):
         entries.append(exclusive)
-        with existing(exclusive=exclusive) as handle:
+        with underlying(exclusive=exclusive) as handle:
             yield handle
 
-    monkeypatch.setattr(state_store, "state_lock", record_lock)
+    monkeypatch.setattr(state_store, "state_lock", observe)
     apply_reset(plan_reset(feature_id="F1"))
     assert entries == [True, True]
-    assert (workspace / ".tasks.lock").is_file()
 
 
-def test_reset_refuses_symlinked_task_json(workspace):
-    if os.name == "nt":
-        pytest.skip("symlink creation on Windows may require privileges")
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation needs privileges on Windows")
+def test_reset_refuses_symlinked_features_directory(workspace, tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
     workspace.mkdir()
-    outside = workspace.parent / "outside.json"
-    outside.write_text(json.dumps({"schema_version": 2, "features": {}}))
-    (workspace / "tasks.json").symlink_to(outside)
-    before = outside.read_bytes()
-
+    (workspace / "features").symlink_to(outside, target_is_directory=True)
     with pytest.raises(ValueError, match="symbolic link"):
         plan_reset(all_features=True)
-
-    assert outside.read_bytes() == before
-    assert (workspace / "tasks.json").is_symlink()
+    assert list(outside.iterdir()) == []
 
 
-def test_reset_refuses_directory_instead_of_task_json(workspace):
+def test_reset_refuses_a_file_where_the_features_directory_belongs(workspace):
     workspace.mkdir()
-    (workspace / "tasks.json").mkdir()
-    with pytest.raises(ValueError, match="regular file"):
+    (workspace / "features").write_bytes(b"not a directory")
+    with pytest.raises(ValueError, match="must be a directory"):
         plan_reset(all_features=True)
-    assert (workspace / "tasks.json").is_dir()
+    assert (workspace / "features").read_bytes() == b"not a directory"
 
 
-def test_clean_reinitialize_same_id_gets_fresh_workflow_identity(workspace):
+def test_clean_then_reinitialize_same_id_gets_a_fresh_instance_and_keeps_the_old_one(workspace):
     init("F1")
-    before = operate("list", "F1")["feature"]
-    first = before["workflow"]["instance_id"]
-    assert len(first) == 32
-    assert all(c in "0123456789abcdef" for c in first)
-
+    old = ledger.open_current("F1")
+    old_instance = old.state["workflow"]["instance_id"]
     apply_reset(plan_reset(feature_id="F1"))
-    assert data(workspace)["features"] == {}
-
     init("F1")
-    recreated = operate("list", "F1")["feature"]
-    assert recreated["workflow"]["instance_id"] != first
-    assert recreated["design_ref"] == before["design_ref"]
-    assert recreated["original_baseline"] == before["original_baseline"]
-    assert recreated["branch"] == before["branch"]
+    fresh = ledger.open_current("F1")
+    assert fresh.state["workflow"]["instance_id"] != old_instance
+    assert fresh.directory != old.directory and old.directory.is_dir()
+    assert ledger.Ledger(old.directory).state["closed"] == {"reason": "clean"}
+    listed = operate("list", "F1")["feature"]["workflow"]["instance_id"]
+    assert listed == fresh.state["workflow"]["instance_id"]
 
 
-def test_existing_schema_v2_feature_without_instance_id_remains_readable(workspace):
+def test_a_closed_feature_accepts_no_further_work(workspace):
     init("F1")
-    state_file = workspace / "tasks.json"
-    persisted = data(workspace)
-    del persisted["features"]["F1"]["workflow"]["instance_id"]
-    state_file.write_text(json.dumps(persisted), encoding="utf-8")
-
-    original = state_file.read_bytes()
-    assert operate("list", "F1")["feature"]["workflow"].get("instance_id") is None
-    assert state_file.read_bytes() == original
+    apply_reset(plan_reset(feature_id="F1"))
+    for action in ("add", "start", "next"):
+        with pytest.raises(ValueError, match="Unknown feature"):
+            payload = [] if action == "add" else None
+            operate(action, "F1", payload, "F1" if action == "start" else None)

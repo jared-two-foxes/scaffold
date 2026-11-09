@@ -75,21 +75,24 @@ def state_lock(exclusive: bool = True) -> object:
 
 
 def atomic_write_json(path: Path, value: object) -> None:
-    """Replace JSON under the caller's lock without following a fixed temp path.
+    """Replace JSON under the caller's lock. See ``atomic_write_bytes``."""
+    atomic_write_bytes(path, (json.dumps(value, indent=2) + "\n").encode("utf-8"))
+
+
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    """Replace a file under the caller's lock without following a fixed temp path.
 
     A securely created sibling temporary file avoids pre-existing .tmp symlinks.
-    A failed write/replace leaves the original JSON unchanged and removes the
+    A failed write/replace leaves the original file unchanged and removes the
     newly created temporary file.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.parent.is_symlink():
         raise ValueError("Refusing symbolic link in Scaffold task-state paths")
-    payload = json.dumps(value, indent=2) + "\n"
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
+            mode="wb",
             prefix=path.name + ".",
             suffix=".tmp",
             dir=path.parent,

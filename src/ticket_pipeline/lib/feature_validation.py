@@ -4,9 +4,11 @@ import copy
 import re
 from datetime import UTC, datetime
 
+from ticket_pipeline.lib import direction
+
 ACTIONS = {"validation-start", "validation-record", "validation-invalidate"}
 SHA = re.compile(r"[a-f0-9]{40}\Z")
-REF = re.compile(r"pi-feature-evidence:sha256:[a-f0-9]{64}\Z")
+REF = re.compile(r"sha256:[a-f0-9]{64}\Z")
 BINDING = {"feature_id", "design_ref", "baseline", "head", "tree", "branch", "task_revision", "plan_digest"}
 
 
@@ -39,6 +41,7 @@ def view(feature):
     validation.setdefault("history", [])
     validation.setdefault("current", None)
     result.setdefault("task_revision", 0)
+    result["direction_scope"] = direction.definition_digest(feature)
     if validation["current"] is None:
         tasks = result["tasks"].values()
         validation["status"] = (
@@ -69,16 +72,21 @@ def transition(feature, action, payload):
                 "Feature/design mismatch")
         require(type(binding["task_revision"]) is int
                 and binding["task_revision"] == feature.get("task_revision", 0), "Task graph changed")
-        require(feature.get("original_baseline", binding["baseline"]) == binding["baseline"],
-                "Original feature baseline cannot change")
+        require(feature["base"] == binding["baseline"],
+                "Validation baseline must be the ledger's history base (the fork point, "
+                "or the commit the history was last rebased onto)")
         eligible(feature)
+        require(
+            binding["head"] == feature["head"],
+            "Validation head must match the ledger's recorded history head; "
+            "record foreign commits or rewrites first",
+        )
         attempt = payload["attempt_id"]
         require(isinstance(attempt, str) and bool(attempt.strip()), "attempt_id required")
         existing = next((h for h in validation["history"] if h.get("attempt_id") == attempt), None)
         if existing:
             require(existing.get("binding") == binding, "Attempt identity conflict")
             return
-        feature["original_baseline"] = binding["baseline"]
         validation["history"].append({"event": "started", **copy.deepcopy(payload),
                                       "recorded_at": datetime.now(UTC).isoformat()})
         validation.update(current=attempt, status="validating")
