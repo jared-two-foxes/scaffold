@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+
 from ticket_pipeline.lib import ledger
 from ticket_pipeline.lib.task_store import operate
 
@@ -25,7 +28,8 @@ def receipt_payload(task_id: str, number: int = 1) -> dict:
 
 def reference_for(task_id: str, number: int = 1) -> str:
     """The receipt reference of a task's Nth attempt (the first by default)."""
-    return "sha256:" + ledger.digest(receipt_payload(task_id, number))
+    blob = json.dumps(receipt_payload(task_id, number), ensure_ascii=False, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(blob.encode()).hexdigest()
 
 
 def record_attempt(
