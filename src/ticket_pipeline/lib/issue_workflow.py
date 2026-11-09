@@ -7,6 +7,9 @@ import re
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from ticket_pipeline.lib import direction, history
+from ticket_pipeline.lib.refs import is_reference
+
 KIND = "recursive-issues/v1"
 ACTIONS = {
     "design-next",
@@ -41,6 +44,7 @@ def initialize(feature, make_task):
         "Feature branch required",
     )
     feature["original_baseline"] = feature["baseline"]
+    history.initialize(feature)
     root = make_task(
         {
             k: copy.deepcopy(feature[k])
@@ -123,6 +127,8 @@ def guard(feature, action, task_id=None):
         require(
             workflow["phase"] == "implement", "Finish the entire design graph before implementation"
         )
+        if action == "start":
+            direction.require_approved(feature)
         task = feature["tasks"][task_id]
         require(design(task), "Issue has no approved design")
         suspension = task.get("suspension")
@@ -184,8 +190,7 @@ def transition(feature, action, payload, task_id, make_event):
             )
             if needs_suspension(task):
                 require(
-                    isinstance(payload.get("reference"), str)
-                    and payload["reference"].startswith("pi-evidence:sha256:"),
+                    is_reference(payload.get("reference")),
                     "Active/failed issue requires retained native suspension evidence",
                 )
                 task["suspension"] = {"reference": payload["reference"]}
@@ -246,8 +251,13 @@ def transition(feature, action, payload, task_id, make_event):
     elif action == "checkpoint-record":
         require(task["status"] == "completed", "Checkpoint requires completed issue")
         require(
-            isinstance(payload, dict) and set(payload) == {"commit", "reference"},
-            "Checkpoint requires commit and evidence reference",
+            isinstance(payload, dict) and set(payload) == {"commit", "parent", "tree", "reference"},
+            "Checkpoint requires commit, parent, tree and evidence reference",
+        )
+        require(
+            re.fullmatch(r"[a-f0-9]{40}", str(payload["parent"]))
+            and re.fullmatch(r"[a-f0-9]{40}", str(payload["tree"])),
+            "Full parent and tree SHAs required",
         )
 
         require(
@@ -264,6 +274,9 @@ def transition(feature, action, payload, task_id, make_event):
         )
         if task.get("checkpoint") == payload:
             return
+        history.append_checkpoint(
+            feature, task_id, payload["commit"], payload["parent"], payload["tree"]
+        )
         task["checkpoint"] = copy.deepcopy(payload)
     elif action == "issue-resume":
         require(
@@ -275,8 +288,7 @@ def transition(feature, action, payload, task_id, make_event):
             and isinstance(payload, dict)
             and set(payload) == {"reference", "handoff"}
             and payload["reference"] == task["suspension"]["reference"]
-            and isinstance(payload["handoff"], str)
-            and payload["handoff"].startswith("pi-evidence:sha256:"),
+            and is_reference(payload["handoff"]),
             "Matching suspension/handoff required",
         )
         require(

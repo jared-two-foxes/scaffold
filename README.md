@@ -25,45 +25,82 @@ feature using `scaffold init --feature SA-123 --input -` with the complete
 JSON contract described below. The retired `stack` and `status` CLI commands
 are not supported. Historic `.scaffold/.criteria-stack.json` and
 `.scaffold/.criteria-stack.lock` files are left untouched, not imported or
-deleted; current task operations use `.scaffold/tasks.json` and
-`.scaffold/.tasks.lock`.
+deleted; current task operations use the ledger under `.scaffold/features/` and
+`.scaffold/.tasks.lock` (see Ledger storage).
 
-## Administrative feature reset
+## Ledger storage
 
-`scaffold clean` resets persisted feature/task associations in the current
-repository. It does **not** undo implementation, Git commits/branches/worktrees,
-or external evidence. The legacy criteria-stack artifacts and active
-`.scaffold/.tasks.lock` are preserved.
+Feature state is an append-only, hash-chained **ledger** per feature *instance*, stored
+under `.scaffold/features/<feature-id>.<instance-id>/`:
+
+```
+ledger.jsonl         one JSON entry per line; each names the hash of the previous entry
+artifacts/<sha256>   content-addressed blobs (receipts, approvals, suspensions) cited by entries
+```
+
+Each entry records the action, its validated payload and the exact state change (a patch)
+plus the digest of the state it produces. State is the fold of the ledger and every read
+verifies the whole chain, so an edited, reordered or removed-from-the-middle entry is
+detected and blocks every operation without being repaired. The chain does **not** detect
+removal of the newest whole entries, cannot stop a process with write access from appending a
+forged entry, and cannot judge whether supplied evidence is true. Appends happen under the
+`.scaffold/.tasks.lock` file lock; a failed append leaves the ledger as it was and a torn
+final line is ignored. `.scaffold/` must stay ignored and untracked. Nothing is written to `.git`.
+
+Schema version is 3. A legacy `.scaffold/tasks.json` (schema 2) is never read, migrated or
+modified; re-initialize features instead. `scaffold init` creates a new instance directory
+with a fresh `workflow.instance_id`, so an approval or receipt of an earlier instance can
+never apply to it.
+
+Evidence is referenced as `sha256:<64 hex>` naming an artifact in the same ledger. Store one
+with `scaffold artifact-put --feature F --input -` (returns `{reference}`) and read it back
+with `artifact-get`. Actions that cite a reference (`attempt-record`, `history-foreign`,
+`history-rewrite`, `issue-resume`, `validation-record`, a suspension reference in
+`design-reopen`) reject one that is not stored.
+
+Rules Scaffold enforces on the ledger:
+
+- `direction-approve --input -` takes `{scope_digest, capabilities?}`. Scaffold computes the
+  digest of the feature definition and its instance (returned as `direction_scope`) and rejects
+  a mismatch. `start` is refused until the approval matches.
+- `attempt-record --task T --input -` takes `{attempt, status, receipt, base, tree}` for the
+  active task. Attempts are sequential and idempotent. `complete` must cite the `receipt` of a
+  recorded `PASSED` attempt of that task.
+- `checkpoint-record --task T --input -` takes `{commit, parent, tree, reference}`. `parent`
+  must equal the ledger's recorded history `head`; checkpoints therefore form one chain from the
+  original baseline.
+- `history-foreign` records a user-approved range of commits that are **not** checkpoints
+  (`{from, to, source, commits, approval}`), between tasks only. They are recorded, never
+  verified, and remain in review scope.
+- `history-rewrite` replaces the recorded history after a rebase
+  (`{old_head, new_head, history, verification}`), keeping the previous history in `epochs`.
+- `validation-start` requires the validated `head` to equal the ledger's recorded head, so the
+  ledger accounts for every commit.
+
+Scaffold cannot see Git. Pi confirms every commit, tree and ancestry before appending.
+
+## Closing a feature
+
+`scaffold clean` **no longer deletes anything**. It appends a `feature-close` entry to the
+ledger of each selected open feature instance. A closed instance accepts no more work and is
+reported as unknown; `init` of the same feature id then starts a fresh instance, and the closed
+ledger stays on disk for audit. It does not undo implementation, Git commits, branches or
+worktrees, and it does not authorize continuing any Pi workflow.
 
 ```sh
 scaffold clean --feature SA-123 --dry-run  # preview selected feature and task counts
 scaffold clean --feature SA-123            # interactive: type "yes" to confirm
 scaffold clean --feature SA-123 --yes      # explicit unattended authorization
-scaffold clean --all --dry-run             # preview every feature
-scaffold clean --all                       # interactive full reset
-scaffold clean --all --yes                 # explicit unattended full reset
+scaffold clean --all --dry-run             # preview every open feature
+scaffold clean --all                       # interactive: close every open feature
+scaffold clean --all --yes                 # explicit unattended close
 ```
 
-Exactly one target (`--feature ID` or `--all`) is required. Dry-run never
-changes `tasks.json`. A destructive reset without `--yes` requires a terminal
-and the exact response `yes` (piped responses are rejected). Missing features
-and empty stores are safe no-ops. If task state changes after the preview,
-the command aborts and requires a new preview/confirmation rather than deleting
-unanticipated state. Reset does not authorize continuing an existing Pi workflow.
-Only `.scaffold/tasks.json` is rewritten when records are removed:
-`--feature` removes the selected feature entry, and `--all` writes an
-empty schema-v2 feature store. The `.scaffold/.tasks.lock` inode is retained;
-older `.criteria-stack.*` files, Git commits, branches, worktrees, source
-files and external Pi/Conductor receipts are not touched.
-
-Each new `scaffold init` records a unique `workflow.instance_id`. Cleaning and
-reinitializing the **same** ticket with an otherwise identical design, branch
-and baseline creates a new identity: old Pi authorization and retained execution
-receipts cannot authorize the new feature. Re-run feature preparation and obtain
-a fresh, explicit feature-direction approval, then start new task attempts.
-Do **not** use clean to discard failed attempts in an active feature or as an
-automatic recovery tool. Existing schema-v2 records created before this field
-was introduced remain readable; no implicit backfill or migration is performed.
+Exactly one target (`--feature ID` or `--all`) is required. Dry-run never changes anything.
+Closing without `--yes` requires a terminal and the exact response `yes`. If a ledger changes
+after the preview, the command aborts and requires a new preview. Each close is its own append,
+so an interruption during `--all` leaves some instances closed; run it again to close the rest.
+Older `.criteria-stack.*` files and `.scaffold/tasks.json` are not touched.
 
 ## Recursive issue design and implementation
 
@@ -71,7 +108,7 @@ was introduced remain readable; no implicit backfill or migration is performed.
 ticket. Supply `baseline` (full original Git SHA) and `branch` (feature branch),
 alongside the objective, original acceptance criteria and immutable design reference.
 There is no workflow selector or alternate task lifecycle. All task state and
-responses use schema version 2; older files are rejected without modification.
+responses use schema version 3; legacy state is ignored without modification.
 Definitions may include `origin: {kind: "ticket"|"design"|"review"|"discovery",
 reference: "<issue or retained evidence>"}`.
 
@@ -85,16 +122,16 @@ unapproved nodes and transitions the entire graph to implementation. No `start`
 or `complete` is accepted in the design phase.
 
 Implementation uses `next`, `start`, evidence-bound `complete`, and native Pi Git
-checkpoints. `checkpoint-record --task ID --input -` records `{commit, reference}`
-after Pi authenticates the actual checkpoint. It is bookkeeping, not Git or proof
-of verification. Selection/start pauses until every completed issue has a recorded
+checkpoints. `checkpoint-record --task ID --input -` records
+`{commit, parent, tree, reference}` after Pi authenticates the actual checkpoint. It is
+bookkeeping that keeps the history chain consistent, not Git or proof of verification. Selection/start pauses until every completed issue has a recorded
 checkpoint. Parents become eligible after children and require their own evidence
 and commit, including verification-only parents. Final feature validation remains
 mandatory. Scaffold does not execute source, run Git, invoke review or retry work.
 
 Discoveries return the affected scope to design. Native Pi `suspend_issue` first
 parks active source/staging/untracked files and authenticates its latest attempt;
-it then calls `design-reopen` with `{reason, reference: "<suspension receipt>"}`.
+it then calls `design-reopen` with `{reason, reference: "sha256:<stored suspension>"}`.
 An approved issue can also be reopened by ID during Design; its previous design
 and affected unfinished designs are archived immediately. Failed, blocked or
 retried issues with execution history still need suspension evidence before
@@ -140,9 +177,8 @@ obligations cannot disappear. Material amendments retain the explicit approval
 reference and replacement obligation. Bookkeeping never completes an issue or proves
 an independent review. Native Pi code authenticates receipts and its Git audit anchor.
 
-Existing task schema version 2 files remain readable. Journal initialization can
-import a legacy receipt head and consumed sequence, including five or more attempts;
-initialization never replaces an existing journal. Stale revisions, duplicate in-flight
+Journal initialization can import a receipt head and consumed sequence, including five or
+more attempts; initialization never replaces an existing journal. Stale revisions, duplicate in-flight
 reservations and mismatched terminal associations fail under the existing file lock.
 No finite issue-attempt allowance is imposed by this storage protocol.
 

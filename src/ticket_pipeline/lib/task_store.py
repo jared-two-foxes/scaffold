@@ -3,18 +3,39 @@
 from __future__ import annotations
 
 import copy
+import json
 from datetime import UTC, datetime
 
 from ticket_pipeline.lib import (
+    attempts,
     delivery,
+    direction,
     feature_validation,
+    history,
     issue_workflow,
     ledger,
+    refs,
     scoped_queries,
     state_store,
 )
 
 VERSION = 3
+ARTIFACT_ACTIONS = {"artifact-put", "artifact-get"}
+
+
+def _artifact_references(action: str, payload: object) -> list[object]:
+    """References an action cites that must name blobs already stored in this ledger."""
+    if not isinstance(payload, dict):
+        return []
+    fields = {
+        "attempt-record": ("receipt",),
+        "history-foreign": ("approval",),
+        "history-rewrite": ("verification",),
+        "design-reopen": ("reference",),
+        "issue-resume": ("reference", "handoff"),
+        "validation-record": ("reference",),
+    }.get(action, ())
+    return [payload[f] for f in fields if f in payload]
 
 
 def _text(value: object) -> bool:
@@ -159,6 +180,10 @@ def operate(
         action
         not in feature_validation.ACTIONS
         | delivery.ACTIONS
+        | direction.ACTIONS
+        | attempts.ACTIONS
+        | history.ACTIONS
+        | ARTIFACT_ACTIONS
         | issue_workflow.ACTIONS
         | scoped_queries.ACTIONS
         | {
@@ -254,6 +279,27 @@ def operate(
                 "summary": scoped_queries.summary(feature),
                 "context": scoped_queries.issue(feature, selected["id"]) if selected else None,
             }
+        if action in ARTIFACT_ACTIONS:
+            if action == "artifact-put":
+                reference = "sha256:" + led.put_artifact(ledger.canonical(payload))
+                return {"schema_version": VERSION, "reference": reference}
+            refs.require(
+                isinstance(payload, dict) and set(payload) == {"reference"}, "reference required"
+            )
+            blob = led.get_artifact(refs.artifact_name(payload["reference"]))
+            return {"schema_version": VERSION, "artifact": json.loads(blob)}
+        for reference in _artifact_references(action, payload):
+            if refs.is_reference(reference):
+                led.get_artifact(refs.artifact_name(reference))
+        if action in direction.ACTIONS | attempts.ACTIONS | history.ACTIONS:
+            if action in direction.ACTIONS:
+                direction.approve(feature, payload)
+            elif action in attempts.ACTIONS:
+                attempts.record(feature, task_id, payload)
+            else:
+                history.transition(feature, action, payload)
+            commit()
+            return {"schema_version": VERSION, "feature": feature_validation.view(feature)}
         if action in delivery.ACTIONS:
             delivery.record(feature, task_id, payload)
             commit()
@@ -317,6 +363,10 @@ def operate(
                     if task["history"][-1]["evidence"] != payload:
                         raise ValueError("Task already completed with different evidence")
                     return {"schema_version": state["schema_version"], "task": copy.deepcopy(task)}
+                if not attempts.passed(task, payload["reference"]):
+                    raise ValueError(
+                        "Completion must cite the receipt of a recorded PASSED attempt of this task"
+                    )
                 if status != "in_progress" or not _ready(task, tasks):
                     raise ValueError("Completion requires in_progress and completed prerequisites")
                 _event(task, "completed", evidence=payload)

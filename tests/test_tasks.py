@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
+from flow import approve_direction, record_attempt, record_checkpoint, reference_for
 
 from ticket_pipeline.lib import ledger, state_store
 from ticket_pipeline.lib.task_store import operate
@@ -41,7 +42,7 @@ def evidence(identifier):
         "task_id": identifier,
         "result": "PASSED",
         "source": "conductor",
-        "reference": "receipt-" + identifier,
+        "reference": reference_for(identifier),
         "summary": "Caller-supplied verification",
     }
 
@@ -68,13 +69,9 @@ def approve_all():
 def finish(identifier):
     approve_all()
     operate("start", "F1", task_id=identifier)
+    record_attempt("F1", identifier)
     result = operate("complete", "F1", evidence(identifier), identifier)["task"]
-    operate(
-        "checkpoint-record",
-        "F1",
-        {"commit": "a" * 40, "reference": evidence(identifier)["reference"]},
-        identifier,
-    )
+    record_checkpoint("F1", identifier)
     return result
 
 
@@ -83,6 +80,7 @@ def state(tmp_path, monkeypatch):
     monkeypatch.setattr(state_store, "SCAFFOLD_DIR", tmp_path / ".scaffold")
     monkeypatch.setattr(state_store, "STATE_LOCK_FILE", tmp_path / ".scaffold/.tasks.lock")
     operate("init", "F1", FEATURE)
+    approve_direction("F1")
     # A previously verified root lets these unit tests add independent corrective issues.
     finish("F1")
     operate("design-reopen", "F1", {"reason": "Plan corrective issues"})

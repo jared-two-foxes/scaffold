@@ -1,6 +1,7 @@
 """Persisted top-down design, bottom-up implementation, and discovery transitions."""
 
 import pytest
+from flow import approve_direction, record_attempt, record_checkpoint
 from test_tasks import FEATURE, evidence, task
 
 from ticket_pipeline.lib import ledger, state_store
@@ -20,6 +21,7 @@ def state(tmp_path, monkeypatch):
             "branch": "feature/test",
         },
     )
+    approve_direction("F1")
     return ledger.open_current("F1").path
 
 
@@ -42,13 +44,10 @@ def approve(identifier, parent=False):
 
 def finish(identifier, checkpoint=True):
     call("start", identifier)
+    record_attempt("F1", identifier)
     call("complete", identifier, evidence(identifier))
     if checkpoint:
-        call(
-            "checkpoint-record",
-            identifier,
-            {"commit": "a" * 40, "reference": evidence(identifier)["reference"]},
-        )
+        record_checkpoint("F1", identifier)
 
 
 def test_downward_design_then_upward_execution_and_parent_verification(state):
@@ -74,11 +73,7 @@ def test_downward_design_then_upward_execution_and_parent_verification(state):
     assert call("next")["task"] is None
     with pytest.raises(ValueError, match="checkpoints"):
         call("start", "api")
-    call(
-        "checkpoint-record",
-        "types",
-        {"commit": "b" * 40, "reference": evidence("types")["reference"]},
-    )
+    record_checkpoint("F1", "types")
     finish("api")
     finish("storage")
     assert call("next")["task"]["id"] == "F1"
@@ -95,7 +90,7 @@ def test_discovery_preserves_definitions_and_requires_explicit_resume(state):
         call("decompose", "F1", [task("fix")])
     with pytest.raises(ValueError, match="suspension"):
         call("design-reopen", "F1", {"reason": "Review found prerequisite"})
-    reference = "pi-evidence:sha256:" + "a" * 64
+    reference = call("artifact-put", payload={"suspension": "a"})["reference"]
     call("design-reopen", "F1", {"reason": "Review found prerequisite", "reference": reference})
     call("decompose", "F1", [{**task("fix"), "origin": {"kind": "review", "reference": reference}}])
     approve("F1", True)
@@ -105,9 +100,8 @@ def test_discovery_preserves_definitions_and_requires_explicit_resume(state):
     assert call("next")["task"] is None
     with pytest.raises(ValueError, match="handoff"):
         call("start", "F1")
-    call(
-        "issue-resume", "F1", {"reference": reference, "handoff": "pi-evidence:sha256:" + "b" * 64}
-    )
+    handoff = call("artifact-put", payload={"handoff": "b"})["reference"]
+    call("issue-resume", "F1", {"reference": reference, "handoff": handoff})
     assert call("next")["task"]["id"] == "F1"
     finish("F1")
     current = call("list")["feature"]["tasks"]["F1"]
@@ -176,8 +170,11 @@ def test_dependency_designs_are_invalidated_and_checkpoint_replays_are_noops(sta
     call("design-finish")
     finish("a")
     before = state.read_bytes()
-    call("checkpoint-record", "a", {"commit": "a" * 40, "reference": evidence("a")["reference"]})
+    recorded = call("list")["feature"]["tasks"]["a"]["checkpoint"]
+    call("checkpoint-record", "a", recorded)
     assert state.read_bytes() == before
+    with pytest.raises(ValueError, match="differently"):
+        call("checkpoint-record", "a", {**recorded, "commit": "9" * 40})
 
     assert call("list")["schema_version"] == 3
 
@@ -230,7 +227,7 @@ def test_unfinished_execution_cannot_escape_suspension_through_lifecycle(state, 
     with pytest.raises(ValueError, match="suspension"):
         call("design-reopen", "F1", {"reason": "New prerequisite"})
     assert state.read_bytes() == before
-    reference = "pi-evidence:sha256:" + "c" * 64
+    reference = call("artifact-put", payload={"suspension": "c"})["reference"]
     call("design-reopen", "F1", {"reason": "New prerequisite", "reference": reference})
     call("decompose", "F1", [task("fix")])
     approve("F1", True)

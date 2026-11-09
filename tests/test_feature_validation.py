@@ -7,8 +7,9 @@ from ticket_pipeline.lib.task_store import operate
 
 
 def binding():
+    feature = operate("list", "F1")["feature"]
     return {"feature_id": "F1", "design_ref": FEATURE["design_ref"], "baseline": "a" * 40,
-            "head": "b" * 40, "tree": "c" * 40, "branch": "feature/test",
+            "head": feature["head"], "tree": "c" * 40, "branch": "feature/test",
             "task_revision": operate("list", "F1")["feature"]["task_revision"],
             "plan_digest": "d" * 64}
 
@@ -20,8 +21,10 @@ def start(attempt="attempt"):
 
 
 def result(value, status="PASSED", attempt="attempt"):
+    artifact = {"validation": attempt, "status": status}
+    reference = operate("artifact-put", "F1", artifact)["reference"]
     return {"schema": "pi.feature-validation/v1", "attempt_id": attempt, "binding": value,
-            "status": status, "reference": "pi-feature-evidence:sha256:" + "e" * 64,
+            "status": status, "reference": reference,
             "checks": [{"name": name, "exit_code": 0, "meaningful": True} for name in ("build", "test")],
             "review": {"schema": "review.result/v1", "status": "APPROVED", "reason": "REVIEW_COMPLETED",
                        "review_id": "independent", "baseRef": value["baseline"], "headRef": value["head"]},
