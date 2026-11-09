@@ -144,7 +144,7 @@ def test_every_ledger_action_is_reachable_through_the_cli(tmp_path):
 
 def test_features_lists_open_instances_and_omits_closed_ones(tmp_path):
     assert run(tmp_path, "features")["features"] == []
-    assert not (tmp_path / ".scaffold").exists()  # listing never creates state in a clean repository
+    assert not (tmp_path / ".scaffold").exists()  # listing creates nothing in a clean repo
     run(tmp_path, "init", *feature_args("--input", "-"), payload=FEATURE)
     other = {**FEATURE, "id": "F2"}
     run(tmp_path, "init", "--feature", "F2", "--input", "-", payload=other)
