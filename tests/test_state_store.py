@@ -136,3 +136,10 @@ def test_task_state_refuses_symlinked_lock_paths(state_dir, monkeypatch, target)
     with pytest.raises(ValueError, match="symbolic link"):
         operate("init", "F1", feature())
     assert not (state_dir / "features").exists()
+
+
+@pytest.mark.parametrize("action", ["list", "next", "summary", "start", "add"])
+def test_actions_on_an_untouched_repository_create_no_state(state_dir, action):
+    with pytest.raises(ValueError, match="Unknown feature"):
+        operate(action, "F1", [] if action == "add" else None, "F1" if action == "start" else None)
+    assert not state_dir.exists()

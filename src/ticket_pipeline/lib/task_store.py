@@ -201,6 +201,9 @@ def operate(
     ):
         raise ValueError(f"Unknown action: {action}")
     ledger.require_feature_id(feature_id)
+    if action != "init" and not state_store.SCAFFOLD_DIR.exists():
+        # Nothing has ever been initialized here. Report that without creating state files.
+        raise ValueError(f"Unknown feature: {feature_id}")
     with state_store.state_lock():
         led = ledger.open_current(feature_id)
         features = {feature_id: copy.deepcopy(led.state)} if led else {}
