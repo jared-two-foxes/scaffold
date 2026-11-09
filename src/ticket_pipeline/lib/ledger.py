@@ -137,13 +137,20 @@ def _safe_dir(path: Path, create: bool = False) -> None:
         raise ValueError("Scaffold ledger path must be a directory")
 
 
-def instance_directories(feature_id: str) -> list[Path]:
-    """Every instance directory ever created for this feature id, oldest name first."""
-    require_feature_id(feature_id)
+def _features_root() -> Path | None:
     root = features_dir()
     if root.is_symlink():
         raise ValueError("Refusing symbolic link in Scaffold ledger paths")
-    if not root.is_dir():
+    if root.exists() and not root.is_dir():
+        raise ValueError("Scaffold features path must be a directory")
+    return root if root.is_dir() else None
+
+
+def instance_directories(feature_id: str) -> list[Path]:
+    """Every instance directory ever created for this feature id, oldest name first."""
+    require_feature_id(feature_id)
+    root = _features_root()
+    if root is None:
         return []
     found = []
     for child in sorted(root.iterdir()):
@@ -227,7 +234,9 @@ class Ledger:
 
     # --- writing (caller holds the state lock) ---------------------------------
 
-    def append(self, action: str, body: object, new_state: dict, expected_seq: int | None = None) -> dict:
+    def append(
+        self, action: str, body: object, new_state: dict, expected_seq: int | None = None
+    ) -> dict:
         """Append one entry that turns the current state into ``new_state``."""
         if expected_seq is not None and expected_seq != len(self.entries):
             raise ValueError("Stale ledger sequence")
@@ -250,10 +259,18 @@ class Ledger:
             # Drop a torn, never-committed tail so it cannot corrupt this entry.
             os.ftruncate(descriptor, self._committed)
             os.lseek(descriptor, self._committed, os.SEEK_SET)
-            written = 0
-            while written < len(line):
-                written += os.write(descriptor, line[written:])
-            os.fsync(descriptor)
+            try:
+                written = 0
+                while written < len(line):
+                    written += os.write(descriptor, line[written:])
+                os.fsync(descriptor)
+            except BaseException:
+                # A failed append must leave the ledger exactly as it was.
+                try:
+                    os.ftruncate(descriptor, self._committed)
+                except OSError:  # pragma: no cover - best effort; a torn tail is ignored on read
+                    pass
+                raise
         finally:
             os.close(descriptor)
         self._fsync_directory()
@@ -319,3 +336,21 @@ def open_current(feature_id: str) -> Ledger | None:
     if len(open_instances) > 1:
         raise LedgerError("More than one open instance exists for this feature")
     return open_instances[0] if open_instances else None
+
+
+def all_open() -> list[Ledger]:
+    """Every open feature instance, ordered by feature id."""
+    root = _features_root()
+    if root is None:
+        return []
+    ids = set()
+    for child in root.iterdir():
+        name, _, instance = child.name.rpartition(".")
+        if FEATURE_ID.fullmatch(name) and INSTANCE_ID.fullmatch(instance) and child.is_dir():
+            ids.add(name)
+    found = []
+    for feature_id in sorted(ids):
+        current = open_current(feature_id)
+        if current is not None:
+            found.append(current)
+    return found

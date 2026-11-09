@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from ticket_pipeline.lib import state_store
+from ticket_pipeline.lib import ledger, state_store
 from ticket_pipeline.lib.task_store import operate
 
 FEATURE = {
@@ -86,7 +86,7 @@ def state(tmp_path, monkeypatch):
     # A previously verified root lets these unit tests add independent corrective issues.
     finish("F1")
     operate("design-reopen", "F1", {"reason": "Plan corrective issues"})
-    return tmp_path / ".scaffold/tasks.json"
+    return ledger.open_current("F1").path
 
 
 def cli(root, *args, payload=None, ok=True):
@@ -141,27 +141,46 @@ def test_dependencies_and_completion_require_design_then_checkpoints(state):
         operate("complete", "F1", {**evidence("later"), "reference": "other"}, "later")
 
 
-def test_old_state_and_opt_in_are_rejected_without_modifying_files(state):
-    data = json.loads(state.read_text())
-    for version in (1, 3):
-        data["schema_version"] = version
-        state.write_text(json.dumps(data))
-        before = state.read_bytes()
-        with pytest.raises(ValueError, match="schema_version"):
-            operate("list", "F1")
-        assert state.read_bytes() == before
-    data["schema_version"] = 2
-    del data["features"]["F1"]["workflow"]
-    state.write_text(json.dumps(data))
-    before = state.read_bytes()
+def test_legacy_tasks_json_is_ignored_and_never_modified(tmp_path, monkeypatch):
+    monkeypatch.setattr(state_store, "SCAFFOLD_DIR", tmp_path / ".scaffold")
+    monkeypatch.setattr(state_store, "STATE_LOCK_FILE", tmp_path / ".scaffold/.tasks.lock")
+    legacy = tmp_path / ".scaffold/tasks.json"
+    legacy.parent.mkdir()
+    legacy.write_text(json.dumps({"schema_version": 2, "features": {"OLD": {"id": "OLD"}}}))
+    before = legacy.read_bytes()
+    with pytest.raises(ValueError, match="legacy .scaffold/tasks.json"):
+        operate("list", "OLD")
+    operate("init", "F1", FEATURE)
+    assert operate("list", "F1")["schema_version"] == 3
+    assert legacy.read_bytes() == before
+
+
+def test_a_ledger_without_the_issue_workflow_is_rejected_unmodified(tmp_path, monkeypatch):
+    monkeypatch.setattr(state_store, "SCAFFOLD_DIR", tmp_path / ".scaffold")
+    monkeypatch.setattr(state_store, "STATE_LOCK_FILE", tmp_path / ".scaffold/.tasks.lock")
+    forged = ledger.create("F1", "a" * 32)
+    forged.append("init", {}, {"id": "F1", "tasks": {}, "workflow": {"instance_id": "a" * 32}})
+    before = forged.path.read_bytes()
     with pytest.raises(ValueError, match="issue graph"):
         operate("start", "F1", task_id="F1")
+    assert forged.path.read_bytes() == before
+
+
+def test_tampered_ledger_blocks_every_operation_without_modification(state):
+    data = state.read_bytes()
+    state.write_bytes(data.replace(b'"objective"', b'"objectivx"', 1))
+    before = state.read_bytes()
+    for action in ("list", "next", "summary"):
+        with pytest.raises(ValueError):
+            operate(action, "F1")
+    with pytest.raises(ValueError):
+        operate("add", "F1", [task("a")])
     assert state.read_bytes() == before
 
 
 def test_process_persistence_and_concurrent_adds(tmp_path):
     init = cli(tmp_path, "init", "--feature", "F1", "--input", "-", payload=FEATURE)
-    assert init["schema_version"] == 2
+    assert init["schema_version"] == 3
     assert init["feature"]["workflow"]["phase"] == "design"
     assert list(init["feature"]["tasks"]) == ["F1"]
 
@@ -174,19 +193,21 @@ def test_process_persistence_and_concurrent_adds(tmp_path):
     cli(tmp_path, "start", "--feature", "F1", "--task", "0", ok=False)
 
 
-def test_interrupted_atomic_write_and_os_lock_recovery(state, monkeypatch):
+def test_interrupted_append_leaves_the_ledger_unchanged_and_recovers(state, monkeypatch):
     before = state.read_bytes()
-    with monkeypatch.context() as patch:
+    for failing in ("write", "fsync"):
+        with monkeypatch.context() as patch:
 
-        def interrupted(*args):
-            raise OSError("Simulated replacement interruption")
+            def interrupted(*args):
+                raise OSError("Simulated append interruption")
 
-        patch.setattr(state_store.os, "replace", interrupted)
-        with pytest.raises(OSError):
-            operate("add", "F1", [task("lost")])
-    assert state.read_bytes() == before
+            patch.setattr(ledger.os, failing, interrupted)
+            with pytest.raises(OSError):
+                operate("add", "F1", [task("lost")])
+        assert state.read_bytes() == before
     operate("add", "F1", [task("a")])
     assert "a" in operate("list", "F1")["feature"]["tasks"]
+    assert "lost" not in operate("list", "F1")["feature"]["tasks"]
 
 
 def test_missing_baseline_branch_and_old_selector_cannot_create_an_alternate_flow(tmp_path):
@@ -196,13 +217,13 @@ def test_missing_baseline_branch_and_old_selector_cannot_create_an_alternate_flo
         {**FEATURE, "workflow": "recursive-issues/v1"},
     ):
         cli(tmp_path, "init", "--feature", "F1", "--input", "-", payload=payload, ok=False)
-        assert not (tmp_path / ".scaffold/tasks.json").exists()
+        assert not (tmp_path / ".scaffold/features").exists()
 
 
 @pytest.mark.parametrize("kind", [[], {}, None, 42, True, ["design"]])
 def test_malformed_origin_returns_json_error_and_preserves_state(tmp_path, kind):
     cli(tmp_path, "init", "--feature", "F1", "--input", "-", payload=FEATURE)
-    path = tmp_path / ".scaffold/tasks.json"
+    (path,) = (tmp_path / ".scaffold/features").glob("F1.*/ledger.jsonl")
     before = path.read_bytes()
     result = cli(
         tmp_path,
@@ -216,6 +237,6 @@ def test_malformed_origin_returns_json_error_and_preserves_state(tmp_path, kind)
         payload=[{**task("bad"), "origin": {"kind": kind, "reference": "receipt"}}],
         ok=False,
     )
-    assert result["schema_version"] == 2
+    assert result["schema_version"] == 3
     assert "origin" in result["error"].lower()
     assert path.read_bytes() == before

@@ -39,7 +39,8 @@ def rewrite(led, mutate):
 def random_state(rng, depth=0):
     state = {}
     for key in rng.sample("abcdefg", rng.randint(0, 5)):
-        kind = rng.choice(["int", "str", "list", "dict", "bool", "none"] if depth < 3 else ["int", "str"])
+        kinds = ["int", "str", "list", "dict", "bool", "none"] if depth < 3 else ["int", "str"]
+        kind = rng.choice(kinds)
         if kind == "int":
             state[key] = rng.randint(0, 3)
         elif kind == "str":
@@ -267,7 +268,8 @@ def test_symbolic_links_in_ledger_paths_are_refused(scaffold, tmp_path):
 
 def _worker(root, count, tag):
     sys.path.insert(0, str(root))
-    from ticket_pipeline.lib import ledger as L, state_store as S
+    from ticket_pipeline.lib import ledger as L
+    from ticket_pipeline.lib import state_store as S
 
     S.SCAFFOLD_DIR = type(S.SCAFFOLD_DIR)(root) / ".scaffold"
     S.STATE_LOCK_FILE = S.SCAFFOLD_DIR / ".tasks.lock"

@@ -86,13 +86,14 @@ def test_read_and_write_tasks_use_one_lock(state_dir, monkeypatch):
     assert listed["feature"]["id"] == "F1"
     assert entries == [True, True]
     assert (state_dir / ".tasks.lock").is_file()
-    assert (state_dir / "tasks.json").exists()
+    assert len(list((state_dir / "features").glob("F1.*/ledger.jsonl"))) == 1
+    assert not (state_dir / "tasks.json").exists()
     assert not (state_dir / ".criteria-stack.lock").exists()
 
 
-def test_existing_schema_v2_tasks_are_readable_without_migration(state_dir):
+def test_existing_ledger_is_readable_after_the_lock_file_is_lost(state_dir):
     original = operate("init", "F1", feature())["feature"]
-    path = state_dir / "tasks.json"
+    (path,) = (state_dir / "features").glob("F1.*/ledger.jsonl")
     before = path.read_bytes()
     (state_dir / ".tasks.lock").unlink()
 
@@ -134,4 +135,4 @@ def test_task_state_refuses_symlinked_lock_paths(state_dir, monkeypatch, target)
         (state_dir / ".tasks.lock").symlink_to(real_lock)
     with pytest.raises(ValueError, match="symbolic link"):
         operate("init", "F1", feature())
-    assert not (state_dir / "tasks.json").exists()
+    assert not (state_dir / "features").exists()

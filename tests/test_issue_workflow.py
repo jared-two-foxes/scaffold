@@ -3,7 +3,7 @@
 import pytest
 from test_tasks import FEATURE, evidence, task
 
-from ticket_pipeline.lib import state_store
+from ticket_pipeline.lib import ledger, state_store
 from ticket_pipeline.lib.task_store import operate
 
 
@@ -20,7 +20,7 @@ def state(tmp_path, monkeypatch):
             "branch": "feature/test",
         },
     )
-    return tmp_path / ".scaffold/tasks.json"
+    return ledger.open_current("F1").path
 
 
 def call(action, identifier=None, payload=None):
@@ -178,9 +178,8 @@ def test_dependency_designs_are_invalidated_and_checkpoint_replays_are_noops(sta
     before = state.read_bytes()
     call("checkpoint-record", "a", {"commit": "a" * 40, "reference": evidence("a")["reference"]})
     assert state.read_bytes() == before
-    import json
 
-    assert json.loads(state.read_bytes())["schema_version"] == 2
+    assert call("list")["schema_version"] == 3
 
 
 def test_issue_cli_persists_design_and_phase_across_processes(tmp_path):
@@ -192,7 +191,7 @@ def test_issue_cli_persists_design_and_phase_across_processes(tmp_path):
         "branch": "feature/issues",
     }
     created = cli(tmp_path, "init", "--feature", "F1", "--input", "-", payload=feature)
-    assert created["schema_version"] == 2
+    assert created["schema_version"] == 3
     assert cli(tmp_path, "design-next", "--feature", "F1")["task"]["id"] == "F1"
     cli(tmp_path, "start", "--feature", "F1", "--task", "F1", ok=False)
     cli(
