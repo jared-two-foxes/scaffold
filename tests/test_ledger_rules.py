@@ -436,6 +436,57 @@ def test_rewrite_replaces_history_and_keeps_the_old_one(fresh):
     operate("start", "F1", task_id="b")
 
 
+def test_rewrite_rejects_malformed_or_swapped_foreign_segments(fresh):
+    current = build_history(fresh)
+    foreign_index = next(i for i, s in enumerate(current["history"]) if s["kind"] == "foreign")
+    before = snapshot(fresh)
+
+    def attempt(mutate, match):
+        payload = copy.deepcopy(rewrite_payload(current))
+        mutate(payload["history"][foreign_index])
+        with pytest.raises(ValueError, match=match):
+            operate("history-rewrite", "F1", payload)
+        assert snapshot(fresh) == before
+
+    attempt(lambda seg: seg["commits"][0].pop("parents"), "Invalid foreign commit")
+    attempt(lambda seg: seg["commits"][0].pop("subject"), "Invalid foreign commit")
+    attempt(lambda seg: seg.update(approval="sha256:" + "f" * 64), "keep its source, approval")
+    attempt(lambda seg: seg.update(source="upstream-merge"), "keep its source, approval")
+
+
+def test_history_change_clears_the_current_validation_but_a_replay_does_not(fresh):
+    build_history(fresh)
+    operate("start", "F1", task_id="b")
+    passing = record_attempt("F1", "b", "PASSED")
+    operate("complete", "F1", {**evidence("b"), "reference": passing}, "b")
+    record_checkpoint("F1", "b", passing)
+    operate("start", "F1", task_id="F1")
+    parent_pass = record_attempt("F1", "F1")
+    operate("complete", "F1", {**evidence("F1"), "reference": parent_pass}, "F1")
+    record_checkpoint("F1", "F1", parent_pass)
+    current = feature()
+    feature_state = current
+    binding = {
+        "feature_id": "F1",
+        "design_ref": FEATURE["design_ref"],
+        "baseline": BASE,
+        "head": current["head"],
+        "tree": sha("t"),
+        "branch": "feature/test",
+        "task_revision": feature_state["task_revision"],
+        "plan_digest": "d" * 64,
+    }
+    operate("validation-start", "F1", {"attempt_id": "x", "binding": binding})
+    assert feature()["validation"]["current"] == "x"
+    payload = rewrite_payload(current)
+    operate("history-rewrite", "F1", payload)
+    assert feature()["validation"]["current"] is None
+    assert feature()["validation"]["status"] == "awaiting_validation"
+    before = snapshot(fresh)
+    operate("history-rewrite", "F1", payload)  # identical replay stays a no-op
+    assert snapshot(fresh) == before
+
+
 def test_malformed_rewrites_are_rejected_without_change(fresh):
     current = build_history(fresh)
     good = rewrite_payload(current)

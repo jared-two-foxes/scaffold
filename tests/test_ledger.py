@@ -308,3 +308,21 @@ def test_documented_limit_removing_trailing_entries_is_not_detectable(scaffold):
     led.path.write_bytes(b"".join(x + b"\n" for x in kept))
     shorter = ledger.Ledger(led.directory)
     assert len(shorter.entries) == 3 and shorter.state["log"] == [0, 1]
+
+
+def test_directory_sync_failure_rolls_the_append_back(scaffold, monkeypatch):
+    led = fresh()
+    led.append("a", {}, {"n": 1})
+    committed = led.path.read_bytes()
+
+    def boom():
+        raise OSError("fsync failed")
+
+    monkeypatch.setattr(led, "_fsync_directory", boom)
+    with pytest.raises(OSError):
+        led.append("a", {}, {"n": 2})
+    assert led.path.read_bytes() == committed
+    assert len(led.entries) == 1 and led.state == {"n": 1}
+    monkeypatch.undo()
+    led.append("a", {}, {"n": 2})
+    assert len(lines(led)) == 2

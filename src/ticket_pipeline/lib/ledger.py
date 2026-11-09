@@ -264,16 +264,18 @@ class Ledger:
                 while written < len(line):
                     written += os.write(descriptor, line[written:])
                 os.fsync(descriptor)
+                # Durably publish the new directory entry inside the rollback-protected block.
+                self._fsync_directory()
             except BaseException:
                 # A failed append must leave the ledger exactly as it was.
                 try:
                     os.ftruncate(descriptor, self._committed)
+                    os.fsync(descriptor)
                 except OSError:  # pragma: no cover - best effort; a torn tail is ignored on read
                     pass
                 raise
         finally:
             os.close(descriptor)
-        self._fsync_directory()
         self._committed += len(line)
         self.entries.append(entry)
         self.state = copy.deepcopy(new_state)

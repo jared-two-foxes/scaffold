@@ -49,16 +49,7 @@ def _no_active_work(feature: dict) -> None:
     )
 
 
-def _foreign(feature: dict, payload: object) -> None:
-    fields = {"from", "to", "source", "commits", "approval"}
-    require(
-        isinstance(payload, dict) and set(payload) == fields,
-        "Foreign history requires " + ", ".join(sorted(fields)),
-    )
-    require(payload["source"] in SOURCES, "Unknown foreign history source")
-    require(is_commit(payload["from"]) and is_commit(payload["to"]), "Full commit SHAs required")
-    require(is_reference(payload["approval"]), "A retained user approval is required")
-    commits = payload["commits"]
+def _check_commits(commits: object, target: str) -> None:
     require(
         isinstance(commits, list) and 0 < len(commits) <= MAX_COMMITS,
         "Foreign history needs 1.." + str(MAX_COMMITS) + " commits",
@@ -74,7 +65,20 @@ def _foreign(feature: dict, payload: object) -> None:
             and isinstance(item["subject"], str),
             "Invalid foreign commit entry",
         )
-    require(commits[-1]["commit"] == payload["to"], "The range must end at its target commit")
+    require(commits[-1]["commit"] == target, "The range must end at its target commit")
+
+
+def _foreign(feature: dict, payload: object) -> None:
+    fields = {"from", "to", "source", "commits", "approval"}
+    require(
+        isinstance(payload, dict) and set(payload) == fields,
+        "Foreign history requires " + ", ".join(sorted(fields)),
+    )
+    require(payload["source"] in SOURCES, "Unknown foreign history source")
+    require(is_commit(payload["from"]) and is_commit(payload["to"]), "Full commit SHAs required")
+    require(is_reference(payload["approval"]), "A retained user approval is required")
+    commits = payload["commits"]
+    _check_commits(commits, payload["to"])
     last = feature["history"][-1] if feature["history"] else None
     if last is not None and last == {"kind": "foreign", **payload}:
         return  # idempotent replay of the last segment
@@ -142,11 +146,17 @@ def _rewrite(feature: dict, payload: object) -> None:
         else:
             require(
                 set(after) == set(before)
+                and after["source"] == before["source"]
+                and after["approval"] == before["approval"]
+                and is_commit(after["from"])
                 and after["from"] == previous
-                and len(after["commits"]) == len(before["commits"])
-                and after["commits"][-1]["commit"] == after["to"],
-                "Rewritten foreign range must keep its size and continue the chain",
+                and is_commit(after["to"])
+                and isinstance(after["commits"], list)
+                and len(after["commits"]) == len(before["commits"]),
+                "Rewritten foreign range must keep its source, approval and size "
+                "and continue the chain",
             )
+            _check_commits(after["commits"], after["to"])
             previous = after["to"]
     require(previous == payload["new_head"], "Rewritten history must end at the new head")
     feature["epochs"].append(

@@ -303,7 +303,11 @@ def operate(
             elif action in attempts.ACTIONS:
                 attempts.record(feature, task_id, payload)
             else:
+                bound = (feature["head"], feature["base"])
                 history.transition(feature, action, payload)
+                if (feature["head"], feature["base"]) != bound and "validation" in feature:
+                    # Validation is bound to the old head/base; an identical replay changes nothing.
+                    feature["validation"].update(current=None, status="awaiting_validation")
             commit()
             return {"schema_version": VERSION, "feature": feature_validation.view(feature)}
         if action in delivery.ACTIONS:
