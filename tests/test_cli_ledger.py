@@ -134,6 +134,7 @@ def test_every_ledger_action_is_reachable_through_the_cli(tmp_path):
         payload={
             "old_head": C,
             "new_head": "3" * 40,
+            "new_base": FEATURE["baseline"],
             "history": rewritten,
             "verification": proof["reference"],
         },

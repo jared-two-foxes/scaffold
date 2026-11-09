@@ -25,6 +25,9 @@ MAX_COMMITS = 200
 
 
 def initialize(feature: dict) -> None:
+    # `original_baseline` is the immutable fork point. `base` is where the *current* history starts;
+    # it equals the original baseline until a rewrite (rebase) moves it onto a new upstream commit.
+    feature["base"] = feature["original_baseline"]
     feature["head"] = feature["original_baseline"]
     feature["history"] = []
     feature["epochs"] = []
@@ -91,30 +94,37 @@ def _foreign(feature: dict, payload: object) -> None:
 
 
 def _rewrite(feature: dict, payload: object) -> None:
-    fields = {"old_head", "new_head", "history", "verification"}
+    fields = {"old_head", "new_head", "new_base", "history", "verification"}
     require(
         isinstance(payload, dict) and set(payload) == fields,
         "Rewrite requires " + ", ".join(sorted(fields)),
     )
     require(is_reference(payload["verification"]), "A retained verification is required")
     require(
-        is_commit(payload["old_head"]) and is_commit(payload["new_head"]),
+        is_commit(payload["old_head"])
+        and is_commit(payload["new_head"])
+        and is_commit(payload["new_base"]),
         "Full commit SHAs required",
     )
+    last = feature["epochs"][-1] if feature["epochs"] else None
     if (
         feature["head"] == payload["new_head"]
-        and feature["epochs"]
-        and feature["epochs"][-1]["verification"] == payload["verification"]
+        and feature["base"] == payload["new_base"]
+        and last
+        and last["verification"] == payload["verification"]
     ):
         return  # idempotent replay
     _no_active_work(feature)
     require(payload["old_head"] == feature["head"], "Rewrite must start from the recorded head")
-    require(payload["new_head"] != payload["old_head"], "Nothing was rewritten")
+    require(
+        payload["new_head"] != payload["old_head"] or payload["new_base"] != feature["base"],
+        "Nothing was rewritten",
+    )
     new, old = payload["history"], feature["history"]
     require(
         isinstance(new, list) and len(new) == len(old), "Rewrite must keep every recorded segment"
     )
-    previous = feature["original_baseline"]
+    previous = payload["new_base"]  # the history now starts from the rebased-onto commit
     for before, after in zip(old, new, strict=True):
         require(
             isinstance(after, dict) and after.get("kind") == before["kind"], "Segment kind changed"
@@ -141,6 +151,7 @@ def _rewrite(feature: dict, payload: object) -> None:
     require(previous == payload["new_head"], "Rewritten history must end at the new head")
     feature["epochs"].append(
         {
+            "base": feature["base"],
             "head": payload["old_head"],
             "history": copy.deepcopy(old),
             "verification": payload["verification"],
@@ -148,6 +159,7 @@ def _rewrite(feature: dict, payload: object) -> None:
     )
     feature["history"] = copy.deepcopy(new)
     feature["head"] = payload["new_head"]
+    feature["base"] = payload["new_base"]
     for segment in new:
         if segment["kind"] == "checkpoint":
             task = feature["tasks"][segment["task_id"]]

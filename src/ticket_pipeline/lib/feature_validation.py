@@ -72,8 +72,9 @@ def transition(feature, action, payload):
                 "Feature/design mismatch")
         require(type(binding["task_revision"]) is int
                 and binding["task_revision"] == feature.get("task_revision", 0), "Task graph changed")
-        require(feature.get("original_baseline", binding["baseline"]) == binding["baseline"],
-                "Original feature baseline cannot change")
+        require(feature["base"] == binding["baseline"],
+                "Validation baseline must be the ledger's history base (the fork point, "
+                "or the commit the history was last rebased onto)")
         eligible(feature)
         require(
             binding["head"] == feature["head"],
@@ -86,7 +87,6 @@ def transition(feature, action, payload):
         if existing:
             require(existing.get("binding") == binding, "Attempt identity conflict")
             return
-        feature["original_baseline"] = binding["baseline"]
         validation["history"].append({"event": "started", **copy.deepcopy(payload),
                                       "recorded_at": datetime.now(UTC).isoformat()})
         validation.update(current=attempt, status="validating")

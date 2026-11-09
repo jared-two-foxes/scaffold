@@ -378,8 +378,10 @@ def test_foreign_history_is_bounded_and_noop_ranges_are_rejected(fresh):
         operate("history-foreign", "F1", {**foreign(), "commits": [base_commit], "to": BASE})
 
 
-def rewrite_payload(current, shift="r"):
-    new, previous = [], current["original_baseline"]
+def rewrite_payload(current, shift="r", new_base=None):
+    # A rebase puts the history on a new base; the default keeps the current one.
+    new_base = new_base or current["base"]
+    new, previous = [], new_base
     for segment in current["history"]:
         if segment["kind"] == "checkpoint":
             moved = {
@@ -397,6 +399,7 @@ def rewrite_payload(current, shift="r"):
     return {
         "old_head": current["head"],
         "new_head": previous,
+        "new_base": new_base,
         "history": new,
         "verification": operate("artifact-put", "F1", {"verified": shift})["reference"],
     }
@@ -416,6 +419,7 @@ def test_rewrite_replaces_history_and_keeps_the_old_one(fresh):
     assert after["head"] == payload["new_head"] and after["history"] == payload["history"]
     assert after["epochs"] == [
         {
+            "base": BASE,
             "head": current["head"],
             "history": current["history"],
             "verification": payload["verification"],
@@ -531,3 +535,79 @@ def test_foreign_segments_keep_their_own_kind_marker(fresh):
     operate("history-foreign", "F1", foreign())
     segment = feature()["history"][-1]
     assert segment["kind"] == "foreign" and segment["source"] == "user-commits"
+
+
+def test_rewrite_onto_a_new_base_moves_the_base_and_keeps_the_original_baseline(fresh):
+    current = build_history(fresh)
+    assert current["base"] == BASE
+    upstream = sha("new upstream tip")
+    payload = rewrite_payload(current, new_base=upstream)
+    assert payload["history"][0]["parent"] == upstream  # the chain now starts at the new base
+    operate("history-rewrite", "F1", payload)
+    after = feature()
+    assert after["base"] == upstream and after["original_baseline"] == BASE
+    assert after["epochs"][-1]["base"] == BASE and after["epochs"][-1]["head"] == current["head"]
+    before = snapshot(fresh)
+    operate("history-rewrite", "F1", payload)  # replay
+    assert snapshot(fresh) == before
+    # A second rebase chains from the new base, and every epoch is kept.
+    again = rewrite_payload(after, shift="s", new_base=sha("later upstream"))
+    operate("history-rewrite", "F1", again)
+    assert [e["base"] for e in feature()["epochs"]] == [BASE, upstream]
+
+
+def test_a_rewrite_that_does_not_continue_from_its_new_base_is_rejected(fresh):
+    current = build_history(fresh)
+    payload = rewrite_payload(current, new_base=sha("upstream"))
+    before = snapshot(fresh)
+    for broken in (
+        {"new_base": sha("someone else")},  # history no longer starts at the new base
+        {"new_base": "short"},
+        {"new_base": None},
+    ):
+        with pytest.raises((ValueError, ledger.LedgerError)):
+            operate("history-rewrite", "F1", {**payload, **broken})
+    with pytest.raises(ValueError):
+        operate("history-rewrite", "F1", {k: v for k, v in payload.items() if k != "new_base"})
+    assert snapshot(fresh) == before
+
+
+def test_a_rewrite_that_changes_neither_head_nor_base_is_rejected(fresh):
+    current = build_history(fresh)
+    same = {
+        "old_head": current["head"],
+        "new_head": current["head"],
+        "new_base": current["base"],
+        "history": current["history"],
+        "verification": operate("artifact-put", "F1", {"v": "same"})["reference"],
+    }
+    with pytest.raises(ValueError, match="Nothing was rewritten"):
+        operate("history-rewrite", "F1", same)
+
+
+def test_validation_binds_to_the_history_base_not_the_original_baseline(fresh):
+    approve_direction()
+    for task_id in ("a", "b", "F1"):
+        operate("start", "F1", task_id=task_id)
+        record_attempt("F1", task_id)
+        operate("complete", "F1", evidence(task_id), task_id)
+        record_checkpoint("F1", task_id)
+    current = feature()
+    upstream = sha("rebased onto")
+    operate("history-rewrite", "F1", rewrite_payload(current, new_base=upstream))
+    moved = feature()
+    binding = {
+        "feature_id": "F1",
+        "design_ref": FEATURE["design_ref"],
+        "baseline": BASE,
+        "head": moved["head"],
+        "tree": sha("t"),
+        "branch": "feature/test",
+        "task_revision": moved["task_revision"],
+        "plan_digest": "d" * 64,
+    }
+    with pytest.raises(ValueError, match="history base"):
+        operate("validation-start", "F1", {"attempt_id": "x", "binding": binding})
+    operate(
+        "validation-start", "F1", {"attempt_id": "x", "binding": {**binding, "baseline": upstream}}
+    )

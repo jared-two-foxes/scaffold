@@ -73,9 +73,11 @@ Rules Scaffold enforces on the ledger:
   (`{from, to, source, commits, approval}`), between tasks only. They are recorded, never
   verified, and remain in review scope.
 - `history-rewrite` replaces the recorded history after a rebase
-  (`{old_head, new_head, history, verification}`), keeping the previous history in `epochs`.
+  (`{old_head, new_head, new_base, history, verification}`), keeping the previous history (and its
+  base) in `epochs`. `original_baseline` never changes; `base` is where the *current* history starts
+  (the fork point until a rewrite moves it onto the commit that was rebased onto).
 - `validation-start` requires the validated `head` to equal the ledger's recorded head, so the
-  ledger accounts for every commit.
+  ledger accounts for every commit, and the validated `baseline` to equal the ledger's `base`.
 
 Scaffold cannot see Git. Pi confirms every commit, tree and ancestry before appending.
 `scaffold features` lists open feature instances (`id`, `instance_id`, `phase`, `validation_status`,
