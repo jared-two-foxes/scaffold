@@ -37,6 +37,7 @@ TASK_ACTIONS = (
     "attempt-record",
     "history-foreign",
     "history-rewrite",
+    "failure-record",
     "artifact-put",
     "artifact-get",
 )
@@ -63,7 +64,7 @@ def main() -> None:
             "attempt-record",
         }:
             command.add_argument("--task", required=True)
-        if action == "design-reopen":
+        if action in {"design-reopen", "failure-record"}:
             command.add_argument("--task")
         if action in {
             "init",
@@ -82,6 +83,7 @@ def main() -> None:
             "attempt-record",
             "history-foreign",
             "history-rewrite",
+            "failure-record",
             "artifact-put",
             "artifact-get",
         }:

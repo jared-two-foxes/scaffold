@@ -10,6 +10,7 @@ from ticket_pipeline.lib import (
     attempts,
     delivery,
     direction,
+    failures,
     feature_validation,
     history,
     issue_workflow,
@@ -34,6 +35,7 @@ def _artifact_references(action: str, payload: object) -> list[object]:
         "design-reopen": ("reference",),
         "issue-resume": ("reference", "handoff"),
         "validation-record": ("reference",),
+        "failure-record": ("evidence",),
     }.get(action, ())
     return [payload[f] for f in fields if f in payload]
 
@@ -183,6 +185,7 @@ def operate(
         | direction.ACTIONS
         | attempts.ACTIONS
         | history.ACTIONS
+        | failures.ACTIONS
         | ARTIFACT_ACTIONS
         | issue_workflow.ACTIONS
         | scoped_queries.ACTIONS
@@ -308,6 +311,10 @@ def operate(
                 if (feature["head"], feature["base"]) != bound and "validation" in feature:
                     # Validation is bound to the old head/base; an identical replay changes nothing.
                     feature["validation"].update(current=None, status="awaiting_validation")
+            commit()
+            return {"schema_version": VERSION, "feature": feature_validation.view(feature)}
+        if action in failures.ACTIONS:
+            failures.record(feature, task_id, payload)
             commit()
             return {"schema_version": VERSION, "feature": feature_validation.view(feature)}
         if action in delivery.ACTIONS:
