@@ -3,8 +3,8 @@
 A pipeline tool that fails (blocked, needs a design change, or crashed) appends a
 ``failure-record`` entry. The entry is a log line, not a state machine step: it is accepted in any
 phase for any open feature, and never blocks or unblocks work. The full record is the ledger
-entry's body; the feature keeps only a short, bounded list of recent failures so a ``list`` shows
-what has been going wrong without growing without limit.
+entry's body; the feature keeps a total count and a short, bounded list of recent failures so
+a ``list`` shows what has been going wrong without growing without limit.
 
 ``owner`` says who must act: ``agent`` (fix and retry), ``user`` (a decision or approval is
 needed) or ``bug`` (the pipeline itself failed unexpectedly).
@@ -44,7 +44,10 @@ def record(feature: dict, task_id: str | None, payload: object) -> None:
         isinstance(payload["tool"], str) and TOOL.match(payload["tool"]),
         "tool must be a tool name",
     )
-    require(payload["owner"] in OWNERS, "owner must be one of " + ", ".join(sorted(OWNERS)))
+    require(
+        isinstance(payload["owner"], str) and payload["owner"] in OWNERS,
+        "owner must be one of " + ", ".join(sorted(OWNERS)),
+    )
     require(
         _text(payload["message"], 2000), "message must be nonempty text of at most 2000 characters"
     )
@@ -77,3 +80,6 @@ def record(feature: dict, task_id: str | None, payload: object) -> None:
     recent = feature.setdefault("failures", [])
     recent.append(entry)
     del recent[:-KEEP]
+    # Every record must change state so the ledger always appends it: once the recent list holds
+    # identical summaries it would not, and the full record (cause, evidence, steps) would be lost.
+    feature["failure_count"] = feature.get("failure_count", 0) + 1

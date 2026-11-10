@@ -80,7 +80,8 @@ Rules Scaffold enforces on the ledger:
   optional `stage`, `cause`, `evidence` (a stored artifact reference) and `next` (up to five short
   steps). `owner` is `agent` (fix and retry), `user` (a decision is needed) or `bug` (the pipeline
   failed unexpectedly). It is a log entry: accepted in any phase for an open feature, it never
-  changes the work. The full record is the ledger entry; `list` shows the last 20 as `failures`.
+  changes the work. The full record is the ledger entry (every one is appended, even a repeat);
+  `list` shows the last 20 as `failures` and the total as `failure_count`.
 - `validation-start` requires the validated `head` to equal the ledger's recorded head, so the
   ledger accounts for every commit, and the validated `baseline` to equal the ledger's `base`.
 

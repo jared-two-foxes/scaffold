@@ -67,6 +67,10 @@ def test_a_failure_is_recorded_before_direction_is_approved_and_for_the_feature(
     "change",
     [
         {"owner": "nobody"},
+        {"owner": []},
+        {"owner": {}},
+        {"owner": None},
+        {"owner": 1},
         {"code": "lowercase"},
         {"code": "AB"},
         {"tool": "Not A Tool"},
@@ -145,3 +149,27 @@ def test_through_the_command_line_the_task_is_optional(tmp_path):
         ok=False,
     )
     assert "owner" in refused["error"]
+
+
+def test_identical_summaries_still_append_every_full_record(fresh):  # noqa: F811
+    # Once the recent list is full of identical summaries the list itself stops changing; the record
+    # (with its distinct cause, evidence and next steps) must still reach the ledger.
+    for number in range(25):
+        operate("failure-record", "F1", {**GOOD, "cause": f"cause {number}"})
+    logged = [e for e in entries(fresh) if e["type"] == "failure-record"]
+    assert [e["body"]["payload"]["cause"] for e in logged] == [f"cause {n}" for n in range(25)]
+    state = listed()
+    assert state["failure_count"] == 25 and len(state["failures"]) == 20
+
+
+def test_a_non_string_owner_is_a_json_error_not_a_traceback(tmp_path):
+    run(tmp_path, "init", *feature_args("--input", "-"), payload=FEATURE)
+    for owner in ([], {}, None):
+        refused = run(
+            tmp_path,
+            "failure-record",
+            *feature_args("--input", "-"),
+            payload={**GOOD, "owner": owner},
+            ok=False,
+        )
+        assert "owner" in refused["error"]
