@@ -55,8 +55,8 @@ never apply to it.
 Evidence is referenced as `sha256:<64 hex>` naming an artifact in the same ledger. Store one
 with `scaffold artifact-put --feature F --input -` (returns `{reference}`) and read it back
 with `artifact-get`. Actions that cite a reference (`attempt-record`, `history-foreign`,
-`history-rewrite`, `issue-resume`, `validation-record`, a suspension reference in
-`design-reopen`) reject one that is not stored.
+`history-rewrite`, `issue-resume`, `validation-record`, `failure-record`, a suspension
+reference in `design-reopen`) reject one that is not stored.
 
 Rules Scaffold enforces on the ledger:
 
@@ -76,6 +76,11 @@ Rules Scaffold enforces on the ledger:
   (`{old_head, new_head, new_base, history, verification}`), keeping the previous history (and its
   base) in `epochs`. `original_baseline` never changes; `base` is where the *current* history starts
   (the fork point until a rewrite moves it onto the commit that was rebased onto).
+- `failure-record --input -` (and optionally `--task T`) takes `{code, message, tool, owner}` plus
+  optional `stage`, `cause`, `evidence` (a stored artifact reference) and `next` (up to five short
+  steps). `owner` is `agent` (fix and retry), `user` (a decision is needed) or `bug` (the pipeline
+  failed unexpectedly). It is a log entry: accepted in any phase for an open feature, it never
+  changes the work. The full record is the ledger entry; `list` shows the last 20 as `failures`.
 - `validation-start` requires the validated `head` to equal the ledger's recorded head, so the
   ledger accounts for every commit, and the validated `baseline` to equal the ledger's `base`.
 
