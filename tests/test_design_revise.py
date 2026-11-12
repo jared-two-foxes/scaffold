@@ -116,3 +116,56 @@ def test_revision_is_refused_after_a_recorded_design_is_reopened(draft):
     with pytest.raises(ValueError, match="before any issue design work"):
         revise("design v2")
     assert draft.read_bytes() == before
+
+
+def test_revision_replaces_requirements_with_the_context(draft):
+    """A criterion dropped from the revised design must not stay mandatory."""
+    result = operate(
+        "design-revise",
+        "F1",
+        {
+            "context": "design v2",
+            "design_ref": ref("design v2"),
+            "title": "New title",
+            "objective": "New objective",
+            "acceptance_criteria": ["Only this"],
+            "constraints": ["No more"],
+        },
+    )["feature"]
+    root = result["tasks"]["F1"]
+    for target in (result, root):
+        assert target["title"] == "New title"
+        assert target["objective"] == "New objective"
+        assert target["acceptance_criteria"] == ["Only this"]
+        assert target["constraints"] == ["No more"]
+
+
+def test_omitted_requirements_are_left_unchanged(draft):
+    before = feature()
+    result = revise("design v2")["feature"]
+    for field in ("title", "objective", "acceptance_criteria"):
+        assert result[field] == before[field]
+        assert result["tasks"]["F1"][field] == before["tasks"]["F1"][field]
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"acceptance_criteria": []},
+        {"acceptance_criteria": [" "]},
+        {"acceptance_criteria": "x"},
+        {"objective": " "},
+        {"title": 3},
+        {"constraints": [1]},
+        {"unknown": 1},
+    ],
+)
+def test_invalid_requirement_revisions_leave_the_ledger_unchanged(draft, extra):
+    before = draft.read_bytes()
+    with pytest.raises(ValueError):
+        operate(
+            "design-revise",
+            "F1",
+            {"context": "design v2", "design_ref": ref("design v2"), **extra},
+        )
+    assert draft.read_bytes() == before
