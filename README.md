@@ -31,7 +31,10 @@ deleted; current task operations use the ledger under `.scaffold/features/` and
 ## Revising the design before approval
 
 `scaffold design-revise --feature F --input -` takes `{"context", "design_ref"}` (the full
-revised design and its `sha256:` digest) and replaces the feature and root-issue design. It is
+revised design and its `sha256:` digest) and replaces the feature and root-issue design. The
+payload may also carry revised `title`, `objective`, `acceptance_criteria` and `constraints`;
+these are replaced together with the context, so a criterion dropped from the design stops
+being required. It is
 refused once the direction is approved or any issue design work exists, and a previous
 approval never applies to a revised design (the approval scope digest covers the design).
 

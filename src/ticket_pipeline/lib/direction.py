@@ -8,6 +8,7 @@ This records *that* approval was supplied; the native Pi tool is what obtains it
 
 from __future__ import annotations
 
+import copy
 import hashlib
 
 from ticket_pipeline.lib import ledger
@@ -25,6 +26,13 @@ DEFINITION = (
     "baseline",
     "branch",
 )
+
+
+REQUIREMENT_FIELDS = ("title", "objective", "acceptance_criteria", "constraints")
+
+
+def _is_text(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
 
 
 def definition_digest(feature: dict) -> str:
@@ -58,19 +66,46 @@ def approve(feature: dict, payload: object) -> None:
 
 
 def revise(feature: dict, payload: object) -> None:
-    """Replace the feature's design context before the direction is approved.
+    """Replace the feature's design before the direction is approved.
 
     The user's alterations are applied here, so the design they finally approve is the exact
-    text stored. Refused once approved, and once any issue design work exists, because that
-    work was derived from the previous text. ``design_ref`` must be the SHA-256 of the new
-    context so the approved reference always names the stored design.
+    text stored. ``context`` and ``design_ref`` are required; ``title``, ``objective``,
+    ``acceptance_criteria`` and ``constraints`` may accompany them, and are replaced together
+    with the context so a criterion removed from the design cannot stay mandatory. Refused
+    once approved, and once any issue design work exists, because that work was derived from
+    the previous text. ``design_ref`` must be the SHA-256 of the new context so the approved
+    reference always names the stored design.
     """
     require(
         isinstance(payload, dict)
-        and set(payload) == {"context", "design_ref"}
+        and {"context", "design_ref"} <= set(payload)
+        and set(payload) <= {"context", "design_ref", *REQUIREMENT_FIELDS}
         and isinstance(payload["context"], str)
         and payload["context"].strip(),
-        "Design revision requires a nonempty context and its design_ref",
+        "Design revision requires a nonempty context and its design_ref "
+        "(optionally title, objective, acceptance_criteria, constraints)",
+    )
+    for field in ("title", "objective"):
+        require(
+            field not in payload or _is_text(payload[field]),
+            f"{field} must be a nonempty string",
+        )
+    require(
+        "acceptance_criteria" not in payload
+        or (
+            isinstance(payload["acceptance_criteria"], list)
+            and payload["acceptance_criteria"]
+            and all(_is_text(c) for c in payload["acceptance_criteria"])
+        ),
+        "acceptance_criteria must be a nonempty string array",
+    )
+    require(
+        "constraints" not in payload
+        or (
+            isinstance(payload["constraints"], list)
+            and all(_is_text(c) for c in payload["constraints"])
+        ),
+        "constraints must be a string array",
     )
     require("direction" not in feature, "Direction is already approved; the design is immutable")
     tasks = feature["tasks"]
@@ -84,9 +119,12 @@ def revise(feature: dict, payload: object) -> None:
     )
     expected = "sha256:" + hashlib.sha256(payload["context"].encode("utf-8")).hexdigest()
     require(payload["design_ref"] == expected, "design_ref does not match the revised context")
-    feature["context"] = payload["context"]
+    for target in (feature, root):
+        target["context"] = payload["context"]
+        for field in REQUIREMENT_FIELDS:
+            if field in payload:
+                target[field] = copy.deepcopy(payload[field])
     feature["design_ref"] = expected
-    root["context"] = payload["context"]
     root["origin"] = {"kind": "ticket", "reference": expected}
     feature["workflow"]["history"].append(
         {"event": "design-revised", "design_ref": expected}
