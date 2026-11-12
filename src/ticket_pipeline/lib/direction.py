@@ -76,7 +76,10 @@ def revise(feature: dict, payload: object) -> None:
     tasks = feature["tasks"]
     root = tasks.get(feature["workflow"]["root_id"])
     require(
-        len(tasks) == 1 and root is not None and not root.get("designs"),
+        len(tasks) == 1
+        and root is not None
+        and not root.get("designs")
+        and not root.get("design_history"),
         "Design revision is only possible before any issue design work exists",
     )
     expected = "sha256:" + hashlib.sha256(payload["context"].encode("utf-8")).hexdigest()

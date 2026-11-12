@@ -99,3 +99,20 @@ def test_mismatched_design_ref_is_rejected(draft):
     with pytest.raises(ValueError, match="does not match the revised context"):
         revise("design v2", design_ref=ref("something else"))
     assert draft.read_bytes() == before
+
+
+def test_revision_is_refused_after_a_recorded_design_is_reopened(draft):
+    """Reopening moves the record to design_history; the earlier design work still counts."""
+    operate(
+        "design-record",
+        "F1",
+        {"summary": "s", "verification": "v", "approval": "a", "disposition": "leaf"},
+        "F1",
+    )
+    operate("design-reopen", "F1", {"reason": "Rethink"}, "F1")
+    root = feature()["tasks"]["F1"]
+    assert not root.get("designs") and root.get("design_history")
+    before = draft.read_bytes()
+    with pytest.raises(ValueError, match="before any issue design work"):
+        revise("design v2")
+    assert draft.read_bytes() == before
