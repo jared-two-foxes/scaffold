@@ -301,7 +301,9 @@ def operate(
             if refs.is_reference(reference):
                 led.get_artifact(refs.artifact_name(reference))
         if action in direction.ACTIONS | attempts.ACTIONS | history.ACTIONS:
-            if action in direction.ACTIONS:
+            if action == "design-revise":
+                direction.revise(feature, payload)
+            elif action in direction.ACTIONS:
                 direction.approve(feature, payload)
             elif action in attempts.ACTIONS:
                 attempts.record(feature, task_id, payload)

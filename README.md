@@ -28,6 +28,13 @@ are not supported. Historic `.scaffold/.criteria-stack.json` and
 deleted; current task operations use the ledger under `.scaffold/features/` and
 `.scaffold/.tasks.lock` (see Ledger storage).
 
+## Revising the design before approval
+
+`scaffold design-revise --feature F --input -` takes `{"context", "design_ref"}` (the full
+revised design and its `sha256:` digest) and replaces the feature and root-issue design. It is
+refused once the direction is approved or any issue design work exists, and a previous
+approval never applies to a revised design (the approval scope digest covers the design).
+
 ## Ledger storage
 
 Feature state is an append-only, hash-chained **ledger** per feature *instance*, stored

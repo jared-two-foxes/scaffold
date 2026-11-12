@@ -8,10 +8,12 @@ This records *that* approval was supplied; the native Pi tool is what obtains it
 
 from __future__ import annotations
 
+import hashlib
+
 from ticket_pipeline.lib import ledger
 from ticket_pipeline.lib.refs import require
 
-ACTIONS = {"direction-approve"}
+ACTIONS = {"direction-approve", "design-revise"}
 DEFINITION = (
     "id",
     "title",
@@ -53,6 +55,42 @@ def approve(feature: dict, payload: object) -> None:
         return  # idempotent replay
     require("direction" not in feature, "Direction is already approved with different capabilities")
     feature["direction"] = approved
+
+
+def revise(feature: dict, payload: object) -> None:
+    """Replace the feature's design context before the direction is approved.
+
+    The user's alterations are applied here, so the design they finally approve is the exact
+    text stored. Refused once approved, and once any issue design work exists, because that
+    work was derived from the previous text. ``design_ref`` must be the SHA-256 of the new
+    context so the approved reference always names the stored design.
+    """
+    require(
+        isinstance(payload, dict)
+        and set(payload) == {"context", "design_ref"}
+        and isinstance(payload["context"], str)
+        and payload["context"].strip(),
+        "Design revision requires a nonempty context and its design_ref",
+    )
+    require("direction" not in feature, "Direction is already approved; the design is immutable")
+    tasks = feature["tasks"]
+    root = tasks.get(feature["workflow"]["root_id"])
+    require(
+        len(tasks) == 1
+        and root is not None
+        and not root.get("designs")
+        and not root.get("design_history"),
+        "Design revision is only possible before any issue design work exists",
+    )
+    expected = "sha256:" + hashlib.sha256(payload["context"].encode("utf-8")).hexdigest()
+    require(payload["design_ref"] == expected, "design_ref does not match the revised context")
+    feature["context"] = payload["context"]
+    feature["design_ref"] = expected
+    root["context"] = payload["context"]
+    root["origin"] = {"kind": "ticket", "reference": expected}
+    feature["workflow"]["history"].append(
+        {"event": "design-revised", "design_ref": expected}
+    )
 
 
 def require_approved(feature: dict) -> None:
