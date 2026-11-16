@@ -101,7 +101,7 @@ def transition(feature, action, payload):
     require(set(payload) == {"schema", "attempt_id", "binding", "status", "reference", "checks", "review", "message"},
             "Invalid feature result fields")
     schema = payload["schema"]
-    require(schema in PASSED_STATUS, "Unsupported feature result schema")
+    require(isinstance(schema, str) and schema in PASSED_STATUS, "Unsupported feature result schema")
     status = payload["status"]
     require(status in {"PASSED", "NEEDS_DESIGN", "BLOCKED"}, "Invalid final validation status")
     require(isinstance(payload["reference"], str) and REF.fullmatch(payload["reference"]),
