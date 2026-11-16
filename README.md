@@ -103,6 +103,17 @@ Rules Scaffold enforces on the ledger:
   map to `failed` and `blocked` for both kinds. Either result is invalidated by any later graph or
   history change (the status returns to `implementing` or `awaiting_validation`), and a later reviewed
   validation of the same head supersedes `checked`.
+- `validation-accept` records the user's sign-off on the **current** `checked` or `verified` result,
+  and the feature's `validation_status` becomes `accepted`. The payload is `{attempt_id, binding,
+  approval, note?}`: `binding` must equal exactly what was validated (head, tree and graph revision),
+  and `approval` is a stored artifact reference to the retained approval, as for `history-foreign`.
+  Scaffold cannot authenticate a person; the caller confirms the user and retains the approval, and
+  Scaffold records that reference. `accepted` is not a new kind of result: it ends exactly when the
+  result it signs off does. Any later graph or history change, `validation-invalidate`, or new
+  validation attempt supersedes it, and the history keeps the acceptance event. Replaying the same
+  acceptance changes nothing, and a different approval or note for it is refused. The binding is the
+  feature branch's validated head, not a merge commit: Scaffold's ledger only knows the commits it has
+  accounted for, so a squash-merge commit is never part of it.
 
 Scaffold cannot see Git. Pi confirms every commit, tree and ancestry before appending.
 `scaffold features` lists open feature instances (`id`, `instance_id`, `phase`, `validation_status`,
