@@ -4,9 +4,9 @@ import copy
 import re
 from datetime import UTC, datetime
 
-from ticket_pipeline.lib import direction
+from ticket_pipeline.lib import direction, refs
 
-ACTIONS = {"validation-start", "validation-record", "validation-invalidate"}
+ACTIONS = {"validation-start", "validation-record", "validation-invalidate", "validation-accept"}
 SHA = re.compile(r"[a-f0-9]{40}\Z")
 REF = re.compile(r"sha256:[a-f0-9]{64}\Z")
 # Two kinds of final result. A reviewed validation carries an APPROVED independent review and a PASSED
@@ -55,7 +55,63 @@ def view(feature):
             "awaiting_validation" if tasks and all(t["status"] == "completed" for t in tasks)
             else "implementing"
         )
+    elif validation.get("status") == "accepted":
+        # Derived from the history event, so it can never outlive the acceptance it describes.
+        event = next((h for h in reversed(validation["history"])
+                      if h.get("event") == "accepted" and h.get("attempt_id") == validation["current"]), None)
+        if event:
+            validation["accepted"] = {k: event[k] for k in ("attempt_id", "approval", "from_status", "note",
+                                                              "recorded_at") if k in event}
     return result
+
+
+ACCEPTABLE = {"checked", "verified"}
+NOTE_LIMIT = 500
+
+
+def _accept(feature, validation, payload):
+    """Record the user's sign-off on the current checked or verified result.
+
+    Scaffold cannot authenticate a person: Pi confirms the user's approval and retains it as a stored
+    artifact, and this action only records that reference against exactly what was validated. The
+    acceptance applies to that result's binding (head, tree and graph revision) and ends with it: any
+    later graph or history change, invalidation, or new validation attempt supersedes it.
+    """
+    required = {"attempt_id", "binding", "approval"}
+    require(isinstance(payload, dict) and required <= set(payload) <= required | {"note"},
+            "Acceptance requires attempt_id, binding and approval, and may carry a note")
+    attempt = payload["attempt_id"]
+    require(isinstance(attempt, str) and bool(attempt.strip()), "attempt_id required")
+    require(refs.is_reference(payload["approval"]), "A retained user approval is required")
+    note = payload.get("note")
+    require(note is None or (isinstance(note, str) and len(note) <= NOTE_LIMIT),
+            f"note must be text of at most {NOTE_LIMIT} characters")
+    accepted = next((h for h in validation["history"]
+                     if h.get("event") == "accepted" and h.get("attempt_id") == attempt), None)
+    if accepted and validation.get("current") == attempt and validation.get("status") == "accepted":
+        require(accepted["approval"] == payload["approval"] and accepted.get("note") == note,
+                "Already accepted with a different approval or note")
+        return  # idempotent replay
+    require(validation.get("current") == attempt and validation.get("status") in ACCEPTABLE,
+            "Only the current checked or verified result can be accepted")
+    finished = next((h for h in validation["history"]
+                     if h.get("event") == "finished" and h.get("attempt_id") == attempt), None)
+    require(finished is not None and finished["result"]["status"] == "PASSED",
+            "Only a passed result can be accepted")
+    require(payload["binding"] == finished["result"]["binding"],
+            "Acceptance must name exactly the binding that was validated")
+    binding = finished["result"]["binding"]
+    require(binding["task_revision"] == feature.get("task_revision", 0), "Task graph changed")
+    require(binding["head"] == feature["head"] and feature["base"] == binding["baseline"],
+            "The validated head is no longer the ledger's recorded head")
+    eligible(feature)
+    event = {"event": "accepted", "attempt_id": attempt, "binding": copy.deepcopy(binding),
+             "approval": payload["approval"], "from_status": validation["status"],
+             "recorded_at": datetime.now(UTC).isoformat()}
+    if note is not None:
+        event["note"] = note
+    validation["history"].append(event)
+    validation["status"] = "accepted"
 
 
 def transition(feature, action, payload):
@@ -66,6 +122,9 @@ def transition(feature, action, payload):
         validation["history"].append({"event": "invalidated", **payload,
                                       "recorded_at": datetime.now(UTC).isoformat()})
         validation.update(current=None, status="awaiting_validation")
+        return
+    if action == "validation-accept":
+        _accept(feature, validation, payload)
         return
     if action == "validation-start":
         require(set(payload) == {"attempt_id", "binding"}, "Expected attempt_id and binding")

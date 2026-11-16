@@ -35,6 +35,7 @@ def _artifact_references(action: str, payload: object) -> list[object]:
         "design-reopen": ("reference",),
         "issue-resume": ("reference", "handoff"),
         "validation-record": ("reference",),
+        "validation-accept": ("approval",),
         "failure-record": ("evidence",),
     }.get(action, ())
     return [payload[f] for f in fields if f in payload]
