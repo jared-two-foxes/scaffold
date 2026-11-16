@@ -130,3 +130,120 @@ def test_changed_graph_rejects_old_success_and_duplicate_tasks_do_not_invalidate
     operate("add", "F1", [task("b")])
     with pytest.raises(ValueError):
         operate("validation-record", "F1", result(value))
+
+
+# --- Checks-only results: a full build/test pass with no whole-feature review is "checked", never "verified".
+
+def checks_result(value, status="PASSED", attempt="attempt"):
+    payload = result(value, status, attempt)
+    payload.update(schema="pi.feature-checks/v1", review=None, message="Checks only; no feature review")
+    return payload
+
+
+def test_checks_only_pass_is_checked_not_verified_and_is_idempotent(state):
+    operate("add", "F1", [task("a")])
+    finish("a")
+    assert operate("list", "F1")["feature"]["validation"]["status"] == "awaiting_validation"
+    value = start()
+    final = checks_result(value)
+    operate("validation-record", "F1", final)
+    validation = operate("list", "F1")["feature"]["validation"]
+    assert validation["status"] == "checked"
+    assert validation["reference"] == final["reference"]
+    assert validation["history"][-1]["result"]["review"] is None
+    before = state.read_bytes()
+    operate("validation-record", "F1", final)
+    assert state.read_bytes() == before
+
+
+def test_checked_is_visible_in_summary_and_never_reported_as_verified(state):
+    from ticket_pipeline.lib import scoped_queries
+    operate("add", "F1", [task("a")])
+    finish("a")
+    operate("validation-record", "F1", checks_result(start()))
+    feature = operate("list", "F1")["feature"]
+    assert scoped_queries.summary(feature)["validation_status"] == "checked"
+
+
+def test_checks_only_results_carry_no_review_and_reviewed_passes_still_need_one(state):
+    operate("add", "F1", [task("a")])
+    finish("a")
+    value = start()
+    # A checks-only result may not smuggle in a review, which would make "checked" look reviewed.
+    with_review = checks_result(copy.deepcopy(value))
+    with_review["review"] = result(copy.deepcopy(value))["review"]
+    before = state.read_bytes()
+    with pytest.raises(ValueError, match="no review"):
+        operate("validation-record", "F1", with_review)
+    # The reviewed kind cannot be recorded as PASSED without its review.
+    no_review = result(copy.deepcopy(value))
+    no_review["review"] = None
+    with pytest.raises(ValueError, match="independent feature review"):
+        operate("validation-record", "F1", no_review)
+    with pytest.raises(ValueError, match="schema"):
+        operate("validation-record", "F1", {**checks_result(copy.deepcopy(value)), "schema": "pi.feature-checks/v2"})
+    assert state.read_bytes() == before
+    assert operate("list", "F1")["feature"]["validation"]["status"] == "validating"
+
+
+@pytest.mark.parametrize("change", [
+    lambda r: r.update(status="invented"),
+    lambda r: r.update(reference="arbitrary.json"),
+    lambda r: r.update(checks=[]),
+    lambda r: r["checks"][0].update(exit_code=1),
+    lambda r: r["checks"][1].update(meaningful=False),
+    lambda r: r["binding"].update(task_revision=999),
+    lambda r: r["binding"].update(design_ref="other"),
+])
+def test_reject_fabricated_or_mismatched_checks_only_completions(state, change):
+    operate("add", "F1", [task("a")])
+    finish("a")
+    value = start()
+    payload = checks_result(copy.deepcopy(value))
+    change(payload)
+    before = state.read_bytes()
+    with pytest.raises(ValueError):
+        operate("validation-record", "F1", payload)
+    assert state.read_bytes() == before
+
+
+def test_checks_only_failure_and_block_use_the_shared_statuses(state):
+    operate("add", "F1", [task("a")])
+    finish("a")
+    value = start("first")
+    operate("validation-record", "F1", checks_result(value, "NEEDS_DESIGN", "first"))
+    assert operate("list", "F1")["feature"]["validation"]["status"] == "failed"
+    start("second")
+    operate("validation-record", "F1", checks_result(value, "BLOCKED", "second"))
+    assert operate("list", "F1")["feature"]["validation"]["status"] == "blocked"
+    with pytest.raises(ValueError, match="no review"):
+        start("third")
+        operate("validation-record", "F1", {**checks_result(value, "BLOCKED", "third"),
+                                             "review": result(value)["review"]})
+
+
+def test_checked_is_invalidated_by_graph_changes_and_superseded_by_full_validation(state):
+    operate("add", "F1", [task("a")])
+    finish("a")
+    value = start("checks")
+    operate("validation-record", "F1", checks_result(value, attempt="checks"))
+    assert operate("list", "F1")["feature"]["validation"]["status"] == "checked"
+    # A later reviewed validation of the same head supersedes it.
+    start("full")
+    operate("validation-record", "F1", result(value, attempt="full"))
+    assert operate("list", "F1")["feature"]["validation"]["status"] == "verified"
+    # Any graph change makes the result inapplicable again (history is retained).
+    operate("design-reopen", "F1", {"reason": "Additional work"})
+    feature = operate("list", "F1")["feature"]
+    assert feature["validation"]["current"] is None
+    assert feature["validation"]["status"] == "awaiting_validation"  # every task is still completed
+    assert [h["result"]["schema"] for h in feature["validation"]["history"] if h["event"] == "finished"] == [
+        "pi.feature-checks/v1", "pi.feature-validation/v1"]  # both retained, in order
+    operate("add", "F1", [task("b", ["a"])])
+    assert operate("list", "F1")["feature"]["validation"]["status"] == "implementing"
+    finish("b")
+    value = start("again")
+    operate("validation-record", "F1", checks_result(binding(), attempt="again"))
+    assert operate("list", "F1")["feature"]["validation"]["status"] == "checked"
+    operate("validation-invalidate", "F1", {"reason": "HEAD/tree changed"})
+    assert operate("list", "F1")["feature"]["validation"]["status"] == "awaiting_validation"

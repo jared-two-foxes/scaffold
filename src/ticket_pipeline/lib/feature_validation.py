@@ -9,6 +9,13 @@ from ticket_pipeline.lib import direction
 ACTIONS = {"validation-start", "validation-record", "validation-invalidate"}
 SHA = re.compile(r"[a-f0-9]{40}\Z")
 REF = re.compile(r"sha256:[a-f0-9]{64}\Z")
+# Two kinds of final result. A reviewed validation carries an APPROVED independent review and a PASSED
+# result is "verified". A checks-only result carries no review at all and a PASSED result is only
+# "checked": the full build/test run passed with meaningful output, but nothing reviewed the feature
+# as a whole. The distinct status keeps that difference visible instead of faking a review.
+VALIDATION_SCHEMA = "pi.feature-validation/v1"
+CHECKS_SCHEMA = "pi.feature-checks/v1"
+PASSED_STATUS = {VALIDATION_SCHEMA: "verified", CHECKS_SCHEMA: "checked"}
 BINDING = {"feature_id", "design_ref", "baseline", "head", "tree", "branch", "task_revision", "plan_digest"}
 
 
@@ -93,7 +100,8 @@ def transition(feature, action, payload):
         return
     require(set(payload) == {"schema", "attempt_id", "binding", "status", "reference", "checks", "review", "message"},
             "Invalid feature result fields")
-    require(payload["schema"] == "pi.feature-validation/v1", "Unsupported feature result schema")
+    schema = payload["schema"]
+    require(schema in PASSED_STATUS, "Unsupported feature result schema")
     status = payload["status"]
     require(status in {"PASSED", "NEEDS_DESIGN", "BLOCKED"}, "Invalid final validation status")
     require(isinstance(payload["reference"], str) and REF.fullmatch(payload["reference"]),
@@ -117,13 +125,18 @@ def transition(feature, action, payload):
                         and c["exit_code"] == 0 and c.get("meaningful") is True for c in checks),
                 "Successful meaningful full build/test results required")
         review = payload["review"]
-        require(isinstance(review, dict) and review.get("schema") == "review.result/v1"
-                and review.get("status") == "APPROVED" and review.get("reason") == "REVIEW_COMPLETED"
-                and review.get("baseRef") == payload["binding"]["baseline"]
-                and review.get("headRef") == payload["binding"]["head"]
-                and bool(review.get("review_id")), "Matching independent feature review required")
+        if schema == CHECKS_SCHEMA:
+            require(review is None, "A checks-only result carries no review")
+        else:
+            require(isinstance(review, dict) and review.get("schema") == "review.result/v1"
+                    and review.get("status") == "APPROVED" and review.get("reason") == "REVIEW_COMPLETED"
+                    and review.get("baseRef") == payload["binding"]["baseline"]
+                    and review.get("headRef") == payload["binding"]["head"]
+                    and bool(review.get("review_id")), "Matching independent feature review required")
+    elif schema == CHECKS_SCHEMA:
+        require(payload["review"] is None, "A checks-only result carries no review")
     validation["history"].append({"event": "finished", "attempt_id": payload["attempt_id"],
                                   "result": copy.deepcopy(payload),
                                   "recorded_at": datetime.now(UTC).isoformat()})
-    validation["status"] = {"PASSED": "verified", "NEEDS_DESIGN": "failed", "BLOCKED": "blocked"}[status]
+    validation["status"] = {"PASSED": PASSED_STATUS[schema], "NEEDS_DESIGN": "failed", "BLOCKED": "blocked"}[status]
     validation["reference"] = payload["reference"]

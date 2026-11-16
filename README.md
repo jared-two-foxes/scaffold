@@ -94,6 +94,15 @@ Rules Scaffold enforces on the ledger:
   `list` shows the last 20 as `failures` and the total as `failure_count`.
 - `validation-start` requires the validated `head` to equal the ledger's recorded head, so the
   ledger accounts for every commit, and the validated `baseline` to equal the ledger's `base`.
+- `validation-record` takes one of two result kinds, chosen by `schema`. `pi.feature-validation/v1`
+  is a reviewed validation: PASSED requires an APPROVED independent `review.result/v1` and the feature
+  becomes `verified`. `pi.feature-checks/v1` is a checks-only result: PASSED requires the same
+  successful, meaningful build/test checks but `review` must be `null`, and the feature becomes
+  `checked`. `checked` means the full build/test run passed; it never means the feature was reviewed as
+  a whole, and a checks-only result that carries a review is rejected. `NEEDS_DESIGN` and `BLOCKED`
+  map to `failed` and `blocked` for both kinds. Either result is invalidated by any later graph or
+  history change (the status returns to `implementing` or `awaiting_validation`), and a later reviewed
+  validation of the same head supersedes `checked`.
 
 Scaffold cannot see Git. Pi confirms every commit, tree and ancestry before appending.
 `scaffold features` lists open feature instances (`id`, `instance_id`, `phase`, `validation_status`,
