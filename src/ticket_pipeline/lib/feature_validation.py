@@ -89,8 +89,10 @@ def _accept(feature, validation, payload):
     accepted = next((h for h in validation["history"]
                      if h.get("event") == "accepted" and h.get("attempt_id") == attempt), None)
     if accepted and validation.get("current") == attempt and validation.get("status") == "accepted":
-        require(accepted["approval"] == payload["approval"] and accepted.get("note") == note,
-                "Already accepted with a different approval or note")
+        # A replay must restate the whole recorded acceptance, binding included; anything else is not a replay.
+        require(accepted["approval"] == payload["approval"] and accepted.get("note") == note
+                and accepted["binding"] == payload["binding"],
+                "Already accepted with a different approval, note or binding")
         return  # idempotent replay
     require(validation.get("current") == attempt and validation.get("status") in ACCEPTABLE,
             "Only the current checked or verified result can be accepted")

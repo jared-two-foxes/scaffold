@@ -297,6 +297,12 @@ def test_accepting_a_checked_result_is_recorded_idempotent_and_visible(state):
         operate("validation-accept", "F1", {**payload, "approval": approval("someone else")})
     with pytest.raises(ValueError, match="different approval"):
         operate("validation-accept", "F1", {**payload, "note": "another note"})
+    # Same attempt, approval and note but a binding that was never accepted is not a replay.
+    for other in ({**value, "head": "e" * 40}, {**value, "tree": "e" * 40},
+                  {**value, "task_revision": value["task_revision"] + 1}, {k: v for k, v in value.items()
+                                                                           if k != "branch"}, None, {}):
+        with pytest.raises(ValueError, match="different approval, note or binding"):
+            operate("validation-accept", "F1", {**payload, "binding": other})
     assert state.read_bytes() == before
 
 
