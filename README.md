@@ -90,11 +90,13 @@ the context. A requirements-schema feature may also carry `requirements`: a full
 the collection (see Feature requirements). Ids that are supplied again keep their identity
 (re-supplying one with new text is an explicit edit), ids left out are removed and new ids are
 added. The root issue's criteria are re-derived in the same step. A removed id is recorded in
-`removed_requirements` on the `design-revised` history event and can never be added again;
+`removed_ids` on the `design-revised` history event (which also records the resulting
+`requirement_ids`) and can never be added again;
 duplicate or malformed requirements are rejected without any change. Legacy
 (`recursive-issues/v1`) features revise `acceptance_criteria` as before and refuse
 `requirements`; requirements-schema features refuse `acceptance_criteria`. Revision is refused
-once the direction is approved (the design and requirements are frozen) or any issue design
+once the direction is approved (the design and requirements are frozen, whatever the
+payload) or any issue design
 work exists, and a previous approval never applies to a revised design (the approval scope
 digest covers the design and the requirements).
 

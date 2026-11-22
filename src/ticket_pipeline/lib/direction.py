@@ -86,11 +86,17 @@ def revise(feature: dict, payload: object) -> None:
     the collection (unchanged ids keep their identity, removed ids are dropped, new ids are
     added) that re-derives the root contract in the same step; an id removed by an earlier
     revision cannot be added again. Legacy (v1) features revise ``acceptance_criteria`` instead.
-    Refused
-    once approved, and once any issue design work exists, because that work was derived from
+    Refused once approved (every attempt, whatever the payload) and once any issue design work
+    exists, because that work was derived from
     the previous text. ``design_ref`` must be the SHA-256 of the new context so the approved
     reference always names the stored design.
     """
+    # Checked first so that every post-approval attempt, whatever its payload, gets this refusal.
+    require(
+        "direction" not in feature,
+        "Direction is already approved; the design and requirements are frozen "
+        "(changing them needs an authorised scope transition, which is not yet supported)",
+    )
     if isinstance(payload, dict) and "requirements" in payload and "requirements" not in feature:
         raise ValueError("Requirements are not supported by legacy (recursive-issues/v1) features")
     if isinstance(payload, dict) and "requirements" in feature and "acceptance_criteria" in payload:
@@ -131,11 +137,6 @@ def revise(feature: dict, payload: object) -> None:
     new_requirements = (
         requirements.canonical(payload["requirements"]) if "requirements" in payload else None
     )
-    require(
-        "direction" not in feature,
-        "Direction is already approved; the design and requirements are frozen "
-        "(changing them needs an authorised scope transition, which is not yet supported)",
-    )
     tasks = feature["tasks"]
     root = tasks.get(feature["workflow"]["root_id"])
     require(
@@ -151,7 +152,7 @@ def revise(feature: dict, payload: object) -> None:
         removed = {
             identifier
             for event in feature["workflow"]["history"]
-            for identifier in event.get("removed_requirements", [])
+            for identifier in event.get("removed_ids", [])
         }
         reused = sorted(removed & {record["id"] for record in new_requirements})
         require(
@@ -167,8 +168,8 @@ def revise(feature: dict, payload: object) -> None:
     if new_requirements is not None:
         kept = {record["id"] for record in new_requirements}
         removed_now = sorted(r["id"] for r in feature["requirements"] if r["id"] not in kept)
-        if removed_now:
-            event["removed_requirements"] = removed_now
+        event["requirement_ids"] = sorted(kept)
+        event["removed_ids"] = removed_now
         feature["requirements"] = new_requirements
         # The root's feature contract is re-derived, never edited separately.
         root["acceptance_criteria"] = requirements.derived_criteria(new_requirements)

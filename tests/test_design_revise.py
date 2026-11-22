@@ -200,10 +200,13 @@ def test_requirement_revision_replaces_adds_removes_and_preserves_ids(draft):
     assert [r["id"] for r in added["requirements"]] == ["REQ-1", "REQ-2"]
     assert added["tasks"]["F1"]["acceptance_criteria"] == ["Works", "New one"]
     assert "acceptance_criteria" not in added
+    assert added["workflow"]["history"][-1]["requirement_ids"] == ["REQ-1", "REQ-2"]
+    assert added["workflow"]["history"][-1]["removed_ids"] == []
     edited = revise_requirements(reqs(("REQ-1", "Works better")), "design v3")
     assert edited["requirements"] == [{"id": "REQ-1", "text": "Works better"}]
     assert edited["tasks"]["F1"]["acceptance_criteria"] == ["Works better"]
-    assert edited["workflow"]["history"][-1]["removed_requirements"] == ["REQ-2"]
+    assert edited["workflow"]["history"][-1]["removed_ids"] == ["REQ-2"]
+    assert edited["workflow"]["history"][-1]["requirement_ids"] == ["REQ-1"]
 
 
 def test_a_removed_requirement_id_cannot_be_reused(draft):
@@ -262,3 +265,28 @@ def test_revised_requirements_replay_from_the_ledger(draft):
     replayed = ledger.Ledger(live.directory)
     assert replayed.state == live.state
     assert [r["id"] for r in replayed.state["requirements"]] == ["REQ-1", "REQ-2"]
+
+
+def test_revision_without_requirements_records_no_requirement_fields(draft):
+    event = revise("design v2")["feature"]["workflow"]["history"][-1]
+    assert event["event"] == "design-revised"
+    assert "requirement_ids" not in event and "removed_ids" not in event
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {},
+        {"acceptance_criteria": ["Only this"]},
+        {"requirements": [{"id": "R", "text": "t"}]},
+        {"unknown": 1},
+    ],
+)
+def test_every_post_approval_revision_is_refused_as_frozen(draft, extra):
+    approve_direction()
+    before = draft.read_bytes()
+    with pytest.raises(ValueError, match="frozen"):
+        operate("design-revise", "F1", {"context": "x", "design_ref": ref("x"), **extra})
+    with pytest.raises(ValueError, match="scope transition"):
+        operate("design-revise", "F1", {"design_ref": "malformed"})
+    assert draft.read_bytes() == before

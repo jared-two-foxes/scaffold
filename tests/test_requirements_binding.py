@@ -196,3 +196,13 @@ def test_legacy_features_keep_their_revise_path_and_refuse_requirements(tmp_path
             {"context": "v3", "design_ref": ref("v3"), "requirements": copy.deepcopy(REQS)},
         )
     assert created.path.read_bytes() == before
+
+
+def test_approved_legacy_features_refuse_every_revision_as_frozen(tmp_path, monkeypatch):
+    _, created = legacy_ledger(tmp_path, monkeypatch)
+    approve_direction("F1")
+    before = created.path.read_bytes()
+    for extra in ({}, {"acceptance_criteria": ["Only this"]}, {"requirements": copy.deepcopy(REQS)}):
+        with pytest.raises(ValueError, match="frozen"):
+            operate("design-revise", "F1", {"context": "v2", "design_ref": ref("v2"), **extra})
+    assert created.path.read_bytes() == before
