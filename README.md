@@ -117,7 +117,8 @@ forged entry, and cannot judge whether supplied evidence is true. Appends happen
 `.scaffold/.tasks.lock` file lock; a failed append leaves the ledger as it was and a torn
 final line is ignored. `.scaffold/` must stay ignored and untracked. Nothing is written to `.git`.
 
-Schema version is 3. A legacy `.scaffold/tasks.json` (schema 2) is never read, migrated or
+The response and state schema version is 3 (a feature's own workflow schema is its
+`workflow.kind`; see Schema cutover). A legacy `.scaffold/tasks.json` (schema 2) is never read, migrated or
 modified; re-initialize features instead. `scaffold init` creates a new instance directory
 with a fresh `workflow.instance_id`, so an approval or receipt of an earlier instance can
 never apply to it.
