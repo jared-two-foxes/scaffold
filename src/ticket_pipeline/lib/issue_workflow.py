@@ -7,10 +7,14 @@ import re
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from ticket_pipeline.lib import direction, history
+from ticket_pipeline.lib import direction, history, requirements
 from ticket_pipeline.lib.refs import is_reference
 
-KIND = "recursive-issues/v1"
+# New features use the requirements schema (v2). v1 features, created before it, stay readable and
+# operable unchanged and are never converted.
+KIND = "recursive-issues/v2"
+LEGACY_KIND = "recursive-issues/v1"
+KINDS = frozenset({KIND, LEGACY_KIND})
 ACTIONS = {
     "design-next",
     "design-record",
@@ -47,8 +51,13 @@ def initialize(feature, make_task):
     history.initialize(feature)
     root = make_task(
         {
-            k: copy.deepcopy(feature[k])
-            for k in ("id", "title", "objective", "acceptance_criteria", "context", "constraints")
+            **{
+                k: copy.deepcopy(feature[k])
+                for k in ("id", "title", "objective", "context", "constraints")
+            },
+            # The root's feature contract is derived from the canonical requirements, never
+            # stored as a second copy.
+            "acceptance_criteria": requirements.derived_criteria(feature["requirements"]),
         },
         feature["id"],
         None,
@@ -141,7 +150,8 @@ def guard(feature, action, task_id=None):
 def transition(feature, action, payload, task_id, make_event):
     workflow = feature.get("workflow")
     require(
-        isinstance(workflow, dict) and workflow["kind"] == KIND, "Feature is not an issue workflow"
+        isinstance(workflow, dict) and workflow["kind"] in KINDS,
+        "Feature is not an issue workflow",
     )
     tasks = feature["tasks"]
     if action == "design-next":

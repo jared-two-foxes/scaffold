@@ -11,7 +11,7 @@ from __future__ import annotations
 import copy
 import hashlib
 
-from ticket_pipeline.lib import ledger
+from ticket_pipeline.lib import ledger, requirements
 from ticket_pipeline.lib.refs import require
 
 ACTIONS = {"direction-approve", "design-revise"}
@@ -19,7 +19,7 @@ DEFINITION = (
     "id",
     "title",
     "objective",
-    "acceptance_criteria",
+    "requirements",
     "constraints",
     "context",
     "design_ref",
@@ -27,6 +27,12 @@ DEFINITION = (
     "branch",
 )
 
+
+# Features created before the requirements schema (workflow recursive-issues/v1) keep their
+# original definition, and therefore their original digest. They are read, never converted.
+LEGACY_DEFINITION = tuple(
+    "acceptance_criteria" if key == "requirements" else key for key in DEFINITION
+)
 
 REQUIREMENT_FIELDS = ("title", "objective", "acceptance_criteria", "constraints")
 
@@ -37,7 +43,12 @@ def _is_text(value: object) -> bool:
 
 def definition_digest(feature: dict) -> str:
     """Digest of the immutable feature definition and its identity (including the instance)."""
-    scope = {key: feature.get(key) for key in DEFINITION}
+    if "requirements" in feature:
+        scope = {key: feature.get(key) for key in DEFINITION}
+        # Identity is the id, so the digest binds the canonical (sorted) set, never input order.
+        scope["requirements"] = requirements.canonical(feature["requirements"])
+    else:
+        scope = {key: feature.get(key) for key in LEGACY_DEFINITION}
     scope["instance_id"] = (feature.get("workflow") or {}).get("instance_id")
     return ledger.digest(scope)
 
@@ -76,6 +87,16 @@ def revise(feature: dict, payload: object) -> None:
     the previous text. ``design_ref`` must be the SHA-256 of the new context so the approved
     reference always names the stored design.
     """
+    if isinstance(payload, dict) and "requirements" in payload:
+        raise ValueError(
+            "Revising requirements is not yet supported"
+            if "requirements" in feature
+            else "Requirements are not supported by legacy (recursive-issues/v1) features"
+        )
+    if isinstance(payload, dict) and "requirements" in feature and "acceptance_criteria" in payload:
+        raise ValueError(
+            "Feature acceptance_criteria are replaced by requirements and cannot be revised"
+        )
     require(
         isinstance(payload, dict)
         and {"context", "design_ref"} <= set(payload)

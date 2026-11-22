@@ -3,6 +3,8 @@
 import copy
 from datetime import UTC, datetime
 
+from ticket_pipeline.lib import requirements
+
 ACTIONS = {"delivery-record"}
 
 
@@ -39,7 +41,7 @@ def record(feature, task_id, payload):
             "history": [],
             "contract": {
                 "objective": feature["objective"],
-                "acceptance_criteria": copy.deepcopy(feature["acceptance_criteria"]),
+                "acceptance_criteria": requirements.feature_criteria(feature),
                 "constraints": copy.deepcopy(feature.get("constraints", [])),
             },
             "context": e["context"],

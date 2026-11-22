@@ -59,3 +59,15 @@ def canonical(items: object) -> list[dict]:
 def derived_criteria(items: object) -> list[str]:
     """Requirement texts in canonical order: the legacy-shaped criteria projection."""
     return [record["text"] for record in canonical(items)]
+
+
+def feature_criteria(feature: dict) -> list[str]:
+    """Feature-level acceptance criteria as a read projection.
+
+    A requirements-schema feature stores only ``requirements`` and the criteria are derived from
+    them. A feature created before that schema (workflow recursive-issues/v1) keeps its stored
+    list, which is returned unchanged; it is never converted.
+    """
+    if "requirements" in feature:
+        return derived_criteria(feature["requirements"])
+    return copy.deepcopy(feature["acceptance_criteria"])

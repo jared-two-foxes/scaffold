@@ -16,6 +16,7 @@ from ticket_pipeline.lib import (
     issue_workflow,
     ledger,
     refs,
+    requirements,
     scoped_queries,
     state_store,
 )
@@ -60,7 +61,9 @@ def _definition(value: dict, feature: bool = False) -> None:
     for field in ("id", "title", "objective"):
         if not _text(value.get(field)):
             raise ValueError(f"{field} must be a nonempty string")
-    if not _strings(value.get("acceptance_criteria"), nonempty=True):
+    if feature:
+        requirements.validate(value.get("requirements"))
+    elif not _strings(value.get("acceptance_criteria"), nonempty=True):
         raise ValueError("acceptance_criteria must be a nonempty string array")
     if not isinstance(value.get("context", ""), str):
         raise ValueError("context must be a string")
@@ -226,6 +229,11 @@ def operate(
             before = copy.deepcopy(feature)
 
         if action == "init":
+            if isinstance(payload, dict) and "acceptance_criteria" in payload:
+                raise ValueError(
+                    "Feature acceptance_criteria are replaced by requirements: "
+                    "supply [{id, text, source?}] as requirements"
+                )
             _fields(
                 payload,
                 {
@@ -235,7 +243,7 @@ def operate(
                     "design_ref",
                     "baseline",
                     "branch",
-                    "acceptance_criteria",
+                    "requirements",
                     "context",
                     "constraints",
                 },
@@ -245,6 +253,7 @@ def operate(
                 raise ValueError("Feature id mismatch or feature already exists")
             features[feature_id] = {
                 **payload,
+                "requirements": requirements.canonical(payload["requirements"]),
                 "context": payload.get("context", ""),
                 "constraints": payload.get("constraints", []),
                 "tasks": {},
@@ -267,7 +276,7 @@ def operate(
             issue_workflow.initialize(feature, _task)
         if (
             not isinstance(feature.get("workflow"), dict)
-            or feature["workflow"].get("kind") != issue_workflow.KIND
+            or feature["workflow"].get("kind") not in issue_workflow.KINDS
         ):
             raise ValueError("Unsupported feature state: recursive issue graph required")
         if action in scoped_queries.ACTIONS:

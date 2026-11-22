@@ -27,7 +27,7 @@ def feature(identifier):
         "title": identifier,
         "objective": "Persist a feature",
         "design_ref": "approved-design",
-        "acceptance_criteria": ["Completed and checkpointed"],
+        "requirements": [{"id": "REQ-1", "text": "Completed and checkpointed"}],
         "baseline": "a" * 40,
         "branch": "feature/test",
     }

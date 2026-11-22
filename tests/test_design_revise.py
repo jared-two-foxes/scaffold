@@ -6,7 +6,7 @@ import pytest
 from flow import approve_direction
 from test_tasks import FEATURE, task
 
-from ticket_pipeline.lib import ledger, state_store
+from ticket_pipeline.lib import ledger, requirements, state_store
 from ticket_pipeline.lib.task_store import operate
 
 
@@ -119,7 +119,7 @@ def test_revision_is_refused_after_a_recorded_design_is_reopened(draft):
 
 
 def test_revision_replaces_requirements_with_the_context(draft):
-    """A criterion dropped from the revised design must not stay mandatory."""
+    """Title, objective and constraints are replaced with the context; requirements are not."""
     result = operate(
         "design-revise",
         "F1",
@@ -128,7 +128,6 @@ def test_revision_replaces_requirements_with_the_context(draft):
             "design_ref": ref("design v2"),
             "title": "New title",
             "objective": "New objective",
-            "acceptance_criteria": ["Only this"],
             "constraints": ["No more"],
         },
     )["feature"]
@@ -136,16 +135,35 @@ def test_revision_replaces_requirements_with_the_context(draft):
     for target in (result, root):
         assert target["title"] == "New title"
         assert target["objective"] == "New objective"
-        assert target["acceptance_criteria"] == ["Only this"]
         assert target["constraints"] == ["No more"]
+    assert result["requirements"] == requirements.canonical(FEATURE["requirements"])
+    assert root["acceptance_criteria"] == ["Works"]
 
 
 def test_omitted_requirements_are_left_unchanged(draft):
     before = feature()
     result = revise("design v2")["feature"]
-    for field in ("title", "objective", "acceptance_criteria"):
+    for field in ("title", "objective", "requirements"):
         assert result[field] == before[field]
+    for field in ("title", "objective", "acceptance_criteria"):
         assert result["tasks"]["F1"][field] == before["tasks"]["F1"][field]
+
+
+def test_requirement_features_refuse_feature_criteria_and_requirement_revision(draft):
+    before = draft.read_bytes()
+    with pytest.raises(ValueError, match="replaced by requirements"):
+        operate(
+            "design-revise",
+            "F1",
+            {"context": "x", "design_ref": ref("x"), "acceptance_criteria": ["Only this"]},
+        )
+    with pytest.raises(ValueError, match="not yet supported"):
+        operate(
+            "design-revise",
+            "F1",
+            {"context": "x", "design_ref": ref("x"), "requirements": [{"id": "R", "text": "t"}]},
+        )
+    assert draft.read_bytes() == before
 
 
 @pytest.mark.parametrize(
