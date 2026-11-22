@@ -149,19 +149,13 @@ def test_omitted_requirements_are_left_unchanged(draft):
         assert result["tasks"]["F1"][field] == before["tasks"]["F1"][field]
 
 
-def test_requirement_features_refuse_feature_criteria_and_requirement_revision(draft):
+def test_requirement_features_refuse_feature_criteria_revision(draft):
     before = draft.read_bytes()
     with pytest.raises(ValueError, match="replaced by requirements"):
         operate(
             "design-revise",
             "F1",
             {"context": "x", "design_ref": ref("x"), "acceptance_criteria": ["Only this"]},
-        )
-    with pytest.raises(ValueError, match="not yet supported"):
-        operate(
-            "design-revise",
-            "F1",
-            {"context": "x", "design_ref": ref("x"), "requirements": [{"id": "R", "text": "t"}]},
         )
     assert draft.read_bytes() == before
 
@@ -187,3 +181,84 @@ def test_invalid_requirement_revisions_leave_the_ledger_unchanged(draft, extra):
             {"context": "design v2", "design_ref": ref("design v2"), **extra},
         )
     assert draft.read_bytes() == before
+
+
+def reqs(*pairs):
+    return [{"id": identifier, "text": text} for identifier, text in pairs]
+
+
+def revise_requirements(items, text="design v2"):
+    return operate(
+        "design-revise",
+        "F1",
+        {"context": text, "design_ref": ref(text), "requirements": items},
+    )["feature"]
+
+
+def test_requirement_revision_replaces_adds_removes_and_preserves_ids(draft):
+    added = revise_requirements(reqs(("REQ-1", "Works"), ("REQ-2", "New one")))
+    assert [r["id"] for r in added["requirements"]] == ["REQ-1", "REQ-2"]
+    assert added["tasks"]["F1"]["acceptance_criteria"] == ["Works", "New one"]
+    assert "acceptance_criteria" not in added
+    edited = revise_requirements(reqs(("REQ-1", "Works better")), "design v3")
+    assert edited["requirements"] == [{"id": "REQ-1", "text": "Works better"}]
+    assert edited["tasks"]["F1"]["acceptance_criteria"] == ["Works better"]
+    assert edited["workflow"]["history"][-1]["removed_requirements"] == ["REQ-2"]
+
+
+def test_a_removed_requirement_id_cannot_be_reused(draft):
+    revise_requirements(reqs(("REQ-2", "Replacement")))
+    before = draft.read_bytes()
+    with pytest.raises(ValueError, match="removed earlier"):
+        revise_requirements(reqs(("REQ-1", "Back again"), ("REQ-2", "Replacement")), "design v3")
+    assert draft.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "items",
+    [
+        [],
+        None,
+        "x",
+        [{"id": "bad id", "text": "x"}],
+        [{"id": "R", "text": ""}],
+        [{"id": "R", "text": "a"}, {"id": "R", "text": "b"}],
+        [{"id": "R", "text": "a", "waived": True}],
+    ],
+)
+def test_malformed_requirement_revisions_leave_the_ledger_unchanged(draft, items):
+    before = draft.read_bytes()
+    with pytest.raises(ValueError):
+        revise_requirements(items)
+    assert draft.read_bytes() == before
+
+
+def test_requirement_revision_alone_makes_an_earlier_approval_stale(draft):
+    stale = feature()["direction_scope"]
+    revise_requirements(reqs(("REQ-1", "Works"), ("REQ-2", "More")), "design v1")
+    assert feature()["design_ref"] == ref("design v1")
+    assert feature()["direction_scope"] != stale
+    with pytest.raises(ValueError, match="does not match"):
+        operate("direction-approve", "F1", {"scope_digest": stale})
+    approve_direction()
+    assert feature()["direction"]["scope_digest"] == feature()["direction_scope"]
+
+
+def test_approved_requirements_are_frozen(draft):
+    approve_direction()
+    approved = feature()["requirements"]
+    before = draft.read_bytes()
+    with pytest.raises(ValueError, match="frozen"):
+        revise_requirements(reqs(("REQ-1", "Changed")))
+    with pytest.raises(ValueError, match="scope transition"):
+        revise("design v2")
+    assert draft.read_bytes() == before
+    assert feature()["requirements"] == approved
+
+
+def test_revised_requirements_replay_from_the_ledger(draft):
+    revise_requirements(reqs(("REQ-2", "Two"), ("REQ-1", "One")))
+    live = ledger.open_current("F1")
+    replayed = ledger.Ledger(live.directory)
+    assert replayed.state == live.state
+    assert [r["id"] for r in replayed.state["requirements"]] == ["REQ-1", "REQ-2"]

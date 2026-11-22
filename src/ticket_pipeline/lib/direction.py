@@ -80,19 +80,19 @@ def revise(feature: dict, payload: object) -> None:
     """Replace the feature's design before the direction is approved.
 
     The user's alterations are applied here, so the design they finally approve is the exact
-    text stored. ``context`` and ``design_ref`` are required; ``title``, ``objective``,
-    ``acceptance_criteria`` and ``constraints`` may accompany them, and are replaced together
-    with the context so a criterion removed from the design cannot stay mandatory. Refused
+    text stored. ``context`` and ``design_ref`` are required; ``title``, ``objective`` and
+    ``constraints`` may accompany them and are replaced together with the context. A
+    requirements-schema feature may also carry ``requirements``: a full explicit replacement of
+    the collection (unchanged ids keep their identity, removed ids are dropped, new ids are
+    added) that re-derives the root contract in the same step; an id removed by an earlier
+    revision cannot be added again. Legacy (v1) features revise ``acceptance_criteria`` instead.
+    Refused
     once approved, and once any issue design work exists, because that work was derived from
     the previous text. ``design_ref`` must be the SHA-256 of the new context so the approved
     reference always names the stored design.
     """
-    if isinstance(payload, dict) and "requirements" in payload:
-        raise ValueError(
-            "Revising requirements is not yet supported"
-            if "requirements" in feature
-            else "Requirements are not supported by legacy (recursive-issues/v1) features"
-        )
+    if isinstance(payload, dict) and "requirements" in payload and "requirements" not in feature:
+        raise ValueError("Requirements are not supported by legacy (recursive-issues/v1) features")
     if isinstance(payload, dict) and "requirements" in feature and "acceptance_criteria" in payload:
         raise ValueError(
             "Feature acceptance_criteria are replaced by requirements and cannot be revised"
@@ -100,7 +100,7 @@ def revise(feature: dict, payload: object) -> None:
     require(
         isinstance(payload, dict)
         and {"context", "design_ref"} <= set(payload)
-        and set(payload) <= {"context", "design_ref", *REQUIREMENT_FIELDS}
+        and set(payload) <= {"context", "design_ref", "requirements", *REQUIREMENT_FIELDS}
         and isinstance(payload["context"], str)
         and payload["context"].strip(),
         "Design revision requires a nonempty context and its design_ref "
@@ -128,7 +128,14 @@ def revise(feature: dict, payload: object) -> None:
         ),
         "constraints must be a string array",
     )
-    require("direction" not in feature, "Direction is already approved; the design is immutable")
+    new_requirements = (
+        requirements.canonical(payload["requirements"]) if "requirements" in payload else None
+    )
+    require(
+        "direction" not in feature,
+        "Direction is already approved; the design and requirements are frozen "
+        "(changing them needs an authorised scope transition, which is not yet supported)",
+    )
     tasks = feature["tasks"]
     root = tasks.get(feature["workflow"]["root_id"])
     require(
@@ -140,16 +147,34 @@ def revise(feature: dict, payload: object) -> None:
     )
     expected = "sha256:" + hashlib.sha256(payload["context"].encode("utf-8")).hexdigest()
     require(payload["design_ref"] == expected, "design_ref does not match the revised context")
+    if new_requirements is not None:
+        removed = {
+            identifier
+            for event in feature["workflow"]["history"]
+            for identifier in event.get("removed_requirements", [])
+        }
+        reused = sorted(removed & {record["id"] for record in new_requirements})
+        require(
+            not reused,
+            f"Requirement id was removed earlier and cannot be reused: {', '.join(reused)}",
+        )
     for target in (feature, root):
         target["context"] = payload["context"]
         for field in REQUIREMENT_FIELDS:
             if field in payload:
                 target[field] = copy.deepcopy(payload[field])
+    event = {"event": "design-revised", "design_ref": expected}
+    if new_requirements is not None:
+        kept = {record["id"] for record in new_requirements}
+        removed_now = sorted(r["id"] for r in feature["requirements"] if r["id"] not in kept)
+        if removed_now:
+            event["removed_requirements"] = removed_now
+        feature["requirements"] = new_requirements
+        # The root's feature contract is re-derived, never edited separately.
+        root["acceptance_criteria"] = requirements.derived_criteria(new_requirements)
     feature["design_ref"] = expected
     root["origin"] = {"kind": "ticket", "reference": expected}
-    feature["workflow"]["history"].append(
-        {"event": "design-revised", "design_ref": expected}
-    )
+    feature["workflow"]["history"].append(event)
 
 
 def require_approved(feature: dict) -> None:
