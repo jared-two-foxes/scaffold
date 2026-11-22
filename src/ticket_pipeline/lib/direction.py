@@ -28,13 +28,7 @@ DEFINITION = (
 )
 
 
-# Features created before the requirements schema (workflow recursive-issues/v1) keep their
-# original definition, and therefore their original digest. They are read, never converted.
-LEGACY_DEFINITION = tuple(
-    "acceptance_criteria" if key == "requirements" else key for key in DEFINITION
-)
-
-REQUIREMENT_FIELDS = ("title", "objective", "acceptance_criteria", "constraints")
+REQUIREMENT_FIELDS = ("title", "objective", "constraints")
 
 
 def _is_text(value: object) -> bool:
@@ -43,12 +37,9 @@ def _is_text(value: object) -> bool:
 
 def definition_digest(feature: dict) -> str:
     """Digest of the immutable feature definition and its identity (including the instance)."""
-    if "requirements" in feature:
-        scope = {key: feature.get(key) for key in DEFINITION}
-        # Identity is the id, so the digest binds the canonical (sorted) set, never input order.
-        scope["requirements"] = requirements.canonical(feature["requirements"])
-    else:
-        scope = {key: feature.get(key) for key in LEGACY_DEFINITION}
+    scope = {key: feature.get(key) for key in DEFINITION}
+    # Identity is the id, so the digest binds the canonical (sorted) set, never input order.
+    scope["requirements"] = requirements.canonical(feature.get("requirements"))
     scope["instance_id"] = (feature.get("workflow") or {}).get("instance_id")
     return ledger.digest(scope)
 
@@ -82,10 +73,10 @@ def revise(feature: dict, payload: object) -> None:
     The user's alterations are applied here, so the design they finally approve is the exact
     text stored. ``context`` and ``design_ref`` are required; ``title``, ``objective`` and
     ``constraints`` may accompany them and are replaced together with the context. A
-    requirements-schema feature may also carry ``requirements``: a full explicit replacement of
+    feature may also carry ``requirements``: a full explicit replacement of
     the collection (unchanged ids keep their identity, removed ids are dropped, new ids are
     added) that re-derives the root contract in the same step; an id removed by an earlier
-    revision cannot be added again. Legacy (v1) features revise ``acceptance_criteria`` instead.
+    revision cannot be added again.
     Refused once approved (every attempt, whatever the payload) and once any issue design work
     exists, because that work was derived from
     the previous text. ``design_ref`` must be the SHA-256 of the new context so the approved
@@ -97,9 +88,7 @@ def revise(feature: dict, payload: object) -> None:
         "Direction is already approved; the design and requirements are frozen "
         "(changing them needs an authorised scope transition, which is not yet supported)",
     )
-    if isinstance(payload, dict) and "requirements" in payload and "requirements" not in feature:
-        raise ValueError("Requirements are not supported by legacy (recursive-issues/v1) features")
-    if isinstance(payload, dict) and "requirements" in feature and "acceptance_criteria" in payload:
+    if isinstance(payload, dict) and "acceptance_criteria" in payload:
         raise ValueError(
             "Feature acceptance_criteria are replaced by requirements and cannot be revised"
         )
@@ -110,22 +99,13 @@ def revise(feature: dict, payload: object) -> None:
         and isinstance(payload["context"], str)
         and payload["context"].strip(),
         "Design revision requires a nonempty context and its design_ref "
-        "(optionally title, objective, acceptance_criteria, constraints)",
+        "(optionally title, objective, requirements, constraints)",
     )
     for field in ("title", "objective"):
         require(
             field not in payload or _is_text(payload[field]),
             f"{field} must be a nonempty string",
         )
-    require(
-        "acceptance_criteria" not in payload
-        or (
-            isinstance(payload["acceptance_criteria"], list)
-            and payload["acceptance_criteria"]
-            and all(_is_text(c) for c in payload["acceptance_criteria"])
-        ),
-        "acceptance_criteria must be a nonempty string array",
-    )
     require(
         "constraints" not in payload
         or (

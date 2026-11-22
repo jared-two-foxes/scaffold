@@ -52,8 +52,8 @@ membership of any requirement makes an earlier approval fail with "does not matc
 The root issue's `acceptance_criteria` are *derived* from the requirements (their texts in
 canonical order). They are not a second copy: nothing edits them separately, and `design-revise`
 re-derives them. Child issues keep their own task-local `acceptance_criteria`, `objective` and
-`constraints`, which are distinct from the feature requirements. Read-only projections (for
-example the delivery journal contract) use `ticket_pipeline.lib.requirements.feature_criteria`.
+`constraints`, which are distinct from the feature requirements. The delivery journal contract
+uses the same derived projection.
 
 Approved requirements are frozen: once the direction is approved, `design-revise` is refused
 and no other action changes requirements. A material change after approval needs an explicit
@@ -61,15 +61,16 @@ authorised scope transition, which is not yet supported.
 
 ### Schema cutover
 
-New features are created with workflow kind `recursive-issues/v2` and store `requirements`.
-Features created before this change (`recursive-issues/v1`, storing a feature-level
-`acceptance_criteria` list) stay readable and operable unchanged under their own schema: their
-ledgers are never rewritten, migrated or reinterpreted, their `direction_scope` digest is
-computed exactly as before, and requirement-only operations refuse them ("legacy ... features")
-rather than converting them. `init` can no longer create a v1 feature. The CLI response
-`schema_version` remains 3; changing it needs a coordinated delivery-pipeline release and is not
-part of this cutover. Run a checked-out or reinstalled `scaffold` that includes this change: an
-older installed copy does not understand `requirements`.
+Features are created with workflow kind `recursive-issues/v2` and store `requirements`. This is
+the only supported workflow. Features created before the requirements schema
+(`recursive-issues/v1`, with a feature-level `acceptance_criteria` list) are **not supported**:
+every operation on one is refused with a "no longer supported" error, nothing is read as v2,
+converted, rewritten or reinterpreted, and feature listings mark them `unsupported` instead of
+failing. Their ledgers stay on disk untouched; a human can reset one with `scaffold clean` and
+re-initialize it (an agent never does). The CLI response `schema_version` remains 3; changing it
+needs a coordinated delivery-pipeline release and is not part of this cutover. Run a checked-out
+or reinstalled `scaffold` that includes this change: an older installed copy does not understand
+`requirements`.
 
 ### What downstream tickets can rely on
 
@@ -77,7 +78,7 @@ older installed copy does not understand `requirements`.
   Ids are stable for the life of the instance and, once removed by a pre-approval revision, are
   never reissued.
 - Canonical form and validation live in `ticket_pipeline.lib.requirements` (`validate`,
-  `canonical`, `derived_criteria`, `feature_criteria`).
+  `canonical`, `derived_criteria`).
 - Out of scope here: mapping issues to requirements, design-coverage enforcement and the
   scope-transition mechanism.
 
@@ -86,15 +87,14 @@ older installed copy does not understand `requirements`.
 `scaffold design-revise --feature F --input -` takes `{"context", "design_ref"}` (the full
 revised design and its `sha256:` digest) and replaces the feature and root-issue design. The
 payload may also carry revised `title`, `objective` and `constraints`, replaced together with
-the context. A requirements-schema feature may also carry `requirements`: a full replacement of
+the context. It may also carry `requirements`: a full replacement of
 the collection (see Feature requirements). Ids that are supplied again keep their identity
 (re-supplying one with new text is an explicit edit), ids left out are removed and new ids are
 added. The root issue's criteria are re-derived in the same step. A removed id is recorded in
 `removed_ids` on the `design-revised` history event (which also records the resulting
 `requirement_ids`) and can never be added again;
-duplicate or malformed requirements are rejected without any change. Legacy
-(`recursive-issues/v1`) features revise `acceptance_criteria` as before and refuse
-`requirements`; requirements-schema features refuse `acceptance_criteria`. Revision is refused
+duplicate or malformed requirements are rejected without any change, and `acceptance_criteria`
+is refused. Revision is refused
 once the direction is approved (the design and requirements are frozen, whatever the
 payload) or any issue design
 work exists, and a previous approval never applies to a revised design (the approval scope
@@ -212,7 +212,7 @@ ticket. Supply `baseline` (full original Git SHA) and `branch` (feature branch),
 alongside the objective, the original `requirements` (see Feature requirements) and the
 immutable design reference. There is no workflow selector or alternate task lifecycle. All
 responses use schema version 3; legacy `tasks.json` state is ignored without modification, and
-v1 ledgers keep their own schema (see Schema cutover).
+v1 ledgers are refused (see Schema cutover).
 Definitions may include `origin: {kind: "ticket"|"design"|"review"|"discovery",
 reference: "<issue or retained evidence>"}`.
 

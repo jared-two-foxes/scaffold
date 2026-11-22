@@ -16,7 +16,7 @@ from ticket_pipeline.lib import (
     requirements,
     state_store,
 )
-from ticket_pipeline.lib.task_store import operate
+from ticket_pipeline.lib.task_store import list_features, operate
 
 REQS = [
     {"id": "REQ-2", "text": "second", "source": "SA-659"},
@@ -136,73 +136,58 @@ def test_delivery_contract_uses_the_derived_projection():
         "requirements": copy.deepcopy(REQS),
         "tasks": {"t": {"status": "in_progress"}},
     }
-    legacy = {
-        "objective": "o",
-        "acceptance_criteria": ["stored"],
-        "tasks": {"t": {"status": "in_progress"}},
-    }
     delivery.record(modern, "t", payload)
-    delivery.record(legacy, "t", payload)
     assert modern["tasks"]["t"]["delivery"]["contract"]["acceptance_criteria"] == [
         "first",
         "second",
     ]
-    assert legacy["tasks"]["t"]["delivery"]["contract"]["acceptance_criteria"] == ["stored"]
 
 
 def legacy_ledger(root, monkeypatch):
-    """A ledger as the pre-requirements schema wrote it: acceptance_criteria, workflow v1."""
+    """A ledger as the removed pre-requirements schema wrote it: acceptance_criteria, workflow v1."""
     use_state(monkeypatch, root / "modern")
     operate("init", "F1", definition())
     legacy = copy.deepcopy(ledger.open_current("F1").state)
     use_state(monkeypatch, root / "legacy")
     del legacy["requirements"]
     legacy["acceptance_criteria"] = ["Works"]
-    legacy["workflow"]["kind"] = issue_workflow.LEGACY_KIND
+    legacy["workflow"]["kind"] = "recursive-issues/v1"
     legacy["tasks"]["F1"]["acceptance_criteria"] = ["Works"]
     created = ledger.create("F1", legacy["workflow"]["instance_id"])
     created.append("init", {"task": None, "payload": {}}, legacy)
     return legacy, created
 
 
-def test_legacy_ledgers_stay_readable_and_keep_their_original_digest(tmp_path, monkeypatch):
-    legacy, created = legacy_ledger(tmp_path, monkeypatch)
-    listed = operate("list", "F1")["feature"]
-    assert listed["acceptance_criteria"] == ["Works"] and "requirements" not in listed
-    assert listed["workflow"]["kind"] == "recursive-issues/v1"
-    scope = {key: legacy.get(key) for key in direction.LEGACY_DEFINITION}
-    scope["instance_id"] = legacy["workflow"]["instance_id"]
-    assert listed["direction_scope"] == ledger.digest(scope)
-    approve_direction("F1")
-    approved = ledger.Ledger(created.directory).state
-    assert approved["direction"]["scope_digest"] == listed["direction_scope"]
-    assert "requirements" not in approved
-
-
-def test_legacy_features_keep_their_revise_path_and_refuse_requirements(tmp_path, monkeypatch):
+def test_v1_ledgers_are_refused_and_left_untouched(tmp_path, monkeypatch):
     _, created = legacy_ledger(tmp_path, monkeypatch)
-    revised = operate(
-        "design-revise",
-        "F1",
-        {"context": "v2", "design_ref": ref("v2"), "acceptance_criteria": ["Only this"]},
-    )["feature"]
-    assert revised["acceptance_criteria"] == ["Only this"]
-    assert revised["tasks"]["F1"]["acceptance_criteria"] == ["Only this"]
     before = created.path.read_bytes()
-    with pytest.raises(ValueError, match="legacy"):
-        operate(
-            "design-revise",
-            "F1",
-            {"context": "v3", "design_ref": ref("v3"), "requirements": copy.deepcopy(REQS)},
-        )
+    attempts = (
+        ("list", None),
+        ("summary", None),
+        ("direction-approve", {"scope_digest": "x"}),
+        ("design-revise", {"context": "v2", "design_ref": ref("v2")}),
+        ("design-revise", {"context": "v2", "design_ref": ref("v2"), "requirements": REQS}),
+    )
+    for action, payload in attempts:
+        with pytest.raises(ValueError, match="no longer supported"):
+            operate(action, "F1", payload)
     assert created.path.read_bytes() == before
+    reread = ledger.Ledger(created.directory).state
+    assert reread["workflow"]["kind"] == "recursive-issues/v1"
+    assert "requirements" not in reread
 
 
-def test_approved_legacy_features_refuse_every_revision_as_frozen(tmp_path, monkeypatch):
-    _, created = legacy_ledger(tmp_path, monkeypatch)
-    approve_direction("F1")
-    before = created.path.read_bytes()
-    for extra in ({}, {"acceptance_criteria": ["Only this"]}, {"requirements": copy.deepcopy(REQS)}):
-        with pytest.raises(ValueError, match="frozen"):
-            operate("design-revise", "F1", {"context": "v2", "design_ref": ref("v2"), **extra})
-    assert created.path.read_bytes() == before
+def test_listing_marks_v1_features_unsupported_without_failing(tmp_path, monkeypatch):
+    legacy, _ = legacy_ledger(tmp_path, monkeypatch)
+    operate("init", "F2", definition(id="F2"))
+    listed = {entry["id"]: entry for entry in list_features()["features"]}
+    assert listed["F1"] == {
+        "id": "F1",
+        "instance_id": legacy["workflow"]["instance_id"],
+        "phase": "unsupported",
+        "validation_status": "unsupported",
+        "tasks": 1,
+    }
+    assert listed["F2"]["phase"] == "design"
+
+

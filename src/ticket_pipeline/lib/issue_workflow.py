@@ -10,11 +10,9 @@ from uuid import uuid4
 from ticket_pipeline.lib import direction, history, requirements
 from ticket_pipeline.lib.refs import is_reference
 
-# New features use the requirements schema (v2). v1 features, created before it, stay readable and
-# operable unchanged and are never converted.
+# The only supported workflow. Features created before the requirements schema
+# (recursive-issues/v1) are refused with an explicit error, never read, converted or rewritten.
 KIND = "recursive-issues/v2"
-LEGACY_KIND = "recursive-issues/v1"
-KINDS = frozenset({KIND, LEGACY_KIND})
 ACTIONS = {
     "design-next",
     "design-record",
@@ -150,7 +148,7 @@ def guard(feature, action, task_id=None):
 def transition(feature, action, payload, task_id, make_event):
     workflow = feature.get("workflow")
     require(
-        isinstance(workflow, dict) and workflow["kind"] in KINDS,
+        isinstance(workflow, dict) and workflow["kind"] == KIND,
         "Feature is not an issue workflow",
     )
     tasks = feature["tasks"]

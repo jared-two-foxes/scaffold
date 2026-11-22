@@ -276,9 +276,13 @@ def operate(
             issue_workflow.initialize(feature, _task)
         if (
             not isinstance(feature.get("workflow"), dict)
-            or feature["workflow"].get("kind") not in issue_workflow.KINDS
+            or feature["workflow"].get("kind") != issue_workflow.KIND
         ):
-            raise ValueError("Unsupported feature state: recursive issue graph required")
+            raise ValueError(
+                f"Unsupported feature state: recursive issue graph required ({issue_workflow.KIND}). "
+                "Features created before the requirements schema are no longer supported; "
+                "a human can reset one with `scaffold clean` and re-initialize it"
+            )
         if action in scoped_queries.ACTIONS:
             if action == "summary":
                 return {"schema_version": VERSION, "summary": scoped_queries.summary(feature)}
@@ -465,6 +469,19 @@ def list_features() -> dict:
     with state_store.state_lock():
         summaries = []
         for led in ledger.all_open():
+            workflow = led.state.get("workflow") or {}
+            if workflow.get("kind") != issue_workflow.KIND:
+                # Refused, never converted: one old ledger must not make listing fail.
+                summaries.append(
+                    {
+                        "id": led.state.get("id"),
+                        "instance_id": workflow.get("instance_id"),
+                        "phase": "unsupported",
+                        "validation_status": "unsupported",
+                        "tasks": len(led.state.get("tasks") or {}),
+                    }
+                )
+                continue
             view = feature_validation.view(led.state)
             summaries.append(
                 {

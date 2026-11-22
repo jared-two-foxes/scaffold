@@ -41,7 +41,7 @@ def record(feature, task_id, payload):
             "history": [],
             "contract": {
                 "objective": feature["objective"],
-                "acceptance_criteria": requirements.feature_criteria(feature),
+                "acceptance_criteria": requirements.derived_criteria(feature["requirements"]),
                 "constraints": copy.deepcopy(feature.get("constraints", [])),
             },
             "context": e["context"],
