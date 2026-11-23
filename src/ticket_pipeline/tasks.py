@@ -13,6 +13,7 @@ TASK_ACTIONS = (
     "issue",
     "select",
     "design-select",
+    "requirements",
     "init",
     "add",
     "list",
@@ -92,6 +93,13 @@ def main() -> None:
             "artifact-get",
         }:
             command.add_argument("--input", required=True, help="JSON file, or - for stdin")
+        if action == "requirements":
+            command.add_argument(
+                "--requirement", action="append", help="Limit to this requirement id (repeatable)"
+            )
+            command.add_argument(
+                "--unmapped", action="store_true", help="Only requirements lacking coverage"
+            )
         if action in {"block", "fail", "retry"}:
             command.add_argument("--reason", required=True)
     commands.add_parser("features", help="List open feature instances (id, phase, validation)")
@@ -108,6 +116,13 @@ def main() -> None:
         if hasattr(args, "input"):
             text = sys.stdin.read() if args.input == "-" else Path(args.input).read_text("utf-8")
             payload = json.loads(text)
+        if args.action == "requirements":
+            payload = {}
+            if args.requirement:
+                payload["ids"] = args.requirement
+            if args.unmapped:
+                payload["unmapped"] = True
+            payload = payload or None
         result = operate(args.action, args.feature, payload, getattr(args, "task", None))
     except (ValueError, OSError) as exc:
         print(json.dumps({"schema_version": 3, "error": str(exc)}), file=sys.stderr)

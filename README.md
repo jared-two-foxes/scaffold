@@ -18,6 +18,7 @@ scaffold summary --feature SA-123
 scaffold issue --feature SA-123 --task SA-123
 scaffold design-select --feature SA-123
 scaffold select --feature SA-123
+scaffold requirements --feature SA-123 [--requirement REQ-1 ...] [--unmapped]
 ```
 
 The task commands above inspect an already-initialized feature. Initialize a new
@@ -113,7 +114,7 @@ Rules, checked in `add`, `decompose`, `design-record`, `design-reopen` and `desi
 otherwise records `workflow.plan` (per-requirement `contributors` and `verifiers`, and a digest of
 the graph and links). `start` is refused if no plan is recorded or its digest no longer matches the
 graph, and `design-reopen` discards the plan, so coverage is recomputed every time the design is
-finished. `summary` reports live `coverage`; issue contracts include their links. Each approved
+finished. `summary` reports live `coverage` (completeness, problems and whether the recorded plan is `current`, `stale` or `unrecorded`) and compact `requirements` counts (`total`, `mapped`, `unmapped`, `unmapped_ids`); a requirement is mapped when it has a contributor and a verifier. `scaffold requirements` is a read-only, versioned (`scaffold.requirements/v1`) per-requirement view with contributor/verifier task ids, status and completion-evidence references, missing roles and problems, optionally filtered by `--requirement` or `--unmapped`. Issue scope (`issue`, `select`, `design-select`) adds the issue's own `requirements` (the full set for the root), `inherited_constraints` from ancestors and a `binding` (phase, task revision, direction scope and plan digests); issue contracts include their links. Each approved
 design record snapshots the issue's links, and completed issues are never edited. Features whose
 design was finished before this change have no recorded plan, and their issues carry no links
 (which is tolerated when designing or reopening, but gives them no coverage). Reopen the design
