@@ -10,7 +10,7 @@ from ticket_pipeline.lib.delivery import record
 def feature():
     return {
         "objective": "Import quotes",
-        "acceptance_criteria": ["Reject unknown status"],
+        "requirements": [{"id": "REQ-1", "text": "Reject unknown status"}],
         "constraints": ["Retain accepted statuses"],
         "tasks": {"import": {"status": "in_progress"}},
     }

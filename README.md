@@ -28,15 +28,77 @@ are not supported. Historic `.scaffold/.criteria-stack.json` and
 deleted; current task operations use the ledger under `.scaffold/features/` and
 `.scaffold/.tasks.lock` (see Ledger storage).
 
+## Feature requirements
+
+A feature's acceptance criteria are structured **requirements**, the single source of truth for
+what the feature must deliver. `scaffold init` takes `requirements` (not `acceptance_criteria`,
+which it rejects) as a nonempty array of records such as
+`{"id": "REQ-1", "text": "Valid input is accepted", "source": "SA-123"}`:
+
+- `id` is chosen by the author and matches `[A-Za-z0-9][A-Za-z0-9._-]*`. It is the identity of
+  the requirement: unique within the feature instance (case-sensitive), never derived from list
+  position, and never trimmed or normalized.
+- `text` is a nonempty string. `source` is optional and, when present, a nonempty string.
+- Unknown fields are rejected. Every requirement is mandatory; there is no waiver, optional or
+  status field.
+- A malformed collection (bad or duplicate ids, empty text, unknown fields) is rejected before
+  anything is written to the ledger.
+
+Scaffold stores the requirements in canonical form, sorted by `id`, so the order supplied never
+changes identity or any digest. The `direction_scope` digest covers the canonical requirements
+and the feature instance, so an approval binds exactly that set; changing the text or
+membership of any requirement makes an earlier approval fail with "does not match".
+
+The root issue's `acceptance_criteria` are *derived* from the requirements (their texts in
+canonical order). They are not a second copy: nothing edits them separately, and `design-revise`
+re-derives them. Child issues keep their own task-local `acceptance_criteria`, `objective` and
+`constraints`, which are distinct from the feature requirements. The delivery journal contract
+uses the same derived projection.
+
+Approved requirements are frozen: once the direction is approved, `design-revise` is refused
+and no other action changes requirements. A material change after approval needs an explicit
+authorised scope transition, which is not yet supported.
+
+### Schema cutover
+
+Features are created with workflow kind `recursive-issues/v2` and store `requirements`. This is
+the only supported workflow. Features created before the requirements schema
+(`recursive-issues/v1`, with a feature-level `acceptance_criteria` list) are **not supported**:
+every operation on one is refused with a "no longer supported" error, nothing is read as v2,
+converted, rewritten or reinterpreted, and feature listings mark them `unsupported` instead of
+failing. Their ledgers stay on disk untouched; a human can reset one with `scaffold clean` and
+re-initialize it (an agent never does). The CLI response `schema_version` remains 3; changing it
+needs a coordinated delivery-pipeline release and is not part of this cutover. Run a checked-out
+or reinstalled `scaffold` that includes this change: an older installed copy does not understand
+`requirements`.
+
+### What downstream tickets can rely on
+
+- `feature["requirements"]` is the only canonical feature-level criteria list for v2 features.
+  Ids are stable for the life of the instance and, once removed by a pre-approval revision, are
+  never reissued.
+- Canonical form and validation live in `ticket_pipeline.lib.requirements` (`validate`,
+  `canonical`, `derived_criteria`).
+- Out of scope here: mapping issues to requirements, design-coverage enforcement and the
+  scope-transition mechanism.
+
 ## Revising the design before approval
 
 `scaffold design-revise --feature F --input -` takes `{"context", "design_ref"}` (the full
 revised design and its `sha256:` digest) and replaces the feature and root-issue design. The
-payload may also carry revised `title`, `objective`, `acceptance_criteria` and `constraints`;
-these are replaced together with the context, so a criterion dropped from the design stops
-being required. It is
-refused once the direction is approved or any issue design work exists, and a previous
-approval never applies to a revised design (the approval scope digest covers the design).
+payload may also carry revised `title`, `objective` and `constraints`, replaced together with
+the context. It may also carry `requirements`: a full replacement of
+the collection (see Feature requirements). Ids that are supplied again keep their identity
+(re-supplying one with new text is an explicit edit), ids left out are removed and new ids are
+added. The root issue's criteria are re-derived in the same step. A removed id is recorded in
+`removed_ids` on the `design-revised` history event (which also records the resulting
+`requirement_ids`) and can never be added again;
+duplicate or malformed requirements are rejected without any change, and `acceptance_criteria`
+is refused. Revision is refused
+once the direction is approved (the design and requirements are frozen, whatever the
+payload) or any issue design
+work exists, and a previous approval never applies to a revised design (the approval scope
+digest covers the design and the requirements).
 
 ## Ledger storage
 
@@ -57,7 +119,8 @@ forged entry, and cannot judge whether supplied evidence is true. Appends happen
 `.scaffold/.tasks.lock` file lock; a failed append leaves the ledger as it was and a torn
 final line is ignored. `.scaffold/` must stay ignored and untracked. Nothing is written to `.git`.
 
-Schema version is 3. A legacy `.scaffold/tasks.json` (schema 2) is never read, migrated or
+The response and state schema version is 3 (a feature's own workflow schema is its
+`workflow.kind`; see Schema cutover). A legacy `.scaffold/tasks.json` (schema 2) is never read, migrated or
 modified; re-initialize features instead. `scaffold init` creates a new instance directory
 with a fresh `workflow.instance_id`, so an approval or receipt of an earlier instance can
 never apply to it.
@@ -146,9 +209,10 @@ Older `.criteria-stack.*` files and `.scaffold/tasks.json` are not touched.
 
 `scaffold init` always creates the root issue using the feature ID from the agreed
 ticket. Supply `baseline` (full original Git SHA) and `branch` (feature branch),
-alongside the objective, original acceptance criteria and immutable design reference.
-There is no workflow selector or alternate task lifecycle. All task state and
-responses use schema version 3; legacy state is ignored without modification.
+alongside the objective, the original `requirements` (see Feature requirements) and the
+immutable design reference. There is no workflow selector or alternate task lifecycle. All
+responses use schema version 3; legacy `tasks.json` state is ignored without modification, and
+v1 ledgers are refused (see Schema cutover).
 Definitions may include `origin: {kind: "ticket"|"design"|"review"|"discovery",
 reference: "<issue or retained evidence>"}`.
 

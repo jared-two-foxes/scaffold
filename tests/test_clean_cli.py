@@ -27,7 +27,7 @@ def feature(identifier):
         "title": identifier,
         "objective": "Keep state safe",
         "design_ref": "approved-context",
-        "acceptance_criteria": ["Work is verified"],
+        "requirements": [{"id": "REQ-1", "text": "Work is verified"}],
         "baseline": "a" * 40,
         "branch": "feature/clean-cli",
     }

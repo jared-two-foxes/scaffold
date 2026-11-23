@@ -33,7 +33,7 @@ def feature(identifier):
         "title": identifier,
         "objective": "Test clean locking",
         "design_ref": "test-design",
-        "acceptance_criteria": ["Persist state safely"],
+        "requirements": [{"id": "REQ-1", "text": "Persist state safely"}],
         "baseline": "a" * 40,
         "branch": "feature/test-clean",
     }
@@ -49,9 +49,12 @@ def init(identifier):
 
 
 def child(repo, *command):
+    # Run the checked-out source, not a separately installed (possibly older) copy.
+    env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")}
     return subprocess.Popen(
         [sys.executable, *command],
         cwd=repo,
+        env=env,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

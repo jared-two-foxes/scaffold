@@ -25,7 +25,7 @@ def feature():
         "id": "F1",
         "title": "Feature",
         "objective": "Check task-state persistence",
-        "acceptance_criteria": ["Tasks initialize and remain durable"],
+        "requirements": [{"id": "REQ-1", "text": "Tasks initialize and remain durable"}],
         "design_ref": "approved-context",
         "baseline": "a" * 40,
         "branch": "feature/task-store",

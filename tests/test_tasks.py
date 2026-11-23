@@ -18,7 +18,7 @@ FEATURE = {
     "title": "Feature",
     "objective": "Deliver feature",
     "design_ref": "approved-design",
-    "acceptance_criteria": ["Works"],
+    "requirements": [{"id": "REQ-1", "text": "Works"}],
     "baseline": "a" * 40,
     "branch": "feature/test",
 }
