@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from ticket_pipeline.lib import ledger
+from ticket_pipeline.lib import coverage, evidence, ledger
 from ticket_pipeline.lib.task_store import operate
 
 _commits = iter(range(1, 10**6))
@@ -53,7 +53,39 @@ def record_attempt(
         },
         task_id,
     )
+    if status == "PASSED":
+        record_evidence(feature_id, task_id, reference)
     return reference
+
+
+def record_evidence(feature_id: str, task_id: str, receipt: str, basis: str = "checks") -> list:
+    """Associate the attempt with every requirement role the task holds; returns the records."""
+    feature = operate("list", feature_id)["feature"]
+    plan = coverage.compute(feature)
+    task = feature["tasks"][task_id]
+    designs = task.get("designs")
+    attempt = next(a for a in task["attempts"] if a["receipt"] == receipt)
+    stored = operate("artifact-put", feature_id, {"assessment": task_id, "receipt": receipt})
+    records = []
+    for rid, entry in plan["requirements"].items():
+        for role, key in (("contribute", "contributors"), ("verify", "verifiers")):
+            if task_id in entry[key]:
+                payload = {
+                    "feature_id": feature["id"],
+                    "instance_id": feature["workflow"]["instance_id"],
+                    "requirement": rid,
+                    "role": role,
+                    "result": "PASSED",
+                    "basis": basis,
+                    "receipt": receipt,
+                    "tree": attempt["tree"],
+                    "binding": evidence.binding(plan, rid),
+                    "design": designs[-1]["reference"] if designs else None,
+                    "reference": stored["reference"],
+                }
+                operate("evidence-record", feature_id, payload, task_id)
+                records.append(payload)
+    return records
 
 
 def record_checkpoint(feature_id: str, task_id: str, reference: str | None = None):

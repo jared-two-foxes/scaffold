@@ -4,7 +4,7 @@ import copy
 import re
 from datetime import UTC, datetime
 
-from ticket_pipeline.lib import direction, refs
+from ticket_pipeline.lib import direction, evidence as requirement_evidence, refs
 
 ACTIONS = {"validation-start", "validation-record", "validation-invalidate", "validation-accept"}
 SHA = re.compile(r"[a-f0-9]{40}\Z")
@@ -40,6 +40,7 @@ def eligible(feature):
             and bool(evidence.get("reference")),
             "Missing task-bound successful Conductor evidence",
         )
+    requirement_evidence.require_satisfied(feature)
 
 
 def view(feature):
