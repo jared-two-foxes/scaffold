@@ -140,7 +140,11 @@ authenticate the execution behind the receipt (Pi does that before recording).
   record and `binding` the digest of the requirement's contributors and verifiers
   (`ticket_pipeline.lib.evidence.binding`). The feature instance and ids must match.
 - Replaying an identical association changes nothing; one that differs for the same
-  requirement, task, role and receipt is refused.
+  requirement, task, role, receipt, binding and design is refused. After a design change alters the
+  binding, the *same* completing receipt is reassessed by recording a new association under the new
+  binding with its own retained `reference` (reusing an earlier reference is refused); earlier
+  associations stay as history. This is how corrective work restores coverage without reopening
+  completed tasks.
 - `complete` is refused until the completing attempt has an association for every requirement role
   the task holds, and `checkpoint-record` requires the checkpoint's `tree` to be the completing
   attempt's tree. Supporting issues with no links need no evidence.

@@ -49,7 +49,9 @@ FIELDS = {
     "reference",
 }
 EQUIVALENCE_FIELDS = {"requirement", "role", "receipt", "tree", "reference"}
-KEY = ("requirement", "task_id", "role", "receipt")
+# One association per requirement, task, role, receipt *and* binding: a changed design or coverage
+# binding is reassessed by a new, separately retained association for the same completing receipt.
+KEY = ("requirement", "task_id", "role", "receipt", "binding", "design")
 
 SATISFIED, PENDING, STALE = "satisfied", "pending", "stale"
 MISSING, UNRESOLVED = "missing", "unresolved"
@@ -152,9 +154,19 @@ def record(feature: dict, task_id: str | None, payload: object) -> None:
     if same is not None:
         require(
             all(same[k] == v for k, v in entry.items()),
-            "Evidence already recorded differently for this requirement, task, role and receipt",
+            "Evidence already recorded differently for this requirement, task, role, receipt "
+            "and binding",
         )
         return  # idempotent replay
+    earlier = [
+        e
+        for e in existing
+        if all(e[k] == entry[k] for k in ("requirement", "task_id", "role", "receipt"))
+    ]
+    require(
+        all(e["reference"] != entry["reference"] for e in earlier),
+        "Reassessment under a new binding needs its own retained reference, not an earlier one",
+    )
     existing.append(entry)
 
 
@@ -284,9 +296,8 @@ def assess(feature: dict) -> dict[str, dict]:
         ]
         implementation = _rollup([o["status"] for o in built])
         verification = _rollup([o["status"] for o in checked])
-        statuses = [o["status"] for o in built + checked]
         result[rid] = {
-            "status": _rollup(statuses),
+            "status": _rollup([implementation, verification]),
             "implementation": implementation,
             "verification": verification,
             # Checks alone never count as independent verification.
