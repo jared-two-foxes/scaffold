@@ -7,7 +7,7 @@ import re
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from ticket_pipeline.lib import direction, history, requirements
+from ticket_pipeline.lib import coverage, direction, history, requirements
 from ticket_pipeline.lib.refs import is_reference
 
 # The only supported workflow. Features created before the requirements schema
@@ -136,6 +136,7 @@ def guard(feature, action, task_id=None):
         )
         if action == "start":
             direction.require_approved(feature)
+            coverage.require_current(feature)
         task = feature["tasks"][task_id]
         require(design(task), "Issue has no approved design")
         suspension = task.get("suspension")
@@ -168,8 +169,11 @@ def transition(feature, action, payload, task_id, make_event):
             not any(t["status"] == "in_progress" for t in tasks.values()),
             "Active implementation remains",
         )
+        coverage.check_links(feature)
+        plan = coverage.require_complete(feature)
+        workflow["plan"] = {"digest": plan["digest"], "requirements": plan["requirements"]}
         workflow["phase"] = "implement"
-        event(workflow, "design-finished")
+        event(workflow, "design-finished", plan_digest=plan["digest"])
         return
     if action == "design-reopen":
         require(
@@ -211,6 +215,9 @@ def transition(feature, action, payload, task_id, make_event):
                     suspension=payload["reference"],
                 )
             invalidate(task, tasks)
+        # Coverage is recomputed at the next design-finish; the old plan can no longer be used.
+        workflow.pop("plan", None)
+        coverage.check_links(feature)
         workflow["phase"] = "design"
         event(workflow, "design-reopened", task_id=task_id, **payload)
         return
@@ -239,7 +246,8 @@ def transition(feature, action, payload, task_id, make_event):
             payload["disposition"] == ("decomposed" if children else "leaf"),
             "Disposition must match immediate children",
         )
-        record = {**copy.deepcopy(payload), "children": children}
+        coverage.check_links(feature)
+        record = {**copy.deepcopy(payload), "children": children, **coverage.snapshot(task)}
         record["reference"] = (
             "sha256:"
             + hashlib.sha256(

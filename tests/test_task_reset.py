@@ -54,6 +54,7 @@ def test_preview_is_read_only_and_counts_recursive_issues(workspace):
                 "title": "Child issue",
                 "objective": "Implement child",
                 "acceptance_criteria": ["Child works"],
+                "requirements_rationale": "Supporting issue",
             }
         ],
         "F1",
@@ -132,7 +133,8 @@ def test_reset_requires_exactly_one_valid_scope(workspace, kwargs):
 def test_intervening_feature_change_aborts_without_closing_anything(workspace):
     init("F1")
     plan = plan_reset(feature_id="F1")
-    late = {"id": "late", "title": "Late", "objective": "Late", "acceptance_criteria": ["Done"]}
+    late = {"id": "late", "title": "Late", "objective": "Late", "acceptance_criteria": ["Done"],
+            "requirements_rationale": "Supporting issue"}
     operate("add", "F1", [late])
     before = ledger_file(workspace, "F1").read_bytes()
     with pytest.raises(ValueError, match="changed since preview"):

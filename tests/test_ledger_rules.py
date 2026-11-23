@@ -10,7 +10,7 @@ from flow import (
     reference_for,
     sha,
 )
-from test_tasks import FEATURE, approve_all, evidence, task
+from test_tasks import FEATURE, approve_all, covering, evidence, task
 
 from ticket_pipeline.lib import ledger, state_store
 from ticket_pipeline.lib.task_store import operate
@@ -24,7 +24,7 @@ def fresh(tmp_path, monkeypatch):
     monkeypatch.setattr(state_store, "SCAFFOLD_DIR", tmp_path / ".scaffold")
     monkeypatch.setattr(state_store, "STATE_LOCK_FILE", tmp_path / ".scaffold/.tasks.lock")
     operate("init", "F1", FEATURE)
-    operate("decompose", "F1", [task("a"), task("b", ["a"])], "F1")
+    operate("decompose", "F1", [covering("a"), task("b", ["a"])], "F1")
     approve_all()
     return ledger.open_current("F1").path
 

@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from test_tasks import FEATURE, task
+from test_tasks import FEATURE, covering
 
 from ticket_pipeline.lib import ledger
 
@@ -35,7 +35,8 @@ def feature_args(*extra):
 
 def test_every_ledger_action_is_reachable_through_the_cli(tmp_path):
     run(tmp_path, "init", *feature_args("--input", "-"), payload=FEATURE)
-    run(tmp_path, "decompose", *feature_args("--task", "F1", "--input", "-"), payload=[task("a")])
+    decompose = feature_args("--task", "F1", "--input", "-")
+    run(tmp_path, "decompose", *decompose, payload=[covering("a")])
     for design_task, disposition in (("F1", "decomposed"), ("a", "leaf")):
         run(
             tmp_path,

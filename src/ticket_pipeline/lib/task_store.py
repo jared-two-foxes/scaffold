@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 from ticket_pipeline.lib import (
     attempts,
+    coverage,
     delivery,
     direction,
     failures,
@@ -85,9 +86,11 @@ def _task(value: dict, feature_id: str, parent: str | None) -> dict:
             "constraints",
             "dependencies",
             "origin",
+            *coverage.TASK_FIELDS,
         },
     )
     _definition(value)
+    value = {**value, **coverage.normalize(value)}
     if "origin" in value:
         origin = value["origin"]
         _fields(origin, {"kind", "reference"})
@@ -112,15 +115,7 @@ def _task(value: dict, feature_id: str, parent: str | None) -> dict:
     }
 
 
-def _prerequisites(task: dict, tasks: dict[str, dict]) -> set[str]:
-    # Children inherit all ancestor dependencies, but never depend on the ancestor itself.
-    required = set(task["dependencies"])
-    parent = task["parent_id"]
-    while parent is not None:
-        required.update(tasks[parent]["dependencies"])
-        parent = tasks[parent]["parent_id"]
-    required.update(t["id"] for t in tasks.values() if t["parent_id"] == task["id"])
-    return required
+_prerequisites = coverage.prerequisites
 
 
 def _validate_graph(tasks: dict[str, dict]) -> None:
@@ -382,6 +377,7 @@ def operate(
                     raise ValueError(f"Duplicate task id: {task['id']}")
                 tasks[task["id"]] = task
             _validate_graph(tasks)
+            coverage.check_links(feature, {value["id"] for value in payload})
             if parent is not None:
                 issue_workflow.invalidate(parent, tasks)
                 _event(parent, "decomposed", children=[t["id"] for t in payload])

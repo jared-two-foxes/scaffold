@@ -5,7 +5,7 @@ import hashlib
 import json
 from collections import Counter
 
-from ticket_pipeline.lib import feature_validation
+from ticket_pipeline.lib import coverage, feature_validation
 
 ACTIONS = {"summary", "issue", "select", "design-select"}
 
@@ -32,7 +32,20 @@ def summary(feature):
         "task_revision": feature.get("task_revision", 0),
         "state_digest": stamp,
         "counts": dict(Counter(t["status"] for t in feature["tasks"].values())),
+        "coverage": _coverage(feature),
         "validation_status": feature_validation.view(feature)["validation"]["status"],
+    }
+
+
+def _coverage(feature):
+    plan = coverage.compute(feature)
+    recorded = feature["workflow"].get("plan")
+    return {
+        "complete": not plan["problems"],
+        "problems": plan["problems"],
+        "plan_digest": plan["digest"],
+        "recorded_plan_digest": recorded["digest"] if isinstance(recorded, dict) else None,
+        "requirements": plan["requirements"],
     }
 
 
@@ -49,6 +62,8 @@ def contract(task):
         "origin",
         "checkpoint",
         "suspension",
+        "requirements",
+        "requirements_rationale",
     )
     result = {k: copy.deepcopy(task[k]) for k in keys if k in task}
     if task.get("designs"):
