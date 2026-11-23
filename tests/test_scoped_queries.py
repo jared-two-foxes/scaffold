@@ -84,3 +84,108 @@ def test_unrelated_history_does_not_expand_issue_context(state):
     after = call("issue", "leaf")["context"]
     assert len(json.dumps(before)) == len(json.dumps(after))
     assert len(json.dumps(after)) < len(state.read_bytes()) / 50
+
+
+# --- requirement and traceability projections (SA-661) -----------------------------------------
+
+
+@pytest.fixture
+def two(tmp_path, monkeypatch):
+    from test_coverage import TWO
+
+    from ticket_pipeline.lib import state_store
+    from ticket_pipeline.lib.task_store import operate
+
+    monkeypatch.setattr(state_store, "SCAFFOLD_DIR", tmp_path / ".scaffold")
+    monkeypatch.setattr(state_store, "STATE_LOCK_FILE", tmp_path / ".scaffold/.tasks.lock")
+    operate("init", "F1", TWO)
+    return operate
+
+
+def test_summary_counts_mapped_and_unmapped_requirements_compactly(two):
+    from test_coverage import BOTH, linked
+
+    summary = two("summary", "F1")["summary"]
+    assert summary["requirements"] == {
+        "total": 2, "mapped": 2, "unmapped": 0, "unmapped_ids": []
+    }  # a childless root owns everything
+    two("decompose", "F1", [linked("a", [("REQ-1", BOTH)])], "F1")
+    summary = two("summary", "F1")["summary"]
+    assert summary["requirements"] == {
+        "total": 2, "mapped": 1, "unmapped": 1, "unmapped_ids": ["REQ-2"]
+    }
+    assert summary["coverage"]["plan_status"] == "unrecorded"
+    assert "requirements" not in summary["coverage"]
+
+
+def test_requirements_query_reports_roles_missing_and_evidence_and_filters(two, tmp_path):
+    from test_coverage import BOTH, linked
+
+    two("decompose", "F1", [linked("a", [("REQ-1", BOTH)]), linked("v", [("REQ-1", ("verify",))], ["a"])], "F1")
+    before = (tmp_path / ".scaffold").rglob("ledger.jsonl")
+    snapshot = {p: p.read_bytes() for p in before}
+    view = two("requirements", "F1")
+    assert view["schema"] == "scaffold.requirements/v1"
+    first, second = view["requirements"]
+    assert (first["id"], first["mapped"], first["missing"]) == ("REQ-1", True, [])
+    assert [h["id"] for h in first["contributors"]] == ["a"]
+    assert [h["id"] for h in first["verifiers"]] == ["a", "v"]
+    assert first["contributors"][0]["evidence"] is None
+    assert (second["id"], second["missing"]) == ("REQ-2", ["contribute", "verify"])
+    assert second["problems"] and all(p.startswith("REQ-2:") for p in second["problems"])
+    only = two("requirements", "F1", {"ids": ["REQ-2"]})
+    assert [r["id"] for r in only["requirements"]] == ["REQ-2"]
+    unmapped = two("requirements", "F1", {"unmapped": True})
+    assert [r["id"] for r in unmapped["requirements"]] == ["REQ-2"]
+    with pytest.raises(ValueError, match="Unknown requirement ids"):
+        two("requirements", "F1", {"ids": ["NOPE"]})
+    with pytest.raises(ValueError, match="accepts"):
+        two("requirements", "F1", {"bogus": 1})
+    assert {p: p.read_bytes() for p in snapshot} == snapshot
+    # reflects graph changes on the next read
+    two("add", "F1", [linked("b", [("REQ-2", BOTH)])])
+    assert two("requirements", "F1", {"unmapped": True})["requirements"] == []
+
+
+def test_issue_scope_has_scoped_requirements_inherited_constraints_and_binding(two):
+    from test_coverage import BOTH, linked
+
+    two("decompose", "F1", [linked("p", [("REQ-1", BOTH), ("REQ-2", BOTH)]), linked("o", [("REQ-2", BOTH)])], "F1")
+    two("decompose", "F1", [linked("leaf", [("REQ-1", BOTH)])], "p")
+    root = two("issue", "F1", task_id="F1")["context"]
+    assert [r["id"] for r in root["requirements"]] == ["REQ-1", "REQ-2"]
+    assert root["requirements"][0]["text"] == "One"
+    leaf = two("issue", "F1", task_id="leaf")["context"]
+    assert leaf["requirements"] == [
+        {"id": "REQ-1", "text": "One", "roles": ["contribute", "verify"],
+         "contributors": ["leaf"], "verifiers": ["leaf", "p"]}
+    ]
+    assert "Two" not in json.dumps(leaf["requirements"])
+    assert [c["from"] for c in leaf["inherited_constraints"]] == ["p"]
+    assert leaf["binding"]["plan_status"] == "unrecorded"
+    assert leaf["binding"]["phase"] == "design" and leaf["binding"]["design_recorded"] is False
+    assert len(leaf["binding"]["direction_scope"]) == 64
+    assert "ancestors" in leaf and "o" not in [t["id"] for t in leaf["ancestors"]]
+
+
+def test_requirements_cli_is_json_with_filters(tmp_path):
+    from test_tasks import FEATURE, cli
+
+    cli(tmp_path, "init", "--feature", "F1", "--input", "-", payload=FEATURE)
+    out = cli(tmp_path, "requirements", "--feature", "F1", "--requirement", "REQ-1")
+    assert [r["id"] for r in out["requirements"]] == ["REQ-1"]
+    assert cli(tmp_path, "requirements", "--feature", "F1", "--unmapped")["requirements"] == []
+    assert cli(tmp_path, "summary", "--feature", "F1")["summary"]["requirements"]["total"] == 1
+
+
+def test_added_top_level_issue_is_not_mistaken_for_the_root(two):
+    from test_coverage import BOTH, linked
+
+    two("add", "F1", [linked("extra", [("REQ-1", BOTH)])])
+    scope = two("issue", "F1", task_id="extra")["context"]["requirements"]
+    assert [r["id"] for r in scope] == ["REQ-1"]
+    assert "Two" not in json.dumps(scope)
+    assert [r["id"] for r in two("issue", "F1", task_id="F1")["context"]["requirements"]] == [
+        "REQ-1",
+        "REQ-2",
+    ]

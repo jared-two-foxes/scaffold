@@ -281,6 +281,11 @@ def operate(
         if action in scoped_queries.ACTIONS:
             if action == "summary":
                 return {"schema_version": VERSION, "summary": scoped_queries.summary(feature)}
+            if action == "requirements":
+                return {
+                    "schema_version": VERSION,
+                    **scoped_queries.requirements_view(feature, payload),
+                }
             if action == "design-select":
                 selected = issue_workflow.transition(feature, "design-next", None, None, _event)
             elif action == "select":
