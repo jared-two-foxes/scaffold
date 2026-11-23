@@ -107,12 +107,14 @@ def test_summary_counts_mapped_and_unmapped_requirements_compactly(two):
 
     summary = two("summary", "F1")["summary"]
     assert summary["requirements"] == {
-        "total": 2, "mapped": 2, "unmapped": 0, "unmapped_ids": []
+        "total": 2, "mapped": 2, "unmapped": 0, "unmapped_ids": [],
+        "evidence": {"satisfied": 0, "unresolved": 2, "stale": 0, "missing": 0},
     }  # a childless root owns everything
     two("decompose", "F1", [linked("a", [("REQ-1", BOTH)])], "F1")
     summary = two("summary", "F1")["summary"]
     assert summary["requirements"] == {
-        "total": 2, "mapped": 1, "unmapped": 1, "unmapped_ids": ["REQ-2"]
+        "total": 2, "mapped": 1, "unmapped": 1, "unmapped_ids": ["REQ-2"],
+        "evidence": {"satisfied": 0, "unresolved": 1, "stale": 0, "missing": 1},
     }
     assert summary["coverage"]["plan_status"] == "unrecorded"
     assert "requirements" not in summary["coverage"]

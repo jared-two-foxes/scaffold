@@ -5,7 +5,7 @@ import hashlib
 import json
 from collections import Counter
 
-from ticket_pipeline.lib import coverage, direction, feature_validation
+from ticket_pipeline.lib import coverage, direction, evidence, feature_validation
 
 ACTIONS = {"summary", "issue", "select", "design-select", "requirements"}
 REQUIREMENTS_SCHEMA = "scaffold.requirements/v1"
@@ -65,11 +65,16 @@ def _requirement_counts(feature):
     """Compact counts only; ``requirements`` inspects individual requirements on demand."""
     plan = coverage.compute(feature)["requirements"]
     unmapped = [rid for rid in sorted(plan) if not _mapped(plan[rid])]
+    states = Counter(item["status"] for item in evidence.assess(feature).values())
     return {
         "total": len(plan),
         "mapped": len(plan) - len(unmapped),
         "unmapped": len(unmapped),
         "unmapped_ids": unmapped,
+        "evidence": {
+            status: states.get(status, 0)
+            for status in (evidence.SATISFIED, evidence.UNRESOLVED, evidence.STALE, evidence.MISSING)
+        },
     }
 
 
@@ -114,6 +119,7 @@ def requirements_view(feature, payload=None):
     selected = sorted(records if wanted is None else set(wanted))
     if payload.get("unmapped"):
         selected = [rid for rid in selected if not _mapped(plan["requirements"][rid])]
+    assessed = evidence.assess(feature)
     items = []
     for rid in selected:
         entry = plan["requirements"][rid]
@@ -129,6 +135,7 @@ def requirements_view(feature, payload=None):
             contributors=[_holder(tasks[i]) for i in entry["contributors"]],
             verifiers=[_holder(tasks[i]) for i in entry["verifiers"]],
             problems=[p for p in plan["problems"] if p.startswith(rid + ":")],
+            evidence=assessed[rid],
         )
         items.append(record)
     return {

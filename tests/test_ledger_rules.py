@@ -12,6 +12,7 @@ from flow import (
 )
 from test_tasks import FEATURE, approve_all, covering, evidence, task
 
+from ticket_pipeline.lib import evidence as requirement_evidence
 from ticket_pipeline.lib import ledger, state_store
 from ticket_pipeline.lib.task_store import operate
 
@@ -31,6 +32,25 @@ def fresh(tmp_path, monkeypatch):
 
 def feature():
     return operate("list", "F1")["feature"]
+
+
+def carry_over(current):
+    """Authenticated equivalence of every recorded evidence onto its rewritten checkpoint tree."""
+    proof = operate("artifact-put", "F1", {"equivalent": "rewrite"})["reference"]
+    for entry in current["evidence"]:
+        tree = current["tasks"][entry["task_id"]]["checkpoint"]["tree"]
+        operate(
+            "evidence-equivalence",
+            "F1",
+            {
+                "requirement": entry["requirement"],
+                "role": entry["role"],
+                "receipt": entry["receipt"],
+                "tree": tree,
+                "reference": proof,
+            },
+            entry["task_id"],
+        )
 
 
 def commits(count, label="c"):
@@ -647,6 +667,11 @@ def test_validation_binds_to_the_history_base_not_the_original_baseline(fresh):
     upstream = sha("rebased onto")
     operate("history-rewrite", "F1", rewrite_payload(current, new_base=upstream))
     moved = feature()
+    # The rewrite moved every checkpoint tree: recorded evidence is stale until an authenticated
+    # equivalence carries it onto the rewritten tree.
+    with pytest.raises(ValueError, match="evidence incomplete"):
+        requirement_evidence.require_satisfied(feature())
+    carry_over(feature())
     binding = {
         "feature_id": "F1",
         "design_ref": FEATURE["design_ref"],

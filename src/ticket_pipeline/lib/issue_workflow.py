@@ -293,6 +293,13 @@ def transition(feature, action, payload, task_id, make_event):
         history.append_checkpoint(
             feature, task_id, payload["commit"], payload["parent"], payload["tree"]
         )
+        completing = next(
+            (a for a in task.get("attempts", []) if a["receipt"] == payload["reference"]), None
+        )
+        require(
+            completing is not None and completing["tree"] == payload["tree"],
+            "Checkpoint tree must be the tree of the attempt that completed the issue",
+        )
         task["checkpoint"] = copy.deepcopy(payload)
     elif action == "issue-resume":
         require(

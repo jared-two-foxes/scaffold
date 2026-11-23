@@ -11,6 +11,7 @@ from ticket_pipeline.lib import (
     coverage,
     delivery,
     direction,
+    evidence,
     failures,
     feature_validation,
     history,
@@ -32,6 +33,8 @@ def _artifact_references(action: str, payload: object) -> list[object]:
         return []
     fields = {
         "attempt-record": ("receipt",),
+        "evidence-record": ("receipt", "reference"),
+        "evidence-equivalence": ("reference",),
         "history-foreign": ("approval",),
         "history-rewrite": ("verification",),
         "design-reopen": ("reference",),
@@ -183,6 +186,7 @@ def operate(
         | delivery.ACTIONS
         | direction.ACTIONS
         | attempts.ACTIONS
+        | evidence.ACTIONS
         | history.ACTIONS
         | failures.ACTIONS
         | ARTIFACT_ACTIONS
@@ -314,13 +318,17 @@ def operate(
         for reference in _artifact_references(action, payload):
             if refs.is_reference(reference):
                 led.get_artifact(refs.artifact_name(reference))
-        if action in direction.ACTIONS | attempts.ACTIONS | history.ACTIONS:
+        if action in direction.ACTIONS | attempts.ACTIONS | evidence.ACTIONS | history.ACTIONS:
             if action == "design-revise":
                 direction.revise(feature, payload)
             elif action in direction.ACTIONS:
                 direction.approve(feature, payload)
             elif action in attempts.ACTIONS:
                 attempts.record(feature, task_id, payload)
+            elif action == "evidence-record":
+                evidence.record(feature, task_id, payload)
+            elif action == "evidence-equivalence":
+                evidence.equivalence(feature, task_id, payload)
             else:
                 bound = (feature["head"], feature["base"])
                 history.transition(feature, action, payload)
@@ -403,6 +411,7 @@ def operate(
                     )
                 if status != "in_progress" or not _ready(task, tasks):
                     raise ValueError("Completion requires in_progress and completed prerequisites")
+                evidence.require_for_completion(feature, task_id, payload["reference"])
                 _event(task, "completed", evidence=payload)
             elif action == "start":
                 if any(t["status"] == "in_progress" for t in tasks.values()):

@@ -84,6 +84,32 @@ def test_every_ledger_action_is_reachable_through_the_cli(tmp_path):
             "tree": B,
         },
     )
+    listed = run(tmp_path, "list", *feature_args())["feature"]
+    design = listed["tasks"]["a"]["designs"][-1]["reference"]
+    plan = run(tmp_path, "requirements", *feature_args())
+    assert plan["requirements"][0]["evidence"]["status"] == "unresolved"
+    from ticket_pipeline.lib import coverage, evidence
+
+    binding = evidence.binding(coverage.compute(listed), "REQ-1")
+    for role in ("contribute", "verify"):
+        run(
+            tmp_path,
+            "evidence-record",
+            *feature_args("--task", "a", "--input", "-"),
+            payload={
+                "feature_id": "F1",
+                "instance_id": listed["workflow"]["instance_id"],
+                "requirement": "REQ-1",
+                "role": role,
+                "result": "PASSED",
+                "basis": "checks",
+                "receipt": receipt["reference"],
+                "tree": B,
+                "binding": binding,
+                "design": design,
+                "reference": receipt["reference"],
+            },
+        )
     run(
         tmp_path,
         "complete",

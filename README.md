@@ -121,6 +121,49 @@ design was finished before this change have no recorded plan, and their issues c
 and finish it again if the root is childless; otherwise there is no way to attach links to
 existing issues, so reset the feature with `scaffold clean` and re-initialize it. Generalized dependency editing and task cancellation are not part of this.
 
+## Requirement evidence
+
+Coverage in the graph says who must implement and verify each requirement; **evidence** records
+that they did, bound to the attempt that actually passed. `scaffold evidence-record --task T --input -`
+takes `{feature_id, instance_id, requirement, role, result, basis, receipt, tree, binding, design,
+reference}` and appends one association to the ledger (`feature["evidence"]`, append-only, never
+edited or removed). It reuses retained artifacts and the attempt/checkpoint records; there is no
+second evidence store. It is a *structural* claim: Scaffold checks it against the ledger and cannot
+authenticate the execution behind the receipt (Pi does that before recording).
+
+- `role` is `contribute` or `verify` and must be one the plan assigns to that task (a parent's
+  roll-up `contribute` link or a sibling's role is refused). `result` is `PASSED`; `basis` is
+  `checks` or `independent-review`, and checks alone are never reported as independent verification.
+- `receipt` and `tree` must be those of the task's **latest** attempt, which must be `PASSED`
+  (an older superseded pass is rejected); once the task is complete they must be the completing
+  attempt. `receipt` and `reference` must be stored artifacts. `design` is the task's approved design
+  record and `binding` the digest of the requirement's contributors and verifiers
+  (`ticket_pipeline.lib.evidence.binding`). The feature instance and ids must match.
+- Replaying an identical association changes nothing; one that differs for the same
+  requirement, task, role and receipt is refused.
+- `complete` is refused until the completing attempt has an association for every requirement role
+  the task holds, and `checkpoint-record` requires the checkpoint's `tree` to be the completing
+  attempt's tree. Supporting issues with no links need no evidence.
+
+Whether a record still applies is derived, never stored. It is `satisfied` while the task is
+completed with that receipt, its checkpoint tree is the recorded tree and the design and binding
+are unchanged; `pending` before completion; otherwise `stale`. A requirement is `satisfied` only
+when every required contribution and verification is; otherwise it reports the worst of `stale`,
+`missing` (work completed, nothing recorded) and `unresolved` (work not finished), with separate
+`implementation` and `verification` coverage. A task being complete, or a reviewer saying not
+applicable, never satisfies anything. `scaffold requirements` and `summary` expose this as an
+additive `evidence` field/count. `validation-start`, `validation-record` and `validation-accept`
+require complete design coverage **and** every requirement satisfied, so the checked / verified /
+accepted distinction and the build/test and independent-review rules are unchanged.
+
+A design change that alters a requirement's contributors or verifiers, or a task's design record,
+leaves old records in the ledger but makes them stale; the work must be re-verified. A history
+rewrite changes checkpoint trees, which also makes affected evidence stale until
+`scaffold evidence-equivalence --task T --input -` records `{requirement, role, receipt, tree,
+reference}`: the caller authenticates that the rewritten tree is equivalent, retains that as the
+stored `reference`, and Scaffold annotates the association with it (the current checkpoint tree is
+required). Nothing is ever silently reused.
+
 ## Revising the design before approval
 
 `scaffold design-revise --feature F --input -` takes `{"context", "design_ref"}` (the full

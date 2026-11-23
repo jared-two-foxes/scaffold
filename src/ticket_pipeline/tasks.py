@@ -38,6 +38,8 @@ TASK_ACTIONS = (
     "direction-approve",
     "design-revise",
     "attempt-record",
+    "evidence-record",
+    "evidence-equivalence",
     "history-foreign",
     "history-rewrite",
     "failure-record",
@@ -65,6 +67,8 @@ def main() -> None:
             "issue-resume",
             "delivery-record",
             "attempt-record",
+            "evidence-record",
+            "evidence-equivalence",
         }:
             command.add_argument("--task", required=True)
         if action in {"design-reopen", "failure-record"}:
@@ -86,6 +90,8 @@ def main() -> None:
             "direction-approve",
             "design-revise",
             "attempt-record",
+            "evidence-record",
+            "evidence-equivalence",
             "history-foreign",
             "history-rewrite",
             "failure-record",
