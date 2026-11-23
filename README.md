@@ -100,8 +100,9 @@ Rules, checked in `add`, `decompose`, `design-record`, `design-reopen` and `desi
 - **Executable coverage.** Only leaves *contribute*. A parent's `contribute` link is roll-up
   documentation and never substitutes for leaf coverage. Any issue, parent included, may
   *verify*, which is how explicit parent integration verification counts. A root with no children
-  is itself the single executable issue and owns every requirement; once it has children it owns
-  none, so root-only coverage cannot hide a missing leaf.
+  is itself an executable issue and owns every requirement, in addition to (never instead of) the
+  explicit links of other top-level issues, whose verification must still be ordered. Once it has
+  children it owns none, so root-only coverage cannot hide a missing leaf.
 - **Ordering.** A verifier verifies the contributors it is the same as, or dependency-ordered
   after (transitive prerequisites, including a parent's descendants and inherited ancestor
   dependencies). Every contributor needs such a verifier, and every verifier must follow at least
@@ -114,8 +115,10 @@ the graph and links). `start` is refused if no plan is recorded or its digest no
 graph, and `design-reopen` discards the plan, so coverage is recomputed every time the design is
 finished. `summary` reports live `coverage`; issue contracts include their links. Each approved
 design record snapshots the issue's links, and completed issues are never edited. Features whose
-design was finished before this change have no recorded plan: reopen the design and finish it
-again. Generalized dependency editing and task cancellation are not part of this.
+design was finished before this change have no recorded plan, and their issues carry no links
+(which is tolerated when designing or reopening, but gives them no coverage). Reopen the design
+and finish it again if the root is childless; otherwise there is no way to attach links to
+existing issues, so reset the feature with `scaffold clean` and re-initialize it. Generalized dependency editing and task cancellation are not part of this.
 
 ## Revising the design before approval
 

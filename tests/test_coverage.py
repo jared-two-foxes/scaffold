@@ -353,3 +353,29 @@ def test_summary_and_issue_scope_expose_coverage_and_links(feature):
     scope = operate("issue", "F1", task_id="a")["context"]
     assert scope["issue"]["requirements"] == [{"id": "REQ-1", "roles": ["contribute", "verify"]}]
     assert operate("issue", "F1", task_id="s")["context"]["issue"]["requirements_rationale"]
+
+
+def test_childless_root_does_not_hide_other_issues_unordered_verification(feature):
+    # The root stays childless while top-level issues are added beside it.
+    operate("add", "F1", [linked("impl", [("REQ-1", ("contribute",))])])
+    operate("add", "F1", [linked("check", [("REQ-1", ("verify",))])])  # not after impl
+    approve_designs()
+    with pytest.raises(ValueError) as error:
+        operate("design-finish", "F1")
+    assert "REQ-1: invalid verification order, contributor impl" in str(error.value)
+    plan = coverage.compute(operate("list", "F1")["feature"])["requirements"]["REQ-1"]
+    assert plan == {"contributors": ["F1", "impl"], "verifiers": ["F1", "check"]}
+
+
+def test_issues_created_before_links_existed_can_still_be_reopened(feature):
+    covered()
+    current = ledger.open_current("F1")
+    state = copy.deepcopy(current.state)
+    legacy = state["tasks"]["a"]
+    del legacy["requirements"]  # as if created before links existed
+    current.append("test-forgery", {}, state)
+    operate("design-reopen", "F1", {"reason": "Recover"})
+    operate("add", "F1", [task("other")])
+    approve_designs()
+    with pytest.raises(ValueError, match="REQ-1: missing contributor"):
+        operate("design-finish", "F1")

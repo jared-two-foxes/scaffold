@@ -116,8 +116,13 @@ def _before(tasks: dict[str, dict]) -> dict[str, set[str]]:
     return closure
 
 
-def check_links(feature: dict) -> None:
-    """Whole-graph consistency of links: unknown ids, presence, rationale and roll-up."""
+def check_links(feature: dict, added: set[str] | None = None) -> None:
+    """Whole-graph consistency of links: unknown ids, rationale and roll-up.
+
+    Issues in ``added`` (just created by add/decompose) must also say what they serve. Issues
+    created before links existed have neither, which is not rechecked here so that they can
+    still be designed and reopened; they simply contribute no coverage.
+    """
     tasks = feature["tasks"]
     known = {record["id"] for record in feature["requirements"]}
     root_id = feature["workflow"]["root_id"]
@@ -138,7 +143,7 @@ def check_links(feature: dict) -> None:
                 f"Issue {identifier} has requirement links and a rationale; "
                 "a rationale is only for supporting issues with no links"
             )
-        if not own and "requirements_rationale" not in task:
+        if added and identifier in added and not own and "requirements_rationale" not in task:
             raise ValueError(
                 f"Issue {identifier} needs requirement links or a requirements_rationale "
                 "explaining why it is a supporting issue"
@@ -174,11 +179,13 @@ def compute(feature: dict) -> dict:
     problems: list[str] = []
     for record in feature["requirements"]:
         rid = record["id"]
+        contributors = [i for i in leaves if CONTRIBUTE in per_task[i].get(rid, ())]
+        verifiers = sorted(i for i in tasks if VERIFY in per_task[i].get(rid, ()))
         if root_is_leaf:
-            contributors, verifiers = [root_id], [root_id]
-        else:
-            contributors = [i for i in leaves if CONTRIBUTE in per_task[i].get(rid, ())]
-            verifiers = sorted(i for i in tasks if VERIFY in per_task[i].get(rid, ()))
+            # The childless root owns everything, alongside (never instead of) the explicit
+            # links of the other executable issues, which still need ordered verification.
+            contributors = sorted({root_id, *contributors})
+            verifiers = sorted({root_id, *verifiers})
         entry = {"contributors": contributors, "verifiers": verifiers}
         result[rid] = entry
         if not contributors:

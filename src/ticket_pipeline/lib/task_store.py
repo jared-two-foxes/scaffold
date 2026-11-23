@@ -377,7 +377,7 @@ def operate(
                     raise ValueError(f"Duplicate task id: {task['id']}")
                 tasks[task["id"]] = task
             _validate_graph(tasks)
-            coverage.check_links(feature)
+            coverage.check_links(feature, {value["id"] for value in payload})
             if parent is not None:
                 issue_workflow.invalidate(parent, tasks)
                 _event(parent, "decomposed", children=[t["id"] for t in payload])
