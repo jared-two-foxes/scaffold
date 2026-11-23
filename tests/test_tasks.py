@@ -33,7 +33,15 @@ def task(identifier, dependencies=()):
         "dependencies": list(dependencies),
         "context": "Verification: focused tests",
         "constraints": ["No AI calls"],
+        "requirements_rationale": "Supporting issue for the test graph",
     }
+
+
+def covering(identifier, dependencies=()):
+    """A task that implements and verifies the feature's one requirement."""
+    base = task(identifier, dependencies)
+    linked = {k: v for k, v in base.items() if k != "requirements_rationale"}
+    return {**linked, "requirements": [{"id": "REQ-1", "roles": ["contribute", "verify"]}]}
 
 
 def evidence(identifier):

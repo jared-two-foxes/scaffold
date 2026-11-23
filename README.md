@@ -79,8 +79,43 @@ or reinstalled `scaffold` that includes this change: an older installed copy doe
   never reissued.
 - Canonical form and validation live in `ticket_pipeline.lib.requirements` (`validate`,
   `canonical`, `derived_criteria`).
-- Out of scope here: mapping issues to requirements, design-coverage enforcement and the
-  scope-transition mechanism.
+- Issue-to-requirement mapping and design-coverage enforcement are described under Requirement
+  coverage in the task graph. The scope-transition mechanism remains out of scope.
+
+## Requirement coverage in the task graph
+
+Every non-root issue says which requirements it serves, so a missing implementation or
+verification is found when the design is finished, not during execution. `add` and `decompose`
+accept, per issue, either:
+
+- `requirements`: `[{"id": "REQ-1", "roles": ["contribute", "verify"]}]`. Roles are `contribute`
+  and/or `verify` (both are allowed); ids must exist and may not repeat. Stored sorted.
+- `requirements_rationale`: a nonempty string, for a *supporting* issue with no links. Links and a
+  rationale are mutually exclusive, and one of them is required. The root takes neither.
+
+Rules, checked in `add`, `decompose`, `design-record`, `design-reopen` and `design-finish`:
+
+- **Roll-up.** A child's ids must be within its parent's ids when the parent has links; the
+  children of a supporting parent cannot claim requirements. Children of the root may claim any.
+- **Executable coverage.** Only leaves *contribute*. A parent's `contribute` link is roll-up
+  documentation and never substitutes for leaf coverage. Any issue, parent included, may
+  *verify*, which is how explicit parent integration verification counts. A root with no children
+  is itself the single executable issue and owns every requirement; once it has children it owns
+  none, so root-only coverage cannot hide a missing leaf.
+- **Ordering.** A verifier verifies the contributors it is the same as, or dependency-ordered
+  after (transitive prerequisites, including a parent's descendants and inherited ancestor
+  dependencies). Every contributor needs such a verifier, and every verifier must follow at least
+  one contributor.
+
+`design-finish` is refused with every problem listed (for example
+`REQ-2: missing contributor ...`, `REQ-1: invalid verification order, contributor impl ...`) and
+otherwise records `workflow.plan` (per-requirement `contributors` and `verifiers`, and a digest of
+the graph and links). `start` is refused if no plan is recorded or its digest no longer matches the
+graph, and `design-reopen` discards the plan, so coverage is recomputed every time the design is
+finished. `summary` reports live `coverage`; issue contracts include their links. Each approved
+design record snapshots the issue's links, and completed issues are never edited. Features whose
+design was finished before this change have no recorded plan: reopen the design and finish it
+again. Generalized dependency editing and task cancellation are not part of this.
 
 ## Revising the design before approval
 

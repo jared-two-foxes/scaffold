@@ -2,7 +2,7 @@
 
 import pytest
 from flow import approve_direction, record_attempt, record_checkpoint
-from test_tasks import FEATURE, evidence, task
+from test_tasks import FEATURE, covering, evidence, task
 
 from ticket_pipeline.lib import ledger, state_store
 from ticket_pipeline.lib.task_store import operate
@@ -53,11 +53,11 @@ def finish(identifier, checkpoint=True):
 def test_downward_design_then_upward_execution_and_parent_verification(state):
     assert call("design-next")["task"]["id"] == "F1"
     assert call("next")["task"] is None
-    call("decompose", "F1", [task("api"), task("storage", ["api"])])
+    call("decompose", "F1", [covering("api"), task("storage", ["api"])])
     with pytest.raises(ValueError, match="parent"):
         approve("api")
     approve("F1", True)
-    call("decompose", "api", [task("types")])
+    call("decompose", "api", [covering("types")])
     approve("api", True)
     assert call("design-next")["task"]["id"] == "types"
     approve("storage")
@@ -92,7 +92,8 @@ def test_discovery_preserves_definitions_and_requires_explicit_resume(state):
         call("design-reopen", "F1", {"reason": "Review found prerequisite"})
     reference = call("artifact-put", payload={"suspension": "a"})["reference"]
     call("design-reopen", "F1", {"reason": "Review found prerequisite", "reference": reference})
-    call("decompose", "F1", [{**task("fix"), "origin": {"kind": "review", "reference": reference}}])
+    origin = {"kind": "review", "reference": reference}
+    call("decompose", "F1", [{**covering("fix"), "origin": origin}])
     approve("F1", True)
     approve("fix")
     call("design-finish")
@@ -156,7 +157,7 @@ def test_rejected_changes_are_atomic_and_design_approval_is_durable(state):
 
 
 def test_dependency_designs_are_invalidated_and_checkpoint_replays_are_noops(state):
-    call("decompose", "F1", [task("a"), task("b", ["a"])])
+    call("decompose", "F1", [covering("a"), task("b", ["a"])])
     approve("F1", True)
     approve("a")
     approve("b")
@@ -229,7 +230,7 @@ def test_unfinished_execution_cannot_escape_suspension_through_lifecycle(state, 
     assert state.read_bytes() == before
     reference = call("artifact-put", payload={"suspension": "c"})["reference"]
     call("design-reopen", "F1", {"reason": "New prerequisite", "reference": reference})
-    call("decompose", "F1", [task("fix")])
+    call("decompose", "F1", [covering("fix")])
     approve("F1", True)
     approve("fix")
     call("design-finish")
@@ -239,7 +240,7 @@ def test_unfinished_execution_cannot_escape_suspension_through_lifecycle(state, 
 
 
 def test_approved_parent_can_reopen_while_descendant_design_is_incomplete(state):
-    call("decompose", "F1", [task("child"), task("pending")])
+    call("decompose", "F1", [covering("child"), task("pending")])
     approve("F1", True)
     approve("child")
     original = call("list")["feature"]["tasks"]
