@@ -179,7 +179,7 @@ def issue(feature, identifier):
         parent = ancestor["parent_id"]
     own = contract(task)
     own["context"] = task["context"]
-    is_root = task["parent_id"] is None
+    is_root = identifier == feature["workflow"]["root_id"]
     plan = coverage.compute(feature)
     records = {r["id"]: r for r in feature["requirements"]}
     own_links = coverage.links(task)

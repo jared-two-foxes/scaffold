@@ -176,3 +176,16 @@ def test_requirements_cli_is_json_with_filters(tmp_path):
     assert [r["id"] for r in out["requirements"]] == ["REQ-1"]
     assert cli(tmp_path, "requirements", "--feature", "F1", "--unmapped")["requirements"] == []
     assert cli(tmp_path, "summary", "--feature", "F1")["summary"]["requirements"]["total"] == 1
+
+
+def test_added_top_level_issue_is_not_mistaken_for_the_root(two):
+    from test_coverage import BOTH, linked
+
+    two("add", "F1", [linked("extra", [("REQ-1", BOTH)])])
+    scope = two("issue", "F1", task_id="extra")["context"]["requirements"]
+    assert [r["id"] for r in scope] == ["REQ-1"]
+    assert "Two" not in json.dumps(scope)
+    assert [r["id"] for r in two("issue", "F1", task_id="F1")["context"]["requirements"]] == [
+        "REQ-1",
+        "REQ-2",
+    ]
